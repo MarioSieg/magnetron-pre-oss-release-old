@@ -32,6 +32,8 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+    msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path);
+    void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
     void msml_tensor_set_zero(msml_tensor_t* tensor);
     void msml_tensor_set_one(msml_tensor_t* tensor);
     void msml_tensor_set(msml_tensor_t* tensor, float x);
@@ -77,11 +79,14 @@ class DType(Enum):
 
 
 class Tensor:
-    def __init__(self, ctx: Context, dtype: DType, name: str | None, dims: list[int]):
-        assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
-        for dim in dims:
-            assert DIM_MAX > dim > 0, 'Invalid dimension size'
-        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
+    def __init__(self, ctx: Context, dtype: DType, name: str | None, dims: list[int], internal_instance=None):
+        if internal_instance is None:   # Create tensor from arguments if not instance provided
+            assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
+            for dim in dims:
+                assert DIM_MAX > dim > 0, 'Invalid dimension size'
+            self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
+        else: # If instance is provided, just assign it
+            self.tensor = internal_instance
         if name is not None:
             self.set_name(name)
         ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
@@ -179,7 +184,12 @@ class Tensor:
             result.set(fill_value)
         return result
 
+    @staticmethod
+    def from_image(ctx: Context, name: str | None, file_path: str):
+        instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'))
+        return Tensor(ctx, DType.F32, name, [], internal_instance=instance)
+
 
 ctx = Context()
-grad = Tensor.full(ctx, DType.F32, 'Gradients', [4, 4], fill_value=2.3)
-grad.print(True)
+image = Tensor.from_image(ctx, 'Cat', '../test_data/cat.jpeg')
+image.print(True)

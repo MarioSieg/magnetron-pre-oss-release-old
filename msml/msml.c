@@ -10,6 +10,11 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+#ifdef MSML_ENABLE_IMAGE_SUPPORT
+#   define STB_IMAGE_IMPLEMENTATION
+#   include <stb_image.h>
+#endif
+
 #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
 #	define MSML_NORET __attribute__((noreturn))
 #	define MSML_ALIGN(x) __attribute__((aligned(x)))
@@ -48,6 +53,8 @@
 #define MSML_STRINGIZE(x) MSML_STRINGIZE2(x)
 #define MSML_STRINGIZE2(x) #x
 #define MSML_SRC_NAME __FILE_NAME__ ":" MSML_STRINGIZE(__LINE__)
+#define msml_log_info(msg, ...) fprintf(stdout,  "[MSML] " MSML_SRC_NAME " " msg "\n", ## __VA_ARGS__)
+#define msml_log_warn(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
 
 struct msml_ctx_t {
     void* (*alloc_fn)(void* blk, size_t size);
@@ -144,6 +151,7 @@ void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
             while (((ctx->chunk_size <<= 1) < size)
                    && (ctx->chunk_size <= (size_t)(PTRDIFF_MAX >> 1)));
         }
+        msml_log_info("Allocating new pool chunk of size: %zu", ctx->chunk_size);
         msml__ctx_push_chunk(ctx);
     }
     ctx->delta -= size;
@@ -218,6 +226,32 @@ msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
 }
 
+msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path) {
+#ifdef MSML_ENABLE_IMAGE_SUPPORT
+    int width, height, channels;
+    stbi_uc* image_data = stbi_load(file_path, &width, &height, &channels, STBI_default);
+    if (!image_data) {
+        msml_panic("Failed to load image from file: %s\n", file_path);
+    }
+    msml_tensor_t* tensor = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
+    float* dst = tensor->buf.f32;
+    const size_t n = width*height*channels;
+    msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
+    for (size_t i=0; i < n; ++i)
+        dst[i] = (float)image_data[i] / 255.0f; /* Normalize pixel values to [0, 1] */
+    stbi_image_free(image_data);
+    msml_log_info("Loaded tensor from image: %s, width: %d, height: %d, channels: %d", file_path, width, height, channels);
+    return tensor;
+#else
+    msml_panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
+#endif
+}
+
+void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size) {
+    msml_assert(size == (size_t)tensor->buf_size, "Buffer size mismatch: %zu != %lld", size, tensor->buf_size);
+    memcpy(tensor->buf.u8, data, size);
+}
+
 void msml_tensor_set_zero(msml_tensor_t* tensor) {
     memset(tensor->buf.u8, 0, tensor->buf_size);
 }
@@ -244,20 +278,40 @@ void msml_tensor_set(msml_tensor_t* tensor, float x) {
     }
 }
 
+static void msml__humanize_memory_size(size_t n, double* out, const char** unit) {
+    if (n < (1<<10)) {
+        *out = (double)n;
+        *unit = "B";
+    } else if (n < (1<<20)) {
+        *out = (double)n/(double)(1<<10);
+        *unit = "KiB";
+    } else if (n < (1<<30)) {
+        *out = (double)n/(double)(1<<20);
+        *unit = "MiB";
+    } else {
+        *out = (double)n/(double)(1<<30);
+        *unit = "GiB";
+    }
+}
+
 void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
-    printf("Tensor '%s', DType: %s, Rank: %zu, Dims: [%zu, %zu, %zu, %zu], Strides: [%zu, %zu, %zu, %zu], Size: %.03fKiB \n",
-           tensor->name,
-           msml_dtype_info[tensor->dtype].name,
-           (size_t)tensor->rank,
-           (size_t)tensor->dims[0],
-           (size_t)tensor->dims[1],
-           (size_t)tensor->dims[2],
-           (size_t)tensor->dims[3],
-           (size_t)tensor->strides[0],
-           (size_t)tensor->strides[1],
-           (size_t)tensor->strides[2],
-           (size_t)tensor->strides[3],
-           (double)tensor->buf_size/(double)(1<<10)
+    double buf_size_cvt = 0.0;
+    const char* buf_size_unit = NULL;
+    msml__humanize_memory_size(tensor->buf_size, &buf_size_cvt, &buf_size_unit);
+    printf("Tensor '%s', DType: %s, Rank: %zu, Dims: [%zu, %zu, %zu, %zu], Strides: [%zu, %zu, %zu, %zu], Size: %.01f %s \n",
+       tensor->name,
+       msml_dtype_info[tensor->dtype].name,
+       (size_t)tensor->rank,
+       (size_t)tensor->dims[0],
+       (size_t)tensor->dims[1],
+       (size_t)tensor->dims[2],
+       (size_t)tensor->dims[3],
+       (size_t)tensor->strides[0],
+       (size_t)tensor->strides[1],
+       (size_t)tensor->strides[2],
+       (size_t)tensor->strides[3],
+       buf_size_cvt,
+       buf_size_unit
     );
     if (with_data) {
         printf("[\n");
