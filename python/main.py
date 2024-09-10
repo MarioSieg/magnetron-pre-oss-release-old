@@ -3,6 +3,7 @@
 # MIT licensed.
 # Python bindings for MSML.
 
+import weakref
 from cffi import FFI
 from enum import Enum
 
@@ -57,9 +58,13 @@ ffi.cdef(f'''
 class Context:
     def __init__(self):
         self.ctx = C.msml_ctx_create(ffi.NULL)
+        # Use weak references to manage the lifecycle of tensors, as they are owned by the context
+        self.allocated_tensors = weakref.WeakSet()
 
     def __del__(self):
-
+        # Ensure tensors are cleaned up
+        for tensor in list(self.allocated_tensors):
+            tensor.__del__()
         C.msml_ctx_destroy(self.ctx)
 
 
@@ -75,6 +80,11 @@ class Tensor:
         self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
         if name is not None:
             self.set_name(name)
+        ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
+
+    def __del__(self):
+        if self.tensor is not None:
+            self.tensor = None
 
     def print(self, with_data: bool):
         C.msml_tensor_print(self.tensor, with_data)
