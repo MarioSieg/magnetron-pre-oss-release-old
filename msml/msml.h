@@ -9,9 +9,9 @@
 
 #include <string.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include <inttypes.h>
 
 #ifndef MSML_API
 #   ifdef MSML_EXPORT_DLL
@@ -125,7 +125,6 @@ extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
 extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-extern MSML_API msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
 extern MSML_API void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
 extern MSML_API void msml_tensor_set_zero(msml_tensor_t* tensor);
 extern MSML_API void msml_tensor_set_one(msml_tensor_t* tensor);
@@ -149,6 +148,12 @@ extern MSML_API bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor)
 extern MSML_API void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]);
 extern MSML_API int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[MSML_MAX_DIMS]);
 extern MSML_API bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
+
+extern MSML_API msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
+extern MSML_API void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
+#define msml_tensor_image_width(tensor) (msml_tensor_dims(tensor)[0])
+#define msml_tensor_image_height(tensor) (msml_tensor_dims(tensor)[1])
+#define msml_tensor_image_channels(tensor) (msml_tensor_dims(tensor)[2])
 
 #ifdef __cplusplus
 }

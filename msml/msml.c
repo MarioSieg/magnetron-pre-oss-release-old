@@ -15,6 +15,8 @@
 #   include <stb_image.h>
 #   define STB_IMAGE_RESIZE_IMPLEMENTATION
 #   include <stb_image_resize2.h>
+#   define STB_IMAGE_WRITE_IMPLEMENTATION
+#   include <stb_image_write.h>
 #endif
 
 #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
@@ -140,11 +142,11 @@ void* msml_default_allocator(void* blk, size_t size) {
 }
 
 static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
-    uint8_t* chunk = (uint8_t*)(*ctx->alloc_fn)(NULL, ctx->chunk_size);
+    uint8_t* chunk = (*ctx->alloc_fn)(NULL, ctx->chunk_size);
     ctx->mapped_total += ctx->chunk_size;
     ctx->delta = chunk + ctx->chunk_size;
     if (ctx->chunk_len == ctx->chunk_cap)
-        ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(ctx->chunks, (ctx->chunk_cap <<= 1) * sizeof(*ctx->chunks));
+        ctx->chunks = (*ctx->alloc_fn)(ctx->chunks, (ctx->chunk_cap <<= 1) * sizeof(*ctx->chunks));
     ctx->chunks[ctx->chunk_len++] = chunk;
 }
 
@@ -154,7 +156,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     memset(&ctx_info, 0, sizeof(ctx_info));
     if (info) ctx_info = *info;
     ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_default_allocator;
-    msml_ctx_t* ctx = (msml_ctx_t*)(*ctx_info.alloc_fn)(NULL, sizeof(*ctx));
+    msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx));
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
     ctx->user_data = ctx_info.user_data;
@@ -217,7 +219,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
         msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
         buf_size *= dims[i];
     }
-    msml_tensor_t* tensor = (msml_tensor_t*)msml_ctx_pool_alloc(ctx, sizeof(*tensor) + buf_size); /* Allocate memory for tensor struct and data */
+    msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + buf_size); /* Allocate memory for tensor struct and data */
     memset(tensor, 0, sizeof(*tensor));
     tensor->ctx = ctx;
     tensor->rank = rank;
@@ -246,53 +248,6 @@ msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
 
 msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
-}
-
-msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {
-#ifdef MSML_ENABLE_IMAGE_SUPPORT
-    int width, height, channels, desired_channels;
-    switch (in_desired_channels) {
-        default: desired_channels = STBI_default; break;
-        case MSML_COLOR_CHANNELS_GRAY: desired_channels = STBI_grey; break;
-        case MSML_COLOR_CHANNELS_GRAY_A: desired_channels = STBI_grey_alpha; break;
-        case MSML_COLOR_CHANNELS_RGB: desired_channels = STBI_rgb; break;
-        case MSML_COLOR_CHANNELS_RGBA: desired_channels = STBI_rgb_alpha; break;
-    }
-    unsigned char* image_data = stbi_load(file_path, &width, &height, &channels, desired_channels);
-    if (!image_data || width == 0 || height == 0 || channels == 0) {
-        msml_panic("Failed to load image from file: %s\n", file_path);
-    }
-    if (resize_width && resize_height) { /* Resize image if requested */
-        unsigned char* resized_data = stbir_resize_uint8_srgb(
-            image_data,
-            width,
-            height,
-            0,
-            NULL,
-            (int)resize_width,
-            (int)resize_height,
-            0,
-            (stbir_pixel_layout)desired_channels
-        );
-        if (resized_data) { /* Replace original image data with resized data */
-            stbi_image_free(image_data);
-            image_data = resized_data;
-            width = (int)resize_width;
-            height = (int)resize_height;
-        }
-    }
-    msml_tensor_t* tensor = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
-    float* dst = tensor->buf.f32;
-    const size_t n = width*height*channels;
-    msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
-    for (size_t i=0; i < n; ++i)
-        dst[i] = (float)image_data[i] / 255.0f; /* Normalize pixel values to [0, 1] */
-    stbi_image_free(image_data);
-    msml_log_info("Loaded tensor from image: %s, width: %d, height: %d, channels: %d", file_path, width, height, channels);
-    return tensor;
-#else
-    msml_panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
-#endif
 }
 
 void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size) {
@@ -1042,4 +997,76 @@ int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const
 
 bool msml_tensor_is_contiguous(const msml_tensor_t* tensor) {
     return *tensor->strides == (int64_t)msml_dtype_info[tensor->dtype].size;
+}
+
+msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {
+#ifdef MSML_ENABLE_IMAGE_SUPPORT
+    int width, height, channels, desired_channels;
+    switch (in_desired_channels) {
+        default: desired_channels = STBI_default; break;
+        case MSML_COLOR_CHANNELS_GRAY: desired_channels = STBI_grey; break;
+        case MSML_COLOR_CHANNELS_GRAY_A: desired_channels = STBI_grey_alpha; break;
+        case MSML_COLOR_CHANNELS_RGB: desired_channels = STBI_rgb; break;
+        case MSML_COLOR_CHANNELS_RGBA: desired_channels = STBI_rgb_alpha; break;
+    }
+    uint8_t* image_data = stbi_load(file_path, &width, &height, &channels, desired_channels);
+    if (!image_data || width == 0 || height == 0 || channels == 0) {
+        msml_panic("Failed to load image from file: %s\n", file_path);
+    }
+    if (resize_width && resize_height) { /* Resize image if requested */
+        uint8_t* resized_data = stbir_resize_uint8_srgb(
+            image_data,
+            width,
+            height,
+            0,
+            NULL,
+            (int)resize_width,
+            (int)resize_height,
+            0,
+            (stbir_pixel_layout)desired_channels
+        );
+        if (resized_data) { /* Replace original image data with resized data */
+            stbi_image_free(image_data);
+            image_data = resized_data;
+            width = (int)resize_width;
+            height = (int)resize_height;
+        }
+    }
+    msml_tensor_t* tensor = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
+    float* dst = tensor->buf.f32;
+    const size_t n = width*height*channels;
+    msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
+    for (size_t i=0; i < n; ++i)
+        dst[i] = (float)image_data[i] / 255.0f; /* Normalize pixel values to [0, 1] */
+    stbi_image_free(image_data);
+    msml_log_info("Loaded tensor from image: %s, width: %d, height: %d, channels: %d", file_path, width, height, channels);
+    return tensor;
+#else
+    msml_panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
+#endif
+}
+
+void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path) {
+#ifdef MSML_ENABLE_IMAGE_SUPPORT
+    const int64_t* dims = msml_tensor_dims(tensor);
+    const int64_t rank = msml_tensor_rank(tensor);
+    msml_assert(rank == 3, "Tensor rank must be 3, but is: %" PRIi64, (size_t)rank);
+    const int64_t width = dims[0];
+    const int64_t height = dims[1];
+    const int64_t channels = dims[2];
+    msml_assert(channels == 1 || channels == 3 || channels == 4, "Invalid number of channels: %" PRIi64, channels);
+    const size_t n = width*height*channels;
+    msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
+    uint8_t* image_data = (*tensor->ctx->alloc_fn)(NULL, n); /* Allocate memory for image data */
+    for (size_t i=0; i < n; ++i) { /* Clamp and denormalize pixel values to [0, 255] */
+        float f32_u8 = msml_min(msml_max(tensor->buf.f32[i], 0.0f), 1.0f) * 255.0f;
+        image_data[i] = (uint8_t)f32_u8;
+    }
+    int result = stbi_write_jpg(file_path, (int)width, (int)height, (int)channels, image_data, 100);
+    msml_assert(result, "Failed to save tensor to image: %s", file_path);
+    (*tensor->ctx->alloc_fn)(image_data, 0); /* Free image data */
+    msml_log_info("Saved tensor to image: %s, width: %d, height: %d, channels: %d", file_path, (int)width, (int)height, (int)channels);
+#else
+    msml_panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
+#endif
 }

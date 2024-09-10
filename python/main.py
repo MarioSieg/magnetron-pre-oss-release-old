@@ -33,7 +33,6 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-    msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
     void msml_tensor_set_zero(msml_tensor_t* tensor);
     void msml_tensor_set_one(msml_tensor_t* tensor);
@@ -57,6 +56,9 @@ ffi.cdef(f'''
     void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[{MAX_DIMS}]);
     int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[{MAX_DIMS}]);
     bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
+    
+    msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
+    void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
 ''')
 
 
@@ -204,7 +206,20 @@ class Tensor:
                                                    resize_dims[0], resize_dims[1])
         return Tensor(ctx, DType.F32, name, [], internal_instance=instance)
 
+    def save_to_image(self, file_path: str):
+        C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
+
+    def image_width(self) -> int:
+        return self.dims()[0]
+
+    def image_height(self) -> int:
+        return self.dims()[1]
+
+    def image_channels(self) -> int:
+        return self.dims()[2]
+
 
 ctx = Context()
-image = Tensor.from_image(ctx, 'Cat', '../test_data/cat.jpeg', resize_dims=(4, 4))
-image.print(True)
+img = Tensor.from_image(ctx, 'Cat', '../test_data/cat.jpg', resize_dims=(64, 64))
+img.print(False)
+img.save_to_image('cat_out.jpg')
