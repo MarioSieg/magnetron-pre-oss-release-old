@@ -261,6 +261,8 @@ class Tensor:
 
 
 ctx = Context()
-img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg', resize_to_dims=(64, 64))
+img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg', resize_to_dims=(128, 128))
 img.print(False)
 img.save_to_image('car_out.jpg')
+img = Tensor.from_image(ctx, 'Pizza', '../test_data/pizza.jpg', resize_to_dims=(16, 16))
+img.save_to_image('pizza_out.jpg')
