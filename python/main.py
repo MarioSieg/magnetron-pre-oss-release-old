@@ -207,4 +207,4 @@ class Tensor:
 
 ctx = Context()
 image = Tensor.from_image(ctx, 'Cat', '../test_data/cat.jpeg', resize_dims=(4, 4))
-image.print(False)
+image.print(True)

@@ -1,8 +1,8 @@
 /*
- * (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
- * MSML - Single file STB-style machine learning library in C99 with Python bindings.
- * MIT licensed.
- */
+** (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
+** MSML - Single file STB-style machine learning library in C99 with Python bindings.
+** For license see LICENSE file.
+*/
 
 #ifndef MSML_INCLUDE_MSML_H
 #define MSML_INCLUDE_MSML_H
@@ -69,6 +69,54 @@ typedef enum msml_desired_color_channels_t {
     MSML_COLOR_CHANNELS_RGB, /* R32G32B32 */
     MSML_COLOR_CHANNELS_RGBA /* R32G32B32A32 */
 } msml_desired_color_channels_t;
+
+typedef enum msml_format_type {
+    MSML_FMT_EOF, MSML_FMT_ERR, MSML_FMT_LIT,
+    MSML_FMT_INT, MSML_FMT_UINT, MSML_FMT_NUM,
+    MSML_FMT_STR, MSML_FMT_CHAR, MSML_FMT_PTR
+} msml_format_type;
+
+typedef uint32_t msml_format_flags;
+
+/* Format flags. */
+#define MSML_FMT_F_LEFT	0x0100
+#define MSML_FMT_F_PLUS	0x0200
+#define MSML_FMT_F_ZERO	0x0400
+#define MSML_FMT_F_SPACE 0x0800
+#define MSML_FMT_F_ALT 0x1000
+#define MSML_FMT_F_UPPER 0x2000
+
+/* Format subtypes (bits are reused). */
+#define MSML_FMT_T_HEX 0x0010 /* MSML_FMT_UINT */
+#define MSML_FMT_T_OCT 0x0020 /* MSML_FMT_UINT */
+#define MSML_FMT_T_FP_A	0x0000 /* MSML_FMT_NUM */
+#define MSML_FMT_T_FP_E	0x0010 /* MSML_FMT_NUM */
+#define MSML_FMT_T_FP_F	0x0020 /* MSML_FMT_NUM */
+#define MSML_FMT_T_FP_G	0x0030 /* MSML_FMT_NUM */
+#define MSML_FMT_T_QUOTED 0x0010 /* MSML_FMT_STR */
+
+#define MSML_FMT_SH_WIDTH 16
+#define MSML_FMT_SH_PREC 24
+#define MSML_FMT_TYPE(sf) ((FormatType)((sf) & 15))
+#define MSML_FMT_WIDTH(sf) (((sf) >> MSML_FMT_SH_WIDTH) & 255u)
+#define MSML_FMT_PREC(sf) ((((sf) >> MSML_FMT_SH_PREC) & 255u) - 1u)
+#define MSML_FMT_FP(sf) (((sf) >> 4) & 3)
+
+/* Formats for conversion characters. */
+#define MSML_FMT_A (MSML_FMT_NUM|MSML_FMT_T_FP_A)
+#define MSML_FMT_C (MSML_FMT_CHAR)
+#define MSML_FMT_D (MSML_FMT_INT)
+#define MSML_FMT_E (MSML_FMT_NUM|MSML_FMT_T_FP_E)
+#define MSML_FMT_F (MSML_FMT_NUM|MSML_FMT_T_FP_F)
+#define MSML_FMT_G (MSML_FMT_NUM|MSML_FMT_T_FP_G)
+#define MSML_FMT_I MSML_FMT_D
+#define MSML_FMT_O (MSML_FMT_UINT|MSML_FMT_T_OCT)
+#define MSML_FMT_P (MSML_FMT_PTR)
+#define MSML_FMT_Q (MSML_FMT_STR|MSML_FMT_T_QUOTED)
+#define MSML_FMT_S (MSML_FMT_STR)
+#define MSML_FMT_U (MSML_FMT_UINT)
+#define MSML_FMT_X (MSML_FMT_UINT|MSML_FMT_T_HEX)
+#define MSML_FMT_G14 (MSML_FMT_G | ((14+1) << MSML_FMT_SH_PREC))
 
 typedef struct msml_tensor_t msml_tensor_t;
 
