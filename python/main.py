@@ -207,6 +207,7 @@ class Tensor:
         return Tensor(ctx, DType.F32, name, [], internal_instance=instance)
 
     def save_to_image(self, file_path: str):
+        assert self.rank() == 3, 'Tensor must be a 3D image tensor'
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
 
     def image_width(self) -> int:
