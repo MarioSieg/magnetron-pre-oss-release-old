@@ -198,6 +198,15 @@ class Tensor:
             result.set(fill_value)
         return result
 
+    def image_width(self) -> int:
+        return self.dims()[0]
+
+    def image_height(self) -> int:
+        return self.dims()[1]
+
+    def image_channels(self) -> int:
+        return self.dims()[2]
+
     @staticmethod
     def from_image(ctx: Context, name: str | None, file_path: str, desired_color_channels=DesiredColorChannels.AUTO,
                    resize_dims=(0, 0)):
@@ -208,16 +217,9 @@ class Tensor:
 
     def save_to_image(self, file_path: str):
         assert self.rank() == 3, 'Tensor must be a 3D image tensor'
+        channels: int = self.image_channels()
+        assert channels == 1 or channels == 3 or channels == 4, 'Invalid number of color channels'
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
-
-    def image_width(self) -> int:
-        return self.dims()[0]
-
-    def image_height(self) -> int:
-        return self.dims()[1]
-
-    def image_channels(self) -> int:
-        return self.dims()[2]
 
 
 ctx = Context()
