@@ -14,6 +14,7 @@ C = ffi.dlopen(MSML_LIB)
 
 # Define constants
 MAX_DIMS = 4
+DIM_MAX = 0x7fffffffffffffff
 
 # Define C types
 ffi.cdef(f'''
@@ -58,6 +59,7 @@ class Context:
         self.ctx = C.msml_ctx_create(ffi.NULL)
 
     def __del__(self):
+
         C.msml_ctx_destroy(self.ctx)
 
 
@@ -67,6 +69,9 @@ class DType(Enum):
 
 class Tensor:
     def __init__(self, ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+        assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
+        for dim in dims:
+            assert DIM_MAX > dim > 0, 'Invalid dimension size'
         self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
         if name is not None:
             self.set_name(name)
@@ -124,6 +129,7 @@ class Tensor:
         return list(p_idx)
 
     def physical_to_virtual_index(self, p_idx: list[int]) -> int:
+        assert len(p_idx) == MAX_DIMS
         return C.msml_tensor_physical_to_virtual_index(self.tensor, p_idx)
 
     def is_contiguous(self) -> bool:
