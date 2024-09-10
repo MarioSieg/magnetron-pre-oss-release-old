@@ -17,7 +17,7 @@ C = ffi.dlopen(MSML_LIB)
 MAX_DIMS = 4
 DIM_MAX = 0x7fffffffffffffff
 
-# Define C types
+# Define C types - keep in sync carefully with the C header file, only include what is needed
 ffi.cdef(f'''
     typedef struct msml_ctx_info_t msml_ctx_info_t;
     typedef struct msml_ctx_t msml_ctx_t;
@@ -32,6 +32,9 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+    void msml_tensor_set_zero(msml_tensor_t* tensor);
+    void msml_tensor_set_one(msml_tensor_t* tensor);
+    void msml_tensor_set(msml_tensor_t* tensor, float x);
     void msml_tensor_print(const msml_tensor_t* tensor, bool with_data);
     void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
     const char* msml_tensor_get_name(const msml_tensor_t* tensor);
@@ -41,6 +44,7 @@ ffi.cdef(f'''
     msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor);
     void* msml_tensor_buf(const msml_tensor_t* tensor);
     int64_t msml_tensor_buf_size(const msml_tensor_t* tensor);
+    int64_t msml_tensor_buf_len(const msml_tensor_t* tensor);
     int64_t msml_tensor_num_rows(const msml_tensor_t* tensor);
     int64_t msml_tensor_num_cols(const msml_tensor_t* tensor);
     bool msml_tensor_is_scalar(const msml_tensor_t* tensor);
@@ -85,6 +89,15 @@ class Tensor:
     def __del__(self):
         if self.tensor is not None:
             self.tensor = None
+
+    def set_zero(self):
+        C.msml_tensor_set_zero(self.tensor)
+
+    def set_one(self):
+        C.msml_tensor_set_one(self.tensor)
+
+    def set(self, x: float):
+        C.msml_tensor_set(self.tensor, x)
 
     def print(self, with_data: bool):
         C.msml_tensor_print(self.tensor, with_data)
@@ -145,7 +158,28 @@ class Tensor:
     def is_contiguous(self) -> bool:
         return C.msml_tensor_is_contiguous(self.tensor)
 
+    @staticmethod
+    def empty(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+        return Tensor(ctx, dtype, name, dims)
+
+    @staticmethod
+    def zeros(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+        result = Tensor(ctx, dtype, name, dims)
+        result.set_zero()
+        return result
+
+    @staticmethod
+    def full(ctx: Context, dtype: DType, name: str | None, dims: list[int], fill_value: float):
+        result = Tensor(ctx, dtype, name, dims)
+        if fill_value == 0.0:
+            result.set_zero()
+        elif fill_value == 1.0:
+            result.set_one()
+        else:
+            result.set(fill_value)
+        return result
+
 
 ctx = Context()
-grad = Tensor(ctx, DType.F32, 'Gradients', [4, 4])
+grad = Tensor.full(ctx, DType.F32, 'Gradients', [4, 4], fill_value=2.3)
 grad.print(True)

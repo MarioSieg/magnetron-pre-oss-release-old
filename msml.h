@@ -82,6 +82,9 @@ extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
 extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+extern MSML_API void msml_tensor_set_zero(msml_tensor_t* tensor);
+extern MSML_API void msml_tensor_set_one(msml_tensor_t* tensor);
+extern MSML_API void msml_tensor_set(msml_tensor_t* tensor, float x);
 extern MSML_API void msml_tensor_print(const msml_tensor_t* tensor, bool with_data);
 extern MSML_API void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
 extern MSML_API const char* msml_tensor_get_name(const msml_tensor_t* tensor);
@@ -91,6 +94,7 @@ extern MSML_API const int64_t* msml_tensor_strides(const msml_tensor_t* tensor);
 extern MSML_API msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor);
 extern MSML_API void* msml_tensor_buf(const msml_tensor_t* tensor);
 extern MSML_API int64_t msml_tensor_buf_size(const msml_tensor_t* tensor);
+extern MSML_API int64_t msml_tensor_buf_len(const msml_tensor_t* tensor);
 extern MSML_API int64_t msml_tensor_num_rows(const msml_tensor_t* tensor);
 extern MSML_API int64_t msml_tensor_num_cols(const msml_tensor_t* tensor);
 extern MSML_API bool msml_tensor_is_scalar(const msml_tensor_t* tensor);
@@ -319,6 +323,32 @@ msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
 }
 
+void msml_tensor_set_zero(msml_tensor_t* tensor) {
+    memset(tensor->buf.u8, 0, tensor->buf_size);
+}
+
+void msml_tensor_set_one(msml_tensor_t* tensor) {
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32: {
+            int64_t n = msml_tensor_buf_len(tensor);
+            float* buf = tensor->buf.f32;
+            for (int64_t i=0; i < n; ++i) buf[i] = 1.0f;
+        } break;
+        default: msml_panic("Unsupported DType: %d", tensor->dtype);
+    }
+}
+
+void msml_tensor_set(msml_tensor_t* tensor, float x) {
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32: {
+            int64_t n = msml_tensor_buf_len(tensor);
+            float* buf = tensor->buf.f32;
+            for (int64_t i=0; i < n; ++i) buf[i] = x;
+        } break;
+        default: msml_panic("Unsupported DType: %d", tensor->dtype);
+    }
+}
+
 void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
     printf("Tensor '%s', DType: %s, Rank: %zu, Dims: [%zu, %zu, %zu, %zu], Strides: [%zu, %zu, %zu, %zu], Size: %.03fKiB \n",
         tensor->name,
@@ -384,6 +414,9 @@ int64_t msml_tensor_buf_size(const msml_tensor_t* tensor) {
     return tensor->buf_size;
 }
 
+int64_t msml_tensor_buf_len(const msml_tensor_t* tensor) {
+    return tensor->buf_size / (int64_t)msml_dtype_info[tensor->dtype].size;
+}
 
 int64_t msml_tensor_num_rows(const msml_tensor_t* tensor) {
     int64_t rows=tensor->dims[1];
