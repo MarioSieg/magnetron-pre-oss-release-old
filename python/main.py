@@ -24,10 +24,10 @@ ffi.cdef(f'''
     typedef int msml_dtype_t;
     typedef int msml_desired_color_channels_t;
     typedef struct msml_tensor_t msml_tensor_t;
-    
+
     msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
     void msml_ctx_destroy(msml_ctx_t* ctx);
-    
+
     msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
     msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
@@ -56,7 +56,7 @@ ffi.cdef(f'''
     void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[{MAX_DIMS}]);
     int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[{MAX_DIMS}]);
     bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
-    
+
     msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
 ''')
@@ -65,23 +65,27 @@ ffi.cdef(f'''
 # Define Python wrapper classes
 
 class Context:
+    """Manages the MSML context and tensor lifecycles."""
+
     def __init__(self):
         self.ctx = C.msml_ctx_create(ffi.NULL)
         # Use weak references to manage the lifecycle of tensors, as they are owned by the context
         self.allocated_tensors = weakref.WeakSet()
 
     def __del__(self):
-        # Ensure tensors are cleaned up
+        """Ensure tensors are cleaned up when the context is destroyed."""
         for tensor in list(self.allocated_tensors):
             tensor.__del__()
         C.msml_ctx_destroy(self.ctx)
 
 
 class DType(Enum):
+    """Enumerates the supported data types for tensors."""
     F32 = 0
 
 
 class DesiredColorChannels(Enum):
+    """Enumerates the desired color channels when loading images."""
     AUTO = 0  # Automatically determine the number of color channels
     GRAY = 1  # Grayscale F32
     GRAY_A = 2  # Grayscale F32 with alpha F32
@@ -90,8 +94,13 @@ class DesiredColorChannels(Enum):
 
 
 class Tensor:
+    """Represents a tensor in the MSML library."""
+
     def __init__(self, ctx: Context, dtype: DType, name: str | None, dims: list[int], internal_instance=None):
-        if internal_instance is None:  # Create tensor from arguments if not instance provided
+        """
+        Creates a tensor from dimensions or an existing internal instance.
+        """
+        if internal_instance is None:  # Create tensor from arguments if no instance provided
             assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
             for dim in dims:
                 assert DIM_MAX > dim > 0, 'Invalid dimension size'
@@ -103,75 +112,97 @@ class Tensor:
         ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
 
     def __del__(self):
+        """Destructor to release tensor resources."""
         if self.tensor is not None:
             self.tensor = None
 
     def set_zero(self):
+        """Sets all elements of the tensor to zero."""
         C.msml_tensor_set_zero(self.tensor)
 
     def set_one(self):
+        """Sets all elements of the tensor to one."""
         C.msml_tensor_set_one(self.tensor)
 
     def set(self, x: float):
+        """Sets all elements of the tensor to a specified value."""
         C.msml_tensor_set(self.tensor, x)
 
     def print(self, with_data: bool):
+        """Prints the tensor metadata and optionally its data."""
         C.msml_tensor_print(self.tensor, with_data)
 
     def set_name(self, name: str):
+        """Sets a name for the tensor."""
         C.msml_tensor_set_name(self.tensor, bytes(name, 'utf-8'))
 
     def get_name(self) -> str:
+        """Returns the name of the tensor."""
         return ffi.string(C.msml_tensor_get_name(self.tensor)).decode('utf-8')
 
     def rank(self) -> int:
+        """Returns the rank (number of dimensions) of the tensor."""
         return C.msml_tensor_rank(self.tensor)
 
     def dims(self) -> list[int]:
+        """Returns the dimensions of the tensor."""
         ptr = C.msml_tensor_dims(self.tensor)
         return [ptr[i] for i in range(MAX_DIMS)]
 
     def strides(self) -> list[int]:
+        """Returns the strides of the tensor."""
         ptr = C.msml_tensor_strides(self.tensor)
         return [ptr[i] for i in range(MAX_DIMS)]
 
     def dtype(self) -> int:
+        """Returns the data type of the tensor."""
         return C.msml_tensor_dtype(self.tensor)
 
     def buf(self) -> ffi.CData:
+        """Returns the raw buffer of the tensor."""
         return C.msml_tensor_buf(self.tensor)
 
     def buf_size(self) -> int:
+        """Returns the size of the tensor buffer in bytes."""
         return C.msml_tensor_buf_size(self.tensor)
 
     def num_rows(self) -> int:
+        """Returns the number of rows in the tensor, assuming it's a matrix."""
         return C.msml_tensor_num_rows(self.tensor)
 
     def num_cols(self) -> int:
+        """Returns the number of columns in the tensor, assuming it's a matrix."""
         return C.msml_tensor_num_cols(self.tensor)
 
     def is_scalar(self) -> bool:
+        """Checks if the tensor is a scalar (0D tensor)."""
         return C.msml_tensor_is_scalar(self.tensor)
 
     def is_vector(self) -> bool:
+        """Checks if the tensor is a vector (1D tensor)."""
         return C.msml_tensor_is_vector(self.tensor)
 
     def is_matrix(self) -> bool:
+        """Checks if the tensor is a matrix (2D tensor)."""
         return C.msml_tensor_is_matrix(self.tensor)
 
     def is_higher_order_3d(self) -> bool:
+        """Checks if the tensor is a higher-order 3D tensor."""
         return C.msml_tensor_is_higher_order_3d(self.tensor)
 
     def virtual_to_physical_index(self, v_idx: int) -> list[int]:
+        """Converts a virtual index to a physical index."""
         p_idx = ffi.new(f'int64_t[{MAX_DIMS}]')
         C.msml_tensor_virtual_to_physical_index(self.tensor, v_idx, p_idx)
         return list(p_idx)
 
     def physical_to_virtual_index(self, p_idx: list[int]) -> int:
+        """Converts a physical index to a virtual index."""
         assert len(p_idx) == MAX_DIMS
         return C.msml_tensor_physical_to_virtual_index(self.tensor, p_idx)
 
     def is_contiguous(self) -> bool:
+        """Checks if the tensor is contiguous in memory."""
         return C.msml_tensor_is_contiguous(self.tensor)
 
     @staticmethod
@@ -199,30 +230,37 @@ class Tensor:
         return result
 
     def image_width(self) -> int:
+        """Returns the width of the image tensor. (Equals to the first dimension)"""
         return self.dims()[0]
 
     def image_height(self) -> int:
+        """Returns the height of the image tensor. (Equals to the second dimension)"""
         return self.dims()[1]
 
     def image_channels(self) -> int:
+        """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
         return self.dims()[2]
 
     @staticmethod
-    def from_image(ctx: Context, name: str | None, file_path: str, desired_color_channels=DesiredColorChannels.AUTO,
-                   resize_dims=(0, 0)):
+    def from_image(ctx: Context,
+                   name: str | None,
+                   file_path: str,
+                   desired_color_channels=DesiredColorChannels.AUTO,
+                   resize_to_dims: tuple[int, int] = (0, 0)):
         """Loads an image from a file and creates a tensor from it."""
         instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
-                                                   resize_dims[0], resize_dims[1])
+                                                   resize_to_dims[0], resize_to_dims[1])
         return Tensor(ctx, DType.F32, name, [], internal_instance=instance)
 
     def save_to_image(self, file_path: str):
+        """Saves the tensor as an JPG image to a file."""
         assert self.rank() == 3, 'Tensor must be a 3D image tensor'
         channels: int = self.image_channels()
-        assert channels == 1 or channels == 3 or channels == 4, 'Invalid number of color channels'
+        assert channels in (1, 3, 4), 'Invalid number of color channels'
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
 
 
 ctx = Context()
-img = Tensor.from_image(ctx, 'Cat', '../test_data/cat.jpg', resize_dims=(64, 64))
+img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg', resize_to_dims=(64, 64))
 img.print(False)
-img.save_to_image('cat_out.jpg')
+img.save_to_image('car_out.jpg')
