@@ -10,4 +10,4 @@ if (${MSML_BUILD_TESTS})
     add_subdirectory(test)
 endif()
 
-add_library(msml SHARED msml.h msml.c)
+add_library(msml SHARED msml/msml.h msml/msml.c)

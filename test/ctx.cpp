@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include "../msml.h"
+#include <msml.h>
 
 TEST(msml_ctx_t, create_destroy) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);

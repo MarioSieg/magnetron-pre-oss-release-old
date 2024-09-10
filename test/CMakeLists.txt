@@ -13,7 +13,7 @@ FetchContent_MakeAvailable(googletest)
 file(GLOB_RECURSE TEST_SOURCES *.cpp)
 add_executable(msml_test ${TEST_SOURCES})
 target_link_libraries(msml_test msml)
-
+target_include_directories(msml_test PRIVATE ../msml)
 target_link_libraries(
     msml_test
     GTest::gtest_main
