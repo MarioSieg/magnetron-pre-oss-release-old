@@ -44,6 +44,8 @@ extern "C" {
 
 #define MSML_DEFAULT_CHUNK_SIZE (1<<20)
 #define MSML_DEFAULT_CHUNK_CAP (1<<3)
+#define MSML_MAX_DIMS 4
+#define MSML_MAX_TENSOR_NAME_LEN 64
 
 extern MSML_API void* msml_default_allocator(void* blk, size_t size);
 
@@ -73,7 +75,6 @@ typedef struct msml_dtype_info_t {
 } msml_dtype_info_t;
 extern MSML_API const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_];
 
-#define MSML_MAX_DIMS 4
 typedef struct msml_tensor_t msml_tensor_t;
 
 extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
@@ -81,6 +82,9 @@ extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
 extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+extern MSML_API void msml_tensor_print(const msml_tensor_t* tensor, bool with_data);
+extern MSML_API void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
+extern MSML_API const char* msml_tensor_get_name(const msml_tensor_t* tensor);
 extern MSML_API int64_t msml_tensor_rank(const msml_tensor_t* tensor);
 extern MSML_API const int64_t* msml_tensor_dims(const msml_tensor_t* tensor);
 extern MSML_API const int64_t* msml_tensor_strides(const msml_tensor_t* tensor);
@@ -170,6 +174,7 @@ struct msml_tensor_t {
         float* f32;
     } buf;
     int64_t buf_size;
+    char name[MSML_MAX_TENSOR_NAME_LEN];
     void* user_data;
 };
 
@@ -216,6 +221,7 @@ static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
 }
 
 msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
+    printf("Creating MSML context...\n");
     msml_ctx_info_t ctx_info;
     memset(&ctx_info, 0, sizeof(ctx_info));
     if (info) ctx_info = *info;
@@ -228,6 +234,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks));
     msml__ctx_push_chunk(ctx);
+    printf("MSML context created.\n");
     return ctx;
 }
 
@@ -257,6 +264,7 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
         (*ctx->alloc_fn)(ctx->chunks[i], 0);
     (*ctx->alloc_fn)(ctx->chunks, 0);
     (*ctx->alloc_fn)(ctx, 0);
+    printf("MSML context destroyed.\n");
 }
 
 #define load_local_storage_group(xk, prefix, var) \
@@ -309,6 +317,47 @@ msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
 
 msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
+}
+
+void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
+    printf("Tensor '%s', DType: %s, Rank: %zu, Dims: [%zu, %zu, %zu, %zu], Strides: [%zu, %zu, %zu, %zu], Size: %.03fKiB \n",
+        tensor->name,
+        msml_dtype_info[tensor->dtype].name,
+        (size_t)tensor->rank,
+        (size_t)tensor->dims[0],
+        (size_t)tensor->dims[1],
+        (size_t)tensor->dims[2],
+        (size_t)tensor->dims[3],
+        (size_t)tensor->strides[0],
+        (size_t)tensor->strides[1],
+        (size_t)tensor->strides[2],
+        (size_t)tensor->strides[3],
+        (double)tensor->buf_size/(double)(1<<10)
+    );
+    if (with_data) {
+        printf("[\n");
+        const float* buf = tensor->buf.f32;
+        for (int64_t i3=0; i3 < tensor->dims[2]; ++i3) { // TODO: d4
+            for (int64_t i2=0; i2 < tensor->dims[1]; ++i2) {
+                putchar('\t');
+                for (int64_t i1=0; i1 < tensor->dims[0]; ++i1) {
+                    // TODO: dtype check
+                    printf("%f ", buf[i3*tensor->dims[1]*tensor->dims[0] + i2*tensor->dims[0] + i1]);
+                }
+                putchar('\n');
+            }
+        }
+        printf("]\n");
+    }
+}
+
+void msml_tensor_set_name(msml_tensor_t* tensor, const char* name) {
+    strncpy(tensor->name, name, MSML_MAX_TENSOR_NAME_LEN);
+    tensor->name[MSML_MAX_TENSOR_NAME_LEN-1] = '\0';
+}
+
+const char* msml_tensor_get_name(const msml_tensor_t* tensor) {
+    return tensor->name;
 }
 
 int64_t msml_tensor_rank(const msml_tensor_t* tensor) {

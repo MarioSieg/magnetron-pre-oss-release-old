@@ -15,3 +15,7 @@ _deps
 /.idea
 /.vscode
 /bin
+/python/.venv
+/python/.vscode
+/python/.idea
+**/.DS_Store
