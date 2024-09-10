@@ -13,6 +13,8 @@
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
 #   define STB_IMAGE_IMPLEMENTATION
 #   include <stb_image.h>
+#   define STB_IMAGE_RESIZE_IMPLEMENTATION
+#   include <stb_image_resize2.h>
 #endif
 
 #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
@@ -226,12 +228,38 @@ msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
 }
 
-msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path) {
+msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
-    int width, height, channels;
-    stbi_uc* image_data = stbi_load(file_path, &width, &height, &channels, STBI_default);
-    if (!image_data) {
+    int width, height, channels, desired_channels;
+    switch (in_desired_channels) {
+        default: desired_channels = STBI_default; break;
+        case MSML_COLOR_CHANNELS_GRAY: desired_channels = STBI_grey; break;
+        case MSML_COLOR_CHANNELS_GRAY_A: desired_channels = STBI_grey_alpha; break;
+        case MSML_COLOR_CHANNELS_RGB: desired_channels = STBI_rgb; break;
+        case MSML_COLOR_CHANNELS_RGBA: desired_channels = STBI_rgb_alpha; break;
+    }
+    unsigned char* image_data = stbi_load(file_path, &width, &height, &channels, desired_channels);
+    if (!image_data || width == 0 || height == 0 || channels == 0) {
         msml_panic("Failed to load image from file: %s\n", file_path);
+    }
+    if (resize_width && resize_height) { /* Resize image if requested */
+        unsigned char* resized_data = stbir_resize_uint8_srgb(
+            image_data,
+            width,
+            height,
+            0,
+            NULL,
+            (int)resize_width,
+            (int)resize_height,
+            0,
+            (stbir_pixel_layout)desired_channels
+        );
+        if (resized_data) { /* Replace original image data with resized data */
+            stbi_image_free(image_data);
+            image_data = resized_data;
+            width = (int)resize_width;
+            height = (int)resize_height;
+        }
     }
     msml_tensor_t* tensor = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
     float* dst = tensor->buf.f32;

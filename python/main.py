@@ -22,6 +22,7 @@ ffi.cdef(f'''
     typedef struct msml_ctx_info_t msml_ctx_info_t;
     typedef struct msml_ctx_t msml_ctx_t;
     typedef int msml_dtype_t;
+    typedef int msml_desired_color_channels_t;
     typedef struct msml_tensor_t msml_tensor_t;
     
     msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
@@ -32,7 +33,7 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-    msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path);
+    msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
     void msml_tensor_set_zero(msml_tensor_t* tensor);
     void msml_tensor_set_one(msml_tensor_t* tensor);
@@ -78,14 +79,22 @@ class DType(Enum):
     F32 = 0
 
 
+class DesiredColorChannels(Enum):
+    AUTO = 0
+    GRAY = 1
+    GRAY_A = 2
+    RGB = 3
+    RGBA = 4
+
+
 class Tensor:
     def __init__(self, ctx: Context, dtype: DType, name: str | None, dims: list[int], internal_instance=None):
-        if internal_instance is None:   # Create tensor from arguments if not instance provided
+        if internal_instance is None:  # Create tensor from arguments if not instance provided
             assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
             for dim in dims:
                 assert DIM_MAX > dim > 0, 'Invalid dimension size'
             self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
-        else: # If instance is provided, just assign it
+        else:  # If instance is provided, just assign it
             self.tensor = internal_instance
         if name is not None:
             self.set_name(name)
@@ -165,16 +174,19 @@ class Tensor:
 
     @staticmethod
     def empty(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+        """Creates an empty tensor, with uninitialized data."""
         return Tensor(ctx, dtype, name, dims)
 
     @staticmethod
     def zeros(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+        """Creates a tensor filled with zeros."""
         result = Tensor(ctx, dtype, name, dims)
         result.set_zero()
         return result
 
     @staticmethod
     def full(ctx: Context, dtype: DType, name: str | None, dims: list[int], fill_value: float):
+        """Creates a tensor filled with a constant value."""
         result = Tensor(ctx, dtype, name, dims)
         if fill_value == 0.0:
             result.set_zero()
@@ -185,11 +197,12 @@ class Tensor:
         return result
 
     @staticmethod
-    def from_image(ctx: Context, name: str | None, file_path: str):
-        instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'))
+    def from_image(ctx: Context, name: str | None, file_path: str, desired_color_channels=DesiredColorChannels.AUTO, resize_dims=(0, 0)):
+        """Loads an image from a file and creates a tensor from it."""
+        instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value, resize_dims[0], resize_dims[1])
         return Tensor(ctx, DType.F32, name, [], internal_instance=instance)
 
 
 ctx = Context()
-image = Tensor.from_image(ctx, 'Cat', '../test_data/cat.jpeg')
-image.print(True)
+image = Tensor.from_image(ctx, 'Cat', '../test_data/cat.jpeg', resize_dims=(4, 4))
+image.print(False)

@@ -62,6 +62,14 @@ typedef struct msml_dtype_info_t {
 } msml_dtype_info_t;
 extern MSML_API const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_];
 
+typedef enum msml_desired_color_channels_t {
+    MSML_COLOR_CHANNELS_AUTO,
+    MSML_COLOR_CHANNELS_GRAY,
+    MSML_COLOR_CHANNELS_GRAY_A,
+    MSML_COLOR_CHANNELS_RGB,
+    MSML_COLOR_CHANNELS_RGBA
+} msml_desired_color_channels_t;
+
 typedef struct msml_tensor_t msml_tensor_t;
 
 extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
@@ -69,7 +77,7 @@ extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
 extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-extern MSML_API msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path);
+extern MSML_API msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
 extern MSML_API void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
 extern MSML_API void msml_tensor_set_zero(msml_tensor_t* tensor);
 extern MSML_API void msml_tensor_set_one(msml_tensor_t* tensor);
