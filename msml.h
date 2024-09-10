@@ -27,7 +27,15 @@
 #include <stdbool.h>
 
 #ifndef MSML_API
-#define MSML_API
+#   ifdef MSML_EXPORT_DLL
+#       ifdef _MSC_VER
+#           define MSML_API __declspec(dllexport)
+#       else
+#           define MSML_API __attribute__((visibility("default")))
+#       endif
+#   else
+#       define MSML_API
+#   endif
 #endif
 
 #ifdef __cplusplus
@@ -66,21 +74,19 @@ typedef struct msml_dtype_info_t {
 extern MSML_API const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_];
 
 #define MSML_MAX_DIMS 4
-typedef struct msml_tensor_t {
-    msml_ctx_t* ctx;
-    int64_t dims[MSML_MAX_DIMS];
-    int64_t strides[MSML_MAX_DIMS];
-    int64_t rank;
-    msml_dtype_t dtype;
-    union {
-        uint8_t* u8;
-        float* f32;
-    } buf;
-    int64_t buf_size;
-    void* user_data;
-} msml_tensor_t;
+typedef struct msml_tensor_t msml_tensor_t;
 
 extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
+extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
+extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
+extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
+extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+extern MSML_API int64_t msml_tensor_rank(const msml_tensor_t* tensor);
+extern MSML_API const int64_t* msml_tensor_dims(const msml_tensor_t* tensor);
+extern MSML_API const int64_t* msml_tensor_strides(const msml_tensor_t* tensor);
+extern MSML_API msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor);
+extern MSML_API void* msml_tensor_buf(const msml_tensor_t* tensor);
+extern MSML_API int64_t msml_tensor_buf_size(const msml_tensor_t* tensor);
 extern MSML_API int64_t msml_tensor_num_rows(const msml_tensor_t* tensor);
 extern MSML_API int64_t msml_tensor_num_cols(const msml_tensor_t* tensor);
 extern MSML_API bool msml_tensor_is_scalar(const msml_tensor_t* tensor);
@@ -140,6 +146,33 @@ extern MSML_API bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
 #define MSML_STRINGIZE2(x) #x
 #define MSML_SRC_NAME __FILE_NAME__ ":" MSML_STRINGIZE(__LINE__)
 
+struct msml_ctx_t {
+    void* (*alloc_fn)(void* blk, size_t size);
+    size_t chunk_size;
+    size_t chunk_len;
+    size_t chunk_cap;
+    uint8_t** chunks;
+    uint8_t* delta;
+    size_t alloc_acc;
+    size_t mapped_total;
+    size_t alloc_total;
+    void* user_data;
+};
+
+struct msml_tensor_t {
+    msml_ctx_t* ctx;
+    int64_t rank;
+    int64_t dims[MSML_MAX_DIMS];
+    int64_t strides[MSML_MAX_DIMS];
+    msml_dtype_t dtype;
+    union {
+        uint8_t* u8;
+        float* f32;
+    } buf;
+    int64_t buf_size;
+    void* user_data;
+};
+
 static void msml_panic(const char* msg, ...) {
     fprintf(stderr, "%s", MSML_CCRED);
     va_list args;
@@ -172,19 +205,6 @@ void* msml_default_allocator(void* blk, size_t size) {
         return block;
     }
 }
-
-struct msml_ctx_t {
-    void* (*alloc_fn)(void* blk, size_t size);
-    size_t chunk_size;
-    size_t chunk_len;
-    size_t chunk_cap;
-    uint8_t** chunks;
-    uint8_t* delta;
-    size_t alloc_acc;
-    size_t mapped_total;
-    size_t alloc_total;
-    void* user_data;
-};
 
 static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
     uint8_t* chunk = (uint8_t*)(*ctx->alloc_fn)(NULL, ctx->chunk_size);
@@ -246,11 +266,14 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     const int64_t prefix##3 = (xk)->var[3]; \
 
 const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_] = {
-    [MSML_DTYPE_F32] = {sizeof(float), "f32"},
+    [MSML_DTYPE_F32] = {
+        sizeof(float),
+        "f32"
+    },
 };
 
 msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank) {
-    msml_assert(rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
+    msml_assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
     int64_t scalar_size = (int64_t)msml_dtype_info[type].size;
     int64_t buf_size = scalar_size;
     for (int64_t i=0; i < rank; ++i) {
@@ -263,9 +286,8 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     tensor->rank = rank;
     tensor->dtype = type;
     tensor->buf_size = buf_size;
-    for (int64_t i=0; i < MSML_MAX_DIMS; ++i) {
+    for (int64_t i=0; i < MSML_MAX_DIMS; ++i)
         tensor->dims[i] = i < rank ? dims[i] : 1;
-    }
     *tensor->strides = scalar_size;
     for (int i=1; i < MSML_MAX_DIMS; ++i)
         tensor->strides[i] = tensor->strides[i-1] * tensor->dims[i-1];
@@ -273,9 +295,50 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     return tensor;
 }
 
+msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1) {
+    return msml_tensor_create(ctx, type, (int64_t[]){d1}, 1);
+}
+
+msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2) {
+    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2}, 2);
+}
+
+msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3) {
+    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3}, 3);
+}
+
+msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
+    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
+}
+
+int64_t msml_tensor_rank(const msml_tensor_t* tensor) {
+    return tensor->rank;
+}
+
+const int64_t* msml_tensor_dims(const msml_tensor_t* tensor) {
+    return tensor->dims;
+}
+
+const int64_t* msml_tensor_strides(const msml_tensor_t* tensor) {
+    return tensor->strides;
+}
+
+msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor) {
+    return tensor->dtype;
+}
+
+void* msml_tensor_buf(const msml_tensor_t* tensor) {
+    return tensor->buf.u8;
+}
+
+int64_t msml_tensor_buf_size(const msml_tensor_t* tensor) {
+    return tensor->buf_size;
+}
+
+
 int64_t msml_tensor_num_rows(const msml_tensor_t* tensor) {
     int64_t rows=tensor->dims[1];
-    for (int64_t i=1; i < MSML_MAX_DIMS; ++i)
+    for (int64_t i=2; i < MSML_MAX_DIMS; ++i)
         rows *= tensor->dims[i];
     return rows;
 }
@@ -285,28 +348,31 @@ int64_t msml_tensor_num_cols(const msml_tensor_t* tensor) {
 }
 
 bool msml_tensor_is_scalar(const msml_tensor_t* tensor) {
-    for (int i=1; i < MSML_MAX_DIMS; ++i)
+    for (int i=0; i < MSML_MAX_DIMS; ++i)
         if (tensor->dims[i] != 1)
             return false;
     return true;
 }
 
 bool msml_tensor_is_vector(const msml_tensor_t* tensor) {
-    for (int i=2; i < MSML_MAX_DIMS; ++i)
+    for (int i=1; i < MSML_MAX_DIMS; ++i)
         if (tensor->dims[i] != 1)
             return false;
     return true;
 }
 
 bool msml_tensor_is_matrix(const msml_tensor_t* tensor) {
-    for (int i=3; i < MSML_MAX_DIMS; ++i)
+    for (int i=2; i < MSML_MAX_DIMS; ++i)
         if (tensor->dims[i] != 1)
             return false;
     return true;
 }
 
 bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor) {
-    return tensor->dims[MSML_MAX_DIMS-1] == 1;
+    for (int i=3; i < MSML_MAX_DIMS; ++i)
+        if (tensor->dims[i] != 1)
+            return false;
+    return true;
 }
 
 void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {

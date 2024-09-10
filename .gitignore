@@ -14,3 +14,4 @@ _deps
 /cmake-build-relwithdebinfo
 /.idea
 /.vscode
+/bin
