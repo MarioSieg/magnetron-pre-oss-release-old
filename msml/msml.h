@@ -64,10 +64,10 @@ extern MSML_API const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_];
 
 typedef enum msml_desired_color_channels_t {
     MSML_COLOR_CHANNELS_AUTO,
-    MSML_COLOR_CHANNELS_GRAY,
-    MSML_COLOR_CHANNELS_GRAY_A,
-    MSML_COLOR_CHANNELS_RGB,
-    MSML_COLOR_CHANNELS_RGBA
+    MSML_COLOR_CHANNELS_GRAY, /* Grayscale F32 */
+    MSML_COLOR_CHANNELS_GRAY_A, /* Grayscale F32 + Alpha F32 */
+    MSML_COLOR_CHANNELS_RGB, /* R32G32B32 */
+    MSML_COLOR_CHANNELS_RGBA /* R32G32B32A32 */
 } msml_desired_color_channels_t;
 
 typedef struct msml_tensor_t msml_tensor_t;

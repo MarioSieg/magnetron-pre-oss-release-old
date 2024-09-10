@@ -80,11 +80,11 @@ class DType(Enum):
 
 
 class DesiredColorChannels(Enum):
-    AUTO = 0
-    GRAY = 1
-    GRAY_A = 2
-    RGB = 3
-    RGBA = 4
+    AUTO = 0  # Automatically determine the number of color channels
+    GRAY = 1  # Grayscale F32
+    GRAY_A = 2  # Grayscale F32 with alpha F32
+    RGB = 3  # R32G32B32
+    RGBA = 4  # R32G32B32A32
 
 
 class Tensor:
@@ -197,9 +197,11 @@ class Tensor:
         return result
 
     @staticmethod
-    def from_image(ctx: Context, name: str | None, file_path: str, desired_color_channels=DesiredColorChannels.AUTO, resize_dims=(0, 0)):
+    def from_image(ctx: Context, name: str | None, file_path: str, desired_color_channels=DesiredColorChannels.AUTO,
+                   resize_dims=(0, 0)):
         """Loads an image from a file and creates a tensor from it."""
-        instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value, resize_dims[0], resize_dims[1])
+        instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
+                                                   resize_dims[0], resize_dims[1])
         return Tensor(ctx, DType.F32, name, [], internal_instance=instance)
 
 
