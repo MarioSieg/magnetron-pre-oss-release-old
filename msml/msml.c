@@ -1093,7 +1093,7 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
     }
     msml_tensor_t* tensor = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
     float* dst = tensor->buf.f32;
-    const size_t n = width*height*channels;
+    size_t n = width*height*channels;
     msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
     for (size_t i=0; i < n; ++i)
         dst[i] = (float)image_data[i] / 255.0f; /* Normalize pixel values to [0, 1] */
