@@ -48,6 +48,7 @@ typedef struct msml_ctx_t msml_ctx_t; /* Opaque context type for managing memory
 extern MSML_API msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info); /* Create context with allocator and pool info */
 extern MSML_API void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size); /* Allocate memory from pool */
 extern MSML_API void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align); /* Aligned memory allocation */
+extern MSML_API size_t msml_ctx_total_memory(const msml_ctx_t* ctx); /* Get total allocated memory */
 extern MSML_API void msml_ctx_destroy(msml_ctx_t* ctx); /* Destroy context and free memory */
 
 typedef enum msml_dtype_t {
@@ -145,8 +146,12 @@ extern MSML_API bool msml_tensor_is_vector(const msml_tensor_t* tensor); /* Chec
 extern MSML_API bool msml_tensor_is_matrix(const msml_tensor_t* tensor); /* Check if the tensor is a matrix */
 extern MSML_API bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor); /* Check if the tensor is higher-order (3D or more) */
 extern MSML_API void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert virtual index to physical index */
-extern MSML_API int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[MSML_MAX_DIMS]); /* Convert physical index to virtual index */
+extern MSML_API int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert physical index to virtual index */
 extern MSML_API bool msml_tensor_is_contiguous(const msml_tensor_t* tensor); /* Check if the tensor memory is contiguous */
+extern MSML_API float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3); /* Get scalar value at physical index */
+extern MSML_API void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x); /* Set scalar value at physical index */
+extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx); /* Get scalar value at virtual index */
+extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
 
 extern MSML_API msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
 extern MSML_API void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path); /* Save tensor data as an image */

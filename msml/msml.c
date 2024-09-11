@@ -108,7 +108,7 @@ struct msml_tensor_t {
     void* user_data;
 };
 
-static void msml_panic(const char* msg, ...) {
+static MSML_NORET void msml_panic(const char* msg, ...) {
     fprintf(stderr, "%s", MSML_CCRED);
     va_list args;
     va_start(args, msg);
@@ -138,6 +138,22 @@ void* msml_default_allocator(void* blk, size_t size) {
         void* block = realloc(blk, size);
         msml_assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
         return block;
+    }
+}
+
+static void msml__humanize_memory_size(size_t n, double* out, const char** unit) {
+    if (n < (1<<10)) {
+        *out = (double)n;
+        *unit = "B";
+    } else if (n < (1<<20)) {
+        *out = (double)n/(double)(1<<10);
+        *unit = "KiB";
+    } else if (n < (1<<30)) {
+        *out = (double)n/(double)(1<<20);
+        *unit = "MiB";
+    } else {
+        *out = (double)n/(double)(1<<30);
+        *unit = "GiB";
     }
 }
 
@@ -190,11 +206,22 @@ void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
     return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size + mask) + mask) & ~mask);
 }
 
+size_t msml_ctx_total_memory(const msml_ctx_t* ctx) {
+    size_t mem = sizeof(*ctx);
+    mem += sizeof(*ctx->chunks) * ctx->chunk_cap;
+    mem += ctx->mapped_total;
+    return mem;
+}
+
 void msml_ctx_destroy(msml_ctx_t* ctx) {
+    size_t mem_total = msml_ctx_total_memory(ctx);
     for (size_t i=0; i < ctx->chunk_len; ++i) /* Free individual chunks */
         (*ctx->alloc_fn)(ctx->chunks[i], 0);
     (*ctx->alloc_fn)(ctx->chunks, 0);
     (*ctx->alloc_fn)(ctx, 0);
+    double mem_size; const char* mem_unit;
+    msml__humanize_memory_size(mem_total, &mem_size, &mem_unit);
+    printf("Total memory allocated: %.03f %s\n", mem_size, mem_unit);
     printf("MSML context destroyed.\n");
 }
 
@@ -204,11 +231,14 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     const int64_t prefix##2 = (xk)->var[2]; \
     const int64_t prefix##3 = (xk)->var[3]; \
 
+#define resolve_physical_ptr(tensor, d0, d1, d2, d3) \
+    ((tensor)->buf.u8 + d0*(tensor)->strides[0] + d1*(tensor)->strides[1] + d2*(tensor)->strides[2] + d3*(tensor)->strides[3])
+
 const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_] = {
-        [MSML_DTYPE_F32] = {
-                sizeof(float),
-                "f32"
-        },
+    [MSML_DTYPE_F32] = {
+            sizeof(float),
+            "f32"
+    },
 };
 
 msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank) {
@@ -278,22 +308,6 @@ void msml_tensor_set(msml_tensor_t* tensor, float x) {
             for (int64_t i=0; i < n; ++i) buf[i] = x;
         } break;
         default: msml_panic("Unsupported DType: %d", tensor->dtype);
-    }
-}
-
-static void msml__humanize_memory_size(size_t n, double* out, const char** unit) {
-    if (n < (1<<10)) {
-        *out = (double)n;
-        *unit = "B";
-    } else if (n < (1<<20)) {
-        *out = (double)n/(double)(1<<10);
-        *unit = "KiB";
-    } else if (n < (1<<30)) {
-        *out = (double)n/(double)(1<<20);
-        *unit = "MiB";
-    } else {
-        *out = (double)n/(double)(1<<30);
-        *unit = "GiB";
     }
 }
 
@@ -997,6 +1011,52 @@ int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const
 
 bool msml_tensor_is_contiguous(const msml_tensor_t* tensor) {
     return *tensor->strides == (int64_t)msml_dtype_info[tensor->dtype].size;
+}
+
+float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
+    const uint8_t* dst = resolve_physical_ptr(tensor, d0, d1, d2, d3);
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32: return *(float*)dst;
+        default: msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+    }
+}
+
+void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x) {
+    uint8_t* dst = resolve_physical_ptr(tensor, d0, d1, d2, d3);
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32: *(float*)dst = x; break;
+        default: msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+    }
+}
+
+float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx) {
+    if (!msml_tensor_is_contiguous(tensor)) {
+        int64_t physical_idx[MSML_MAX_DIMS];
+        msml_tensor_virtual_to_physical_index(tensor, v_idx, &physical_idx);
+        return msml_tensor_get_scalar_physical_index(tensor, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3]);
+    }
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32:
+            return tensor->buf.f32[v_idx];
+        default:
+            msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+    }
+}
+
+void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x) {
+    if (!msml_tensor_is_contiguous(tensor)) {
+        int64_t physical_idx[MSML_MAX_DIMS];
+        msml_tensor_virtual_to_physical_index(tensor, v_idx, &physical_idx);
+        msml_tensor_set_scalar_physical_index(tensor, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], x);
+        return;
+    }
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32:
+            tensor->buf.f32[v_idx] = x;
+            break;
+        default:
+            msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+    }
 }
 
 msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {

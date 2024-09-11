@@ -2,8 +2,9 @@
 # MSML - Single header STB-style machine learning library in C99.
 # MIT licensed.
 # Python bindings for MSML.
-
+import math
 import weakref
+
 from cffi import FFI
 from enum import Enum
 
@@ -56,6 +57,10 @@ ffi.cdef(f'''
     void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[{MAX_DIMS}]);
     int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[{MAX_DIMS}]);
     bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
+    float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3);
+    void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x);
+    float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
+    void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
 
     msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
@@ -205,6 +210,22 @@ class Tensor:
         """Checks if the tensor is contiguous in memory."""
         return C.msml_tensor_is_contiguous(self.tensor)
 
+    def get_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int) -> float:
+        """Returns the scalar value at a physical index."""
+        return C.msml_tensor_get_scalar_physical_index(self.tensor, d0, d1, d2, d3)
+
+    def set_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int, x: float):
+        """Sets the scalar value at a physical index."""
+        C.msml_tensor_set_scalar_physical_index(self.tensor, d0, d1, d2, d3, x)
+
+    def get_scalar_virtual_index(self, v_idx: int) -> float:
+        """Returns the scalar value at a virtual index."""
+        return C.msml_tensor_get_scalar_virtual_index(self.tensor, v_idx)
+
+    def set_scalar_virtual_index(self, v_idx: int, x: float):
+        """Sets the scalar value at a virtual index."""
+        C.msml_tensor_set_scalar_virtual_index(self.tensor, v_idx, x)
+
     @staticmethod
     def empty(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
         """Creates an empty tensor, with uninitialized data."""
@@ -261,8 +282,10 @@ class Tensor:
 
 
 ctx = Context()
-img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg', resize_to_dims=(128, 128))
+img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg')
+for i in range(img.image_width()):
+        img.set_scalar_virtual_index(i * 3 + 0, 0)
+        img.set_scalar_virtual_index(i * 3 + 1, 0)
+        img.set_scalar_virtual_index(i * 3 + 2, 1)
 img.print(False)
 img.save_to_image('car_out.jpg')
-img = Tensor.from_image(ctx, 'Pizza', '../test_data/pizza.jpg', resize_to_dims=(16, 16))
-img.save_to_image('pizza_out.jpg')
