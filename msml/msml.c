@@ -51,16 +51,16 @@
 #   define MSML_UNUSED __declspec(unused)
 #	define msml_likely(x) (x)
 #	define msml_unlikely(x) (x)
-    static __forceinline uint32_t msml_ffs(uint32_t x) {
+    static __forceinline uint32_t msml_ffs(const uint32_t x) {
         unsigned long r; _BitScanForward(&r, x); return (uint32_t)r;
     }
-    static __forceinline uint32_t msml_fls(uint32_t x) {
+    static __forceinline uint32_t msml_fls(const uint32_t x) {
         unsigned long r; _BitScanReverse(&r, x); return (uint32_t)r;
     }
-    static __forceinline uint32_t msml_ffs64(uint64_t x) {
+    static __forceinline uint32_t msml_ffs64(const uint64_t x) {
       unsigned long r; _BitScanForward64(&r, x); return (uint32_t)r;
     }
-    static __forceinline uint32_t msml_fls64(uint64_t x) {
+    static __forceinline uint32_t msml_fls64(const uint64_t x) {
       unsigned long r; _BitScanReverse64(&r, x); return (uint32_t)r;
     }
 #endif
