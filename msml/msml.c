@@ -1108,13 +1108,13 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
 void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path) {
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
     const int64_t* dims = msml_tensor_dims(tensor);
-    const int64_t rank = msml_tensor_rank(tensor);
+    int64_t rank = msml_tensor_rank(tensor);
     msml_assert(rank == 3, "Tensor rank must be 3, but is: %" PRIi64, (size_t)rank);
-    const int64_t width = dims[0];
-    const int64_t height = dims[1];
-    const int64_t channels = dims[2];
+    int64_t width = dims[0];
+    int64_t height = dims[1];
+    int64_t channels = dims[2];
     msml_assert(channels == 1 || channels == 3 || channels == 4, "Invalid number of channels: %" PRIi64, channels);
-    const size_t n = width*height*channels;
+    size_t n = width*height*channels;
     msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
     uint8_t* image_data = (*tensor->ctx->alloc_fn)(NULL, n); /* Allocate memory for image data */
     for (size_t i=0; i < n; ++i) { /* Clamp and denormalize pixel values to [0, 255] */
