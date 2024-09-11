@@ -236,8 +236,8 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
 
 const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_] = {
     [MSML_DTYPE_F32] = {
-            sizeof(float),
-            "f32"
+        sizeof(float),
+        "f32"
     },
 };
 
@@ -430,7 +430,6 @@ static char* msml__wint(char* p, int32_t k) {
 ** doubles have an exact representation, and all non-integral doubles have
 ** enough digits to make both %.99e and %.99f do the right thing.
 */
-
 #define ND_MUL2K_MAX_SHIFT 29
 #define ND_MUL2K_DIV1E9(val) ((uint32_t)((val) / 1000000000))
 
