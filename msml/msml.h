@@ -29,8 +29,8 @@
 extern "C" {
 #endif
 
-#define MSML_DEFAULT_CHUNK_SIZE (1<<20) /* Default size of memory chunk in bytes */
-#define MSML_DEFAULT_CHUNK_CAP (1<<3)   /* Default capacity of memory chunk */
+#define MSML_DEFAULT_CHUNK_SIZE (1ull<<30) /* Default size of memory chunk in bytes. 1 GiB */
+#define MSML_DEFAULT_CHUNK_CAP (1ull<<3)   /* Default capacity of memory chunk */
 #define MSML_MAX_DIMS 4                 /* Maximum number of dimensions for a tensor */
 #define MSML_MAX_TENSOR_NAME_LEN 64     /* Maximum length for tensor name */
 
