@@ -202,8 +202,7 @@ void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
 
 void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
     msml_assert(align && !(align & (align - 1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
-    const size_t mask = align - 1;
-    return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size + mask) + mask) & ~mask);
+    return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size + align - 1) + align - 1) & ~(align - 1));
 }
 
 size_t msml_ctx_total_memory(const msml_ctx_t* ctx) {
