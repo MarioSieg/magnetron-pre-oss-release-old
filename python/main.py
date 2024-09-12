@@ -34,6 +34,8 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+    msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor);
+    msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor);
     void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
     void msml_tensor_set_zero(msml_tensor_t* tensor);
     void msml_tensor_set_one(msml_tensor_t* tensor);
@@ -101,25 +103,22 @@ class DesiredColorChannels(Enum):
 class Tensor:
     """Represents a tensor in the MSML library."""
 
-    def __init__(self, ctx: Context, dtype: DType, name: str | None, dims: list[int], internal_instance=None):
-        """
-        Creates a tensor from dimensions or an existing internal instance.
-        """
-        if internal_instance is None:  # Create tensor from arguments if no instance provided
-            assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
-            for dim in dims:
-                assert DIM_MAX > dim > 0, 'Invalid dimension size'
-            self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
-        else:  # If instance is provided, just assign it
-            self.tensor = internal_instance
-        if name is not None:
-            self.set_name(name)
+    def __init__(self, internal_instance=None):
+        self.tensor = internal_instance
         ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
 
     def __del__(self):
         """Destructor to release tensor resources."""
         if self.tensor is not None:
             self.tensor = None
+
+    def _create_internal(self, ctx: Context, name: str | None, dtype: DType, dims: list[int]):
+        assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
+        for dim in dims:
+            assert DIM_MAX > dim > 0, 'Invalid dimension size'
+        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
+        if name is not None:
+            self.set_name(name)
 
     def set_zero(self):
         """Sets all elements of the tensor to zero."""
@@ -226,30 +225,6 @@ class Tensor:
         """Sets the scalar value at a virtual index."""
         C.msml_tensor_set_scalar_virtual_index(self.tensor, v_idx, x)
 
-    @staticmethod
-    def empty(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
-        """Creates an empty tensor, with uninitialized data."""
-        return Tensor(ctx, dtype, name, dims)
-
-    @staticmethod
-    def zeros(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
-        """Creates a tensor filled with zeros."""
-        result = Tensor(ctx, dtype, name, dims)
-        result.set_zero()
-        return result
-
-    @staticmethod
-    def full(ctx: Context, dtype: DType, name: str | None, dims: list[int], fill_value: float):
-        """Creates a tensor filled with a constant value."""
-        result = Tensor(ctx, dtype, name, dims)
-        if fill_value == 0.0:
-            result.set_zero()
-        elif fill_value == 1.0:
-            result.set_one()
-        else:
-            result.set(fill_value)
-        return result
-
     def image_width(self) -> int:
         """Returns the width of the image tensor. (Equals to the first dimension)"""
         return self.dims()[0]
@@ -263,6 +238,44 @@ class Tensor:
         return self.dims()[2]
 
     @staticmethod
+    def empty(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+        """Creates an empty tensor, with uninitialized data."""
+        tensor = Tensor(None)
+        tensor._create_internal(ctx, name, dtype, dims)
+        return tensor
+
+    @staticmethod
+    def isomorphic_clone(tensor):
+        """Create new empty tensor with same shape as input, but without cloning data."""
+        return Tensor(C.msml_tensor_isomorphic_clone(tensor.tensor))
+
+    @staticmethod
+    def deep_clone(tensor):
+        """Create new tensor with same shape and data as input."""
+        return Tensor(C.msml_tensor_deep_clone(tensor.tensor))
+
+    @staticmethod
+    def zeros(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+        """Creates a tensor filled with zeros."""
+        tensor = Tensor(None)
+        tensor._create_internal(ctx, name, dtype, dims)
+        tensor.set_zero()
+        return tensor
+
+    @staticmethod
+    def full(ctx: Context, dtype: DType, name: str | None, dims: list[int], fill_value: float):
+        """Creates a tensor filled with a constant value."""
+        tensor = Tensor(None)
+        tensor._create_internal(ctx, name, dtype, dims)
+        if fill_value == 0.0:
+            tensor.set_zero()
+        elif fill_value == 1.0:
+            tensor.set_one()
+        else:
+            tensor.set(fill_value)
+        return tensor
+
+    @staticmethod
     def from_image(ctx: Context,
                    name: str | None,
                    file_path: str,
@@ -271,7 +284,7 @@ class Tensor:
         """Loads an image from a file and creates a tensor from it."""
         instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
                                                    resize_to_dims[0], resize_to_dims[1])
-        return Tensor(ctx, DType.F32, name, [], internal_instance=instance)
+        return Tensor(internal_instance=instance)
 
     def save_to_image(self, file_path: str):
         """Saves the tensor as an JPG image to a file."""
@@ -282,10 +295,11 @@ class Tensor:
 
 
 ctx = Context()
-img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg')
+img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg', resize_to_dims=(32, 32))
+img2 = Tensor.isomorphic_clone(img)
 for i in range(img.image_width()):
-        img.set_scalar_virtual_index(i * 3 + 0, 0)
-        img.set_scalar_virtual_index(i * 3 + 1, 0)
-        img.set_scalar_virtual_index(i * 3 + 2, 1)
+    img.set_scalar_virtual_index(i * 3 + 0, 0)
+    img.set_scalar_virtual_index(i * 3 + 1, 0)
+    img.set_scalar_virtual_index(i * 3 + 2, 1)
 img.print(False)
-img.save_to_image('car_out.jpg')
+img2.save_to_image('car_out.jpg')

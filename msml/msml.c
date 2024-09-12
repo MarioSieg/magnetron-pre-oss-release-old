@@ -162,7 +162,7 @@ static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
     ctx->mapped_total += ctx->chunk_size;
     ctx->delta = chunk + ctx->chunk_size;
     if (ctx->chunk_len == ctx->chunk_cap)
-        ctx->chunks = (*ctx->alloc_fn)(ctx->chunks, (ctx->chunk_cap <<= 1) * sizeof(*ctx->chunks));
+        ctx->chunks = (*ctx->alloc_fn)(ctx->chunks, (ctx->chunk_cap<<=1) * sizeof(*ctx->chunks));
     ctx->chunks[ctx->chunk_len++] = chunk;
 }
 
@@ -188,11 +188,12 @@ void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
     msml_assert(size > 0 && size < (size_t)PTRDIFF_MAX, "Allocation size must be within (0, %zu), but is: %zu", PTRDIFF_MAX, size);
     if (ctx->delta - ctx->chunks[ctx->chunk_len-1] < (ptrdiff_t)size) {
         if (ctx->chunk_size < size) { /* Increase the chunk size if it's too small to accommodate the requested length */
-            while (((ctx->chunk_size <<= 1) < size)
-                   && (ctx->chunk_size <= (size_t)(PTRDIFF_MAX >> 1)));
+            const size_t lim = (size_t)PTRDIFF_MAX>>1;
+            do ctx->chunk_size <<= 1;
+            while (ctx->chunk_size < size && (ctx->chunk_size <= lim));
         }
-        msml_log_info("Allocating new pool chunk of size: %zu", ctx->chunk_size);
         msml__ctx_push_chunk(ctx);
+        msml_log_info("Allocated pool chunk: %.03f MiB", (double)ctx->chunk_size/(double)(1<<20));
     }
     ctx->delta -= size;
     ++ctx->alloc_acc;
@@ -202,7 +203,7 @@ void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
 
 void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
     msml_assert(align && !(align & (align - 1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
-    return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size + align - 1) + align - 1) & ~(align - 1));
+    return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size + align-1) + align-1) & ~(align-1));
 }
 
 size_t msml_ctx_total_memory(const msml_ctx_t* ctx) {
@@ -246,7 +247,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     int64_t buf_size = scalar_size;
     for (int64_t i=0; i < rank; ++i) {
         msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
-        buf_size *= dims[i];
+        buf_size *= msml_max(1, dims[i]);
     }
     msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + buf_size); /* Allocate memory for tensor struct and data */
     memset(tensor, 0, sizeof(*tensor));
@@ -255,7 +256,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     tensor->dtype = type;
     tensor->buf_size = buf_size;
     for (int64_t i=0; i < MSML_MAX_DIMS; ++i)
-        tensor->dims[i] = i < rank ? dims[i] : 1;
+        tensor->dims[i] = i < rank ? msml_max(1, dims[i]) : 1;
     *tensor->strides = scalar_size;
     for (int i=1; i < MSML_MAX_DIMS; ++i)
         tensor->strides[i] = tensor->strides[i-1] * tensor->dims[i-1];
@@ -277,6 +278,17 @@ msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
 
 msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
+}
+
+msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor) {
+    msml_tensor_t* isomorph = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->dims, tensor->rank);
+    return isomorph;
+}
+
+msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor) {
+    msml_tensor_t* clone = msml_tensor_isomorphic_clone(tensor);
+    memcpy(clone->buf.u8, tensor->buf.u8, tensor->buf_size);
+    return clone;
 }
 
 void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size) {
