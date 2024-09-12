@@ -1478,10 +1478,6 @@ msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name) {
     return NULL;
 }
 
-#undef msml__auto_bswap_u64
-#undef msml__auto_bswap_u32
-#undef msml__ser_buf_write_var
-#undef msml__ser_buf_write_data
 #undef msml__save_fwrite
 
 msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {
