@@ -37,9 +37,10 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor);
     void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
-    void msml_tensor_set_zero(msml_tensor_t* tensor);
-    void msml_tensor_set_one(msml_tensor_t* tensor);
-    void msml_tensor_set(msml_tensor_t* tensor, float x);
+    void msml_tensor_fill_zero(msml_tensor_t* tensor);
+    void msml_tensor_fill_one(msml_tensor_t* tensor);
+    void msml_tensor_fill(msml_tensor_t* tensor, float x);
+    void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max);
     void msml_tensor_print(const msml_tensor_t* tensor, bool with_data);
     void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
     const char* msml_tensor_get_name(const msml_tensor_t* tensor);
@@ -120,17 +121,22 @@ class Tensor:
         if name is not None:
             self.set_name(name)
 
-    def set_zero(self):
+    def fill_zeros(self):
         """Sets all elements of the tensor to zero."""
-        C.msml_tensor_set_zero(self.tensor)
+        C.msml_tensor_fill_zero(self.tensor)
 
-    def set_one(self):
+    def fill_ones(self):
         """Sets all elements of the tensor to one."""
-        C.msml_tensor_set_one(self.tensor)
+        C.msml_tensor_fill_one(self.tensor)
 
-    def set(self, x: float):
-        """Sets all elements of the tensor to a specified value."""
-        C.msml_tensor_set(self.tensor, x)
+    def fill(self, x: float):
+        """Sets all elements of the tensor to x."""
+        C.msml_tensor_fill(self.tensor, x)
+
+    def fill_random(self, r_min: float = 0.0, r_max: float = 1.0):
+        assert r_min < r_max
+        """Sets all elements of the tensor to random values within [min, max]"""
+        C.msml_tensor_fill_random(self.tensor, r_min, r_max)
 
     def print(self, with_data: bool):
         """Prints the tensor metadata and optionally its data."""
@@ -259,7 +265,7 @@ class Tensor:
         """Creates a tensor filled with zeros."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, name, dtype, dims)
-        tensor.set_zero()
+        tensor.fill_zeros()
         return tensor
 
     @staticmethod
@@ -268,11 +274,19 @@ class Tensor:
         tensor = Tensor(None)
         tensor._create_internal(ctx, name, dtype, dims)
         if fill_value == 0.0:
-            tensor.set_zero()
+            tensor.fill_zeros()
         elif fill_value == 1.0:
-            tensor.set_one()
+            tensor.fill_ones()
         else:
-            tensor.set(fill_value)
+            tensor.fill(fill_value)
+        return tensor
+
+    @staticmethod
+    def random(ctx: Context, dtype: DType, name: str | None, dims: list[int], r_min: float = 0.0, r_max: float = 1.0):
+        """Creates a tensor filled with zeros."""
+        tensor = Tensor(None)
+        tensor._create_internal(ctx, name, dtype, dims)
+        tensor.fill_random(r_min, r_max)
         return tensor
 
     @staticmethod
@@ -295,11 +309,12 @@ class Tensor:
 
 
 ctx = Context()
-img = Tensor.from_image(ctx, 'Car', '../test_data/car.jpg', resize_to_dims=(32, 32))
-img2 = Tensor.isomorphic_clone(img)
+img = Tensor.from_image(ctx, 'Cat', '../test_data/car.jpg', resize_to_dims=(256, 256))
 for i in range(img.image_width()):
     img.set_scalar_virtual_index(i * 3 + 0, 0)
     img.set_scalar_virtual_index(i * 3 + 1, 0)
     img.set_scalar_virtual_index(i * 3 + 2, 1)
 img.print(False)
-img2.save_to_image('car_out.jpg')
+img.save_to_image('cat_out.jpg')
+img2 = Tensor.random(ctx, DType.F32, 'Random Image', [2048, 2048, 3])
+img2.save_to_image('random.jpg')

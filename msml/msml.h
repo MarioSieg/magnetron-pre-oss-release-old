@@ -128,9 +128,10 @@ extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor); /* Create new empty tensor with same shape as input, but without cloning data. */
 extern MSML_API msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input. */
 extern MSML_API void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size); /* Copy data into tensor buffer */
-extern MSML_API void msml_tensor_set_zero(msml_tensor_t* tensor); /* Set all tensor elements to zero */
-extern MSML_API void msml_tensor_set_one(msml_tensor_t* tensor); /* Set all tensor elements to one */
-extern MSML_API void msml_tensor_set(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
+extern MSML_API void msml_tensor_fill_zero(msml_tensor_t* tensor); /* Set all tensor elements to zero */
+extern MSML_API void msml_tensor_fill_one(msml_tensor_t* tensor); /* Set all tensor elements to one */
+extern MSML_API void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
+extern MSML_API void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max); /* Fill tensor with random values within [min, max] */
 extern MSML_API void msml_tensor_print(const msml_tensor_t* tensor, bool with_data); /* Print tensor info (with or without data) */
 extern MSML_API void msml_tensor_set_name(msml_tensor_t* tensor, const char* name); /* Set the name of the tensor */
 extern MSML_API const char* msml_tensor_get_name(const msml_tensor_t* tensor); /* Get the name of the tensor */

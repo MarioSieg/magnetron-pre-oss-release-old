@@ -9,6 +9,7 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <time.h>
 
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
 #   define STB_IMAGE_IMPLEMENTATION
@@ -90,6 +91,7 @@ struct msml_ctx_t {
     size_t alloc_acc;
     size_t mapped_total;
     size_t alloc_total;
+    uint64_t prng_state[4];
     void* user_data;
 };
 
@@ -157,6 +159,50 @@ static void msml__humanize_memory_size(size_t n, double* out, const char** unit)
     }
 }
 
+static void msml__prng_init_pre_seeded(uint64_t(*state)[4], uint64_t salt) {
+    (*state)[0] = 0xa0d277570a345b8cull ^ salt;
+    (*state)[1] = 0x764a296c5d4aa64full ^ salt;
+    (*state)[2] = 0x51220704070adeaaull ^ salt;
+    (*state)[3] = 0x2a2717b5a7b7b927ull ^ salt;
+}
+
+#define tausworthe223_gen(state, z, r, i, k, q, v) \
+  z = state[i]; \
+  z = (((z << q) ^ z) >> (k-v)) ^ ((z & ((uint64_t)(int64_t)-1 << (64-k))) << v); \
+  r ^= z; \
+  state[i] = z
+
+#define tausworthe223_step(self, z, r) \
+  tausworthe223_gen(self, z, r, 0, 63, 31, 18);\
+  tausworthe223_gen(self, z, r, 1, 58, 19, 28);\
+  tausworthe223_gen(self, z, r, 2, 55, 24,  7);\
+  tausworthe223_gen(self, z, r, 3, 47, 21,  8)
+
+static double msml__prng_next_f64(uint64_t(*state)[4]) {
+    uint64_t z, r = 0;
+    uint64_t* p_state = *state;
+    tausworthe223_step(p_state, z, r);
+    r = (r & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
+    union { uint64_t u; double d; } u = { .u = r };
+    return u.d - 1.0;
+}
+#define msml__prng_next_f64_interval(state, min, max) (msml__prng_next_f64(state)*((max)-(min))+(min)) /* Get next random float within [min, max]. */
+
+static void msml__prng_init(uint64_t(*state)[4], double seed) {
+    seed = seed != 0.0 ? seed : 5.249176108649e-01; /* Default seed. */
+    uint32_t r = 0x11090601;  /* Four 8 bit-seeds merged into a scalar. */
+    for (size_t i = 0; i < 4; ++i) {
+        uint32_t m = 1u << (r & 0xff); /* Mask. */
+        r >>= 8;
+        double d = seed = seed * M_PI + M_E;
+        union { double d; uint64_t u; } u = { .d = d };
+        if (u.u < m) { u.u += m; }
+        (*state)[i] = u.u;
+    }
+    for (int i = 0; i < (rand() % (64 + 1 - 16) + 16); ++i)
+        (void)msml__prng_next_f64(state);
+}
+
 static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
     uint8_t* chunk = (*ctx->alloc_fn)(NULL, ctx->chunk_size);
     ctx->mapped_total += ctx->chunk_size;
@@ -180,6 +226,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks));
     msml__ctx_push_chunk(ctx);
+    msml__prng_init_pre_seeded(&ctx->prng_state, (uintptr_t)ctx ^ (uintptr_t)ctx_info.alloc_fn);
     printf("MSML context created.\n");
     return ctx;
 }
@@ -296,11 +343,11 @@ void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_
     memcpy(tensor->buf.u8, data, size);
 }
 
-void msml_tensor_set_zero(msml_tensor_t* tensor) {
+void msml_tensor_fill_zero(msml_tensor_t* tensor) {
     memset(tensor->buf.u8, 0, tensor->buf_size);
 }
 
-void msml_tensor_set_one(msml_tensor_t* tensor) {
+void msml_tensor_fill_one(msml_tensor_t* tensor) {
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: {
             int64_t n = msml_tensor_buf_len(tensor);
@@ -311,12 +358,23 @@ void msml_tensor_set_one(msml_tensor_t* tensor) {
     }
 }
 
-void msml_tensor_set(msml_tensor_t* tensor, float x) {
+void msml_tensor_fill(msml_tensor_t* tensor, float x) {
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: {
             int64_t n = msml_tensor_buf_len(tensor);
             float* buf = tensor->buf.f32;
             for (int64_t i=0; i < n; ++i) buf[i] = x;
+        } break;
+        default: msml_panic("Unsupported DType: %d", tensor->dtype);
+    }
+}
+
+void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max) {
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32: {
+            int64_t n = msml_tensor_buf_len(tensor);
+            float* buf = tensor->buf.f32;
+            for (int64_t i=0; i < n; ++i) buf[i] = (float)msml__prng_next_f64(&tensor->ctx->prng_state);
         } break;
         default: msml_panic("Unsupported DType: %d", tensor->dtype);
     }
