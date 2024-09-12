@@ -191,8 +191,9 @@ static double msml__prng_next_f64(uint64_t(*state)[4]) {
     uint64_t* p_state = *state;
     tausworthe223_step(p_state, z, r);
     r = (r & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
-    union { uint64_t u; double d; } u = { .u = r };
-    return u.d - 1.0;
+    double d;
+    memcpy(&d, &r, sizeof(d));
+    return d - 1.0;
 }
 #define msml__prng_uniform_real_distribution(state, min, max) (msml__prng_next_f64(state)*((max)-(min))+(min)) /* Get next random float within [min, max]. */
 
@@ -203,9 +204,10 @@ static void msml__prng_init(uint64_t(*state)[4], double seed) {
         uint32_t m = 1u << (r & 0xff); /* Mask. */
         r >>= 8;
         double d = seed = seed * M_PI + M_E;
-        union { double d; uint64_t u; } u = { .d = d };
-        if (u.u < m) { u.u += m; }
-        (*state)[i] = u.u;
+        uint64_t u;
+        memcpy(&u, &d, sizeof(u));
+        if (u < m) { u += m; }
+        (*state)[i] = u;
     }
     for (int i = 0; i < (rand() % (64 + 1 - 16) + 16); ++i)
         (void)msml__prng_next_f64(state);
@@ -675,8 +677,7 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
         struct { /* TODO: make endian aware */
             uint32_t lo, hi;
         } u32;
-    } t;
-    t.n = n;
+    } t = {.n = n};
     if (msml_unlikely((t.u32.hi << 1) >= 0xffe00000)) {
         /* Handle non-finite values uniformly for %a, %e, %f, %g. */
         int prefix = 0, ch = (sf & MSML_FMT_F_UPPER) ? 0x202020 : 0;
@@ -770,11 +771,12 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
                 if (msml_unlikely(!e)) t.n *= 1e10, ndebias -= 10;
                 t.u64 -= 2; /* Convert 2ulp below (later we convert 2ulp above). */
                 nd[0] = 0x100000 | (t.u32.hi & 0xfffff);
-                e = ((t.u32.hi >> 20) & 0x7ff) - 1075 - (ND_MUL2K_MAX_SHIFT < 29);
+                e = ((int32_t)(t.u32.hi >> 20) & 0x7ff) - 1075 - (ND_MUL2K_MAX_SHIFT < 29);
                 goto load_t_lo; rescale_failed:
                 t.n = n;
-                e = (t.u32.hi >> 20) & 0x7ff;
-                ndebias = ndhi = 0;
+                e = (int32_t)(t.u32.hi >> 20) & 0x7ff;
+                ndebias = 0;
+                ndhi = 0;
             }
         }
         nd[0] = t.u32.hi & 0xfffff;
@@ -811,7 +813,7 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
                 nde -= 64 * 9;
             }
             hilen = msml__ndigits_dec(nd[ndhi]);
-            nde += ndhi * 9 + hilen;
+            nde += (int32_t)(ndhi * 9 + hilen);
             if (ndebias) {
                 /*
                 ** Rescaling was performed, but this introduced some error, and might
@@ -835,7 +837,7 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
             }
             if ((int32_t)(prec - nde) < (0x3f & -(int32_t)ndlo) * 9) {
                 /* Precision is sufficiently low as to maybe require rounding. */
-                ndhi = nd_add_m10e(nd, ndhi, 5, nde - prec - 1);
+                ndhi = nd_add_m10e(nd, ndhi, 5, (int32_t)nde - prec - 1);
                 nde += (hilen != msml__ndigits_dec(nd[ndhi]));
             }
             nde += ndebias;
