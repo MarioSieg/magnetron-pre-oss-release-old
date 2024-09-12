@@ -92,6 +92,7 @@ struct msml_ctx_t {
     size_t mapped_total;
     size_t alloc_total;
     uint64_t prng_state[4];
+    uintptr_t host_thread_id;
     void* user_data;
 };
 
@@ -201,6 +202,56 @@ static FILE* msml__fopen(const char* file, const char* mode) {
         f = fopen(file, mode);
     #endif
     return f;
+}
+
+static inline uintptr_t msml__thread_id(void) {
+    uintptr_t tid;
+    #if defined(_MSC_VER) && defined(_M_X64)
+        tid = __readgsqword(48);
+    #elif defined(_MSC_VER) && defined(_M_IX86)
+        tid = __readfsdword(24);
+    #elif defined(_MSC_VER) && defined(_M_ARM64)
+        tid = __getReg(18);
+    #elif defined(__i386__)
+        __asm__ __volatile__("movl %%gs:0, %0" : "=r" (tid));  /* x86-32 WIN32 uses %GS */
+    #elif defined(__MACH__) && defined(__x86_64__)
+        __asm__ __volatile__("movq %%gs:0, %0" : "=r" (tid));  /* x86.64 OSX uses %GS */
+    #elif defined(__x86_64__)
+        __asm__ __volatile__("movq %%fs:0, %0" : "=r" (tid));  /* x86-64 Linux and BSD uses %FS */
+    #elif defined(__arm__)
+        __asm__ __volatile__("mrc p15, 0, %0, c13, c0, 3\nbic %0, %0, #3" : "=r" (tid));
+    #elif defined(__aarch64__) && defined(__APPLE__)
+        __asm__ __volatile__("mrs %0, tpidrro_el0" : "=r" (tid));
+    #elif defined(__aarch64__)
+        __asm__ __volatile__("mrs %0, tpidr_el0" : "=r" (tid));
+    #elif defined(__powerpc64__)
+    #   ifdef __clang__
+            tid = (uintptr_t)__builtin_thread_pointer();
+    #   else
+            register uintptr_t tp __asm__ ("r13");
+            __asm__ __volatile__("" : "=r" (tp));
+            tid = tp;
+    #   endif
+    #elif defined(__powerpc__)
+    #   ifdef __clang__
+                tid = (uintptr_t)__builtin_thread_pointer();
+    #   else
+                register uintptr_t tp __asm__ ("r2");
+                __asm__ __volatile__("" : "=r" (tp));
+                tid = tp;
+    #   endif
+    #elif defined(__s390__) && defined(__GNUC__)
+        tid = (uintptr_t)__builtin_thread_pointer();
+    #elif defined(__riscv)
+    #   ifdef __clang__
+            tid = (uintptr_t)__builtin_thread_pointer();
+    #   else
+            __asm__ ("mv %0, tp" : "=r" (tid));
+    #   endif
+    #else
+    #   error "Unsupported MSML platform"
+    #endif
+    return tid;
 }
 
 static void MSML_AINLINE MSML_UNUSED msml__bswap32(uint32_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
@@ -350,11 +401,13 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks));
     msml__ctx_push_chunk(ctx);
+    uintptr_t host_tid = msml__thread_id();
     if (ctx_info.prng_init_seed) {
         msml__prng_init(&ctx->prng_state, ctx_info.prng_seed);
     } else {
-        msml__prng_init_pre_seeded(&ctx->prng_state, (uintptr_t)ctx ^ (uintptr_t)ctx_info.alloc_fn);
+        msml__prng_init_pre_seeded(&ctx->prng_state, host_tid ^ (uintptr_t)ctx ^ (uintptr_t)ctx_info.alloc_fn);
     }
+    ctx->host_thread_id = host_tid;
     printf("MSML context created.\n");
     return ctx;
 }
