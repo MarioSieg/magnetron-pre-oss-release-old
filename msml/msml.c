@@ -159,31 +159,31 @@ static void msml__humanize_memory_size(size_t n, double* out, const char** unit)
     }
 }
 
-static uint64_t MSML_AINLINE MSML_UNUSED msml__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
-    #if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        return
-            (x & 0xff00000000000000) >> 56 |
-            (x & 0xff000000000000) >> 40 |
-            (x & 0xff0000000000) >> 24 |
-            (x & 0xff00000000) >> 8 |
-            (x & 0xff000000) << 8 |
-            (x & 0xff0000) << 24 |
-            (x & 0xff00) << 40 |
-            (x & 0xff) << 56;
-    #else
-        return x;
-    #endif
+static void MSML_AINLINE MSML_UNUSED msml__bswap32(uint32_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
+    (void)p_x;
+#if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    uint32_t x = *p_x;
+    x = (x & 0xff000000) >> 24 |
+    (x & 0xff0000) >> 8 |
+    (x & 0xff00) << 8 |
+    (x & 0xff) << 24;
+    *p_x = x;
+#endif
 }
 
-static uint32_t MSML_AINLINE MSML_UNUSED msml__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
+static void MSML_AINLINE MSML_UNUSED msml__bswap64(uint64_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
+    (void)p_x;
     #if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        return
-            (x & 0xff000000) >> 24 |
-            (x & 0xff0000) >> 8 |
-            (x & 0xff00) << 8 |
-            (x & 0xff) << 24;
-    #else
-        return x;
+        uint64_t x = *p_x;
+        x = (x & 0xff00000000000000) >> 56 |
+        (x & 0xff000000000000) >> 40 |
+        (x & 0xff0000000000) >> 24 |
+        (x & 0xff00000000) >> 8 |
+        (x & 0xff000000) << 8 |
+        (x & 0xff0000) << 24 |
+        (x & 0xff00) << 40 |
+        (x & 0xff) << 56;
+        *p_x = x;
     #endif
 }
 
@@ -1227,6 +1227,12 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, 
     }
 }
 
+#define msml__save_fwrite(f, file_name, data, size) \
+    do { \
+        size_t written = fwrite((data), 1, (size), (f)); \
+        msml_assert(written == (size), "Failed to write data to file: %s, Written: %zu, Should be: %zu", (file_name), written, (size)); \
+    } while (0);
+
 /*
 ** MSML tensor storage format
 ** +--------------------------+
@@ -1244,67 +1250,31 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, 
 ** +--------------------------+
 */
 
-typedef struct MSML_ALIGN(4) msml__storage_header { /* Order & size matter, do NOT reorder! */
+#define MSML__HEADER_KEY 0x68539076fd713daeull
+
+#define msml__adjust_header_field_u8(x) (*(x)^=(MSML__HEADER_KEY&0xff))
+#define msml__adjust_header_field_u32(x) (*(x)^=(MSML__HEADER_KEY&~0u), msml__bswap32(x))
+#define msml__adjust_header_field_u64(x) (*(x)^=MSML__HEADER_KEY, msml__bswap64(x))
+
+typedef struct MSML_ALIGN(4) msml__storage_header { /* Order & size matter, do NOT reorder!. */
     uint32_t magic;
     uint32_t checksum;
     uint32_t msml_version;
     uint32_t storage_version;
     uint32_t stored_tensors;
-    uint64_t time_stamp;
-    uint64_t reserved;
 } msml__storage_header;
 msml_static_assert(sizeof(msml__storage_header)%4 == 0);
-msml_static_assert(sizeof(msml__storage_header) == 4*10);
+msml_static_assert(sizeof(msml__storage_header) == 4*5);
 msml_static_assert(offsetof(msml__storage_header, magic) == 0);
 msml_static_assert(offsetof(msml__storage_header, checksum) == 4);
 msml_static_assert(offsetof(msml__storage_header, msml_version) == 4+4);
 #define msml__storage_header_checksum_offset offsetof(msml__storage_header, msml_version) /* Magic + checksum itself are excluded from integrity test. */
 
-typedef struct MSML_ALIGN(4) msml__storage_tensor_header { /* Order & size matter, do NOT reorder! */
-    int64_t dims[MSML_MAX_DIMS];
-    uint8_t rank;
-    msml_dtype_t dtype : 8;
-    uint8_t pad__[2];
-    uint64_t reserved__;
-    char name[MSML_MAX_TENSOR_NAME_LEN];
-} msml__storage_tensor_header;
-msml_static_assert(sizeof(msml__storage_tensor_header)%4 == 0);
-
-#define msml__save_fwrite(f, file_name, data, size) \
-    do { \
-        size_t written = fwrite((data), 1, (size), (f)); \
-        msml_assert(written == (size), "Failed to write data to file: %s, Written: %zu, Should be: %zu", (file_name), written, (size)); \
-    } while (0);
-
-#define msml__ser_buf_write_data(ptr, size) \
-    do { \
-        msml_assert(p + (size) <= end, "Serialization buffer exhausted. Attempted write: %zu B, space left: %lld B", (size), end - p); \
-        memcpy(p, (ptr), (size)); \
-        p += (size); \
-    } while(0)
-
-#define msml__ser_buf_write_var(x) msml__ser_buf_write_data(&(x), sizeof(x))
-#define msml__auto_bswap_u32(var) ((var) = msml__bswap32(var));
-#define msml__auto_bswap_u64(var) ((var) = msml__bswap64(var));
-
-static void msml__serialize_tensor_to_buffer(
-    msml_ctx_t* ctx,
-    const msml_tensor_t** tensors,
-    const size_t count,
-    uint8_t** out_buf,
-    size_t* out_buf_size
+static void msml__storage_header_serialize(
+    uint8_t** pp,
+    const uint8_t* end,
+    size_t tensor_count
 ) {
-    msml_assert2(count != 0);
-    size_t total_size = 0;
-    total_size += sizeof(msml__storage_header);
-    total_size += sizeof(msml__storage_tensor_header) * count;
-    for (size_t i = 0; i < count; ++i) {
-        total_size += tensors[i]->buf_size;
-    }
-    uint8_t* const buf = (*ctx->alloc_fn)(NULL, total_size);
-    uint8_t* const end = buf + total_size;
-    uint8_t* p = buf; /* Needle */
-
     /* Prepare header */
     uint32_t msml_magic = 0;
     msml_static_assert(sizeof(msml_magic) == sizeof("MSML")-1);
@@ -1314,45 +1284,122 @@ static void msml__serialize_tensor_to_buffer(
         .checksum = 0, /* Written later. */
         .msml_version = MSML_VERSION,
         .storage_version = MSML_STORAGE_VERSION,
-        .time_stamp = 0, // TODO
-        .stored_tensors = count
+        .stored_tensors = tensor_count
     };
 
     /* Fixup header endianess */
-    msml__auto_bswap_u32(header.magic);
-    msml__auto_bswap_u32(header.checksum);
-    msml__auto_bswap_u32(header.msml_version);
-    msml__auto_bswap_u32(header.storage_version);
-    msml__auto_bswap_u32(header.time_stamp);
-    msml__auto_bswap_u32(header.stored_tensors);
+    msml__adjust_header_field_u32(&header.magic);
+    /* msml__adjust_header_field_u32(&header.checksum); ! Checksum is set later */
+    msml__adjust_header_field_u32(&header.msml_version);
+    msml__adjust_header_field_u32(&header.storage_version);
+    msml__adjust_header_field_u32(&header.stored_tensors);
 
-    /* Write */
-    msml__ser_buf_write_var(header);
+    /* Write header */
+    msml_assert2(*pp+sizeof(header) < end);
+    memcpy(*pp, &header, sizeof(header));
+    *pp += sizeof(header);
+}
 
-    for (size_t i=0; i < count; ++i) {
-        const msml_tensor_t* src = tensors[i];
+static void msml__storage_header_fixup_checksum(uint8_t* base, size_t total_size) {
+    size_t moff = msml__storage_header_checksum_offset;
+    uint32_t checksum = msml__crc32(base+moff, total_size); /* Compute checksum from [buf_base + offset, end] */
+    msml__adjust_header_field_u32(&checksum);
+    memcpy(base+offsetof(msml__storage_header, checksum), &checksum, sizeof(checksum)); /* Overwrite computed checksum in buffer at correct pos. */
+}
 
-        /* Prepare header */
-        msml__storage_tensor_header t_header = {0};
-        memcpy(t_header.dims, src->dims, sizeof(t_header.dims));
-        t_header.rank = (uint8_t)src->rank;
-        t_header.dtype = (uint8_t)src->dtype;
-        memcpy(t_header.name, src->name, sizeof(t_header.name));
+typedef struct MSML_ALIGN(4) msml__storage_tensor_header { /* Order & size matter, do NOT reorder! */
+    int64_t dims[MSML_MAX_DIMS];
+    uint8_t rank;
+    uint8_t dtype; /* Type: msml_dtype_t */
+    uint8_t pad__[2];
+    uint64_t reserved__;
+    char name[MSML_MAX_TENSOR_NAME_LEN];
+} msml__storage_tensor_header;
+msml_static_assert(sizeof(msml__storage_tensor_header)%4 == 0);
 
-        /* Fixup header endianess */
-        for (int j=0; j < MSML_MAX_DIMS; ++j)
-            msml__auto_bswap_u64(t_header.dims[j]);
-        /* Rank and DType do not require bswaps */
-        /* TODO: what about tensor name? */
+static void msml__storage_tensor_header_serialize(
+    uint8_t** pp,
+    const uint8_t* end,
+    const msml_tensor_t* tensor
+) {
+    uint8_t* p = *pp;
 
-        msml__ser_buf_write_var(t_header); /* Write header */
-        msml__ser_buf_write_data(src->buf.u8, src->buf_size); /* Write tensor data. TODO: endianess */
+    /* Prepare header */
+    msml__storage_tensor_header header = {
+        .dims = {0},
+        .rank = (uint8_t)tensor->rank,
+        .dtype = (uint8_t)tensor->dtype,
+        .name = {0}
+    };
+    memcpy(header.dims, tensor->dims, sizeof(header.dims));
+    memcpy(header.name, tensor->name, sizeof(header.name));
+    /* Fixup header endianness */
+    for (int j=0; j < MSML_MAX_DIMS; ++j)
+        msml__adjust_header_field_u64((uint64_t*)header.dims+j);
+    msml__adjust_header_field_u8(&header.rank);
+    msml__adjust_header_field_u8(&header.dtype);
+    for (size_t i=0; i < MSML_MAX_TENSOR_NAME_LEN; ++i)
+        msml__adjust_header_field_u8(header.name+i);
+
+    /* Write header */
+    msml_assert2(p+sizeof(header) < end);
+    memcpy(p, &header, sizeof(header));
+    p += sizeof(header);
+
+    /* Write data */
+    int64_t n = msml_tensor_buf_len(tensor);
+    msml_assert2(p+n*msml_dtype_info[tensor->dtype].size <= end);
+    switch (tensor->dtype) {
+        case MSML_DTYPE_F32: {
+            const float* t_p = tensor->buf.f32;
+            const float* t_end = tensor->buf.f32 + n;
+            for (; t_p < t_end; ++t_p) {
+                uint32_t u32;
+                memcpy(&u32, t_p, sizeof(u32));
+                msml__bswap32(&u32);
+                memcpy(p, &u32, sizeof(u32));
+                p += sizeof(u32);
+            }
+            break;
+        }
+        default:
+            msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
     }
 
-    uint32_t checksum = msml__crc32(buf + msml__storage_header_checksum_offset, total_size); /* Compute checksum from [buf_base + offset, end] */
-    memcpy(buf + offsetof(msml__storage_header, checksum), &checksum, sizeof(checksum)); /* Overwrite computed checksum in buffer at correct pos. */
+    *pp = p;
+}
 
-    *out_buf = buf;
+static void msml__serialize_tensor_to_buffer(
+    msml_ctx_t* ctx,
+    const msml_tensor_t** tensors,
+    const size_t tensor_count,
+    uint8_t** out_buf,
+    size_t* out_buf_size
+) {
+    msml_assert2(tensor_count != 0);
+    size_t total_size = 0;
+    total_size += sizeof(msml__storage_header);
+    total_size += sizeof(msml__storage_tensor_header) * tensor_count;
+    for (size_t i = 0; i < tensor_count; ++i) {
+        total_size += tensors[i]->buf_size;
+    }
+
+    uint8_t* const base = (*ctx->alloc_fn)(NULL, total_size);
+    uint8_t* const end = base + total_size;
+    uint8_t* p = base; /* Needle */
+
+    msml__storage_header_serialize(&p, end, tensor_count); /* Write header first. */
+
+    /* Write all tensors */
+    for (size_t i=0; i < tensor_count; ++i) {
+        const msml_tensor_t* tensor = tensors[i];
+        msml__storage_tensor_header_serialize(&p, end, tensor);
+    }
+
+    /* Write checksum back into buffer header after it has been computed. */
+    msml__storage_header_fixup_checksum(base, total_size);
+
+    *out_buf = base;
     *out_buf_size = total_size;
 }
 
