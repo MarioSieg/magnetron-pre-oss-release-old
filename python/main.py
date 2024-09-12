@@ -64,6 +64,7 @@ ffi.cdef(f'''
     void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x);
     float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
+    void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
 
     msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
@@ -243,6 +244,19 @@ class Tensor:
         """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
         return self.dims()[2]
 
+    def save(self, file_path: str):
+        """Saves to tensor to a binary MSML file"""
+        if not file_path.endswith('.msml'):
+            file_path += '.msml'
+        C.msml_tensor_save(self.tensor, bytes(file_path, 'utf-8'))
+
+    def save_to_image(self, file_path: str):
+        """Saves the tensor as an JPG image to a file."""
+        assert self.rank() == 3, 'Tensor must be a 3D image tensor'
+        channels: int = self.image_channels()
+        assert channels in (1, 3, 4), 'Invalid number of color channels'
+        C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
+
     @staticmethod
     def empty(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
         """Creates an empty tensor, with uninitialized data."""
@@ -300,21 +314,16 @@ class Tensor:
                                                    resize_to_dims[0], resize_to_dims[1])
         return Tensor(internal_instance=instance)
 
-    def save_to_image(self, file_path: str):
-        """Saves the tensor as an JPG image to a file."""
-        assert self.rank() == 3, 'Tensor must be a 3D image tensor'
-        channels: int = self.image_channels()
-        assert channels in (1, 3, 4), 'Invalid number of color channels'
-        C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
-
 
 ctx = Context()
-img = Tensor.from_image(ctx, 'Cat', '../test_data/car.jpg', resize_to_dims=(256, 256))
+img = Tensor.from_image(ctx, 'Cat', '../test_data/car.jpg')
 for i in range(img.image_width()):
     img.set_scalar_virtual_index(i * 3 + 0, 0)
     img.set_scalar_virtual_index(i * 3 + 1, 0)
     img.set_scalar_virtual_index(i * 3 + 2, 1)
 img.print(False)
 img.save_to_image('cat_out.jpg')
-img2 = Tensor.random(ctx, DType.F32, 'Random Image', [2048, 2048, 3])
+img.save('cat.msml')
+img2 = Tensor.random(ctx, DType.F32, 'Random Image', [4, 4, 3])
 img2.save_to_image('random.jpg')
+img2.save('random.msml')

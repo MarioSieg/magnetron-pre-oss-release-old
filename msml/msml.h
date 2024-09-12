@@ -29,10 +29,18 @@
 extern "C" {
 #endif
 
+#define msml_version_pack(major, minor) ((uint32_t)((((major)&0xff)<<8)+((minor)&0xff)))
+#define msml_version_major(version) (((version)>>8)&0xff)
+#define msml_version_minor(version) ((version)&0xff)
+#define MSML_VERSION msml_version_pack(0, 1) /* MSML library version. */
+#define MSML_STORAGE_VERSION 1 /* MSML tensor storage file format version. */
 #define MSML_DEFAULT_CHUNK_SIZE (1ull<<30) /* Default size of memory chunk in bytes. 1 GiB */
 #define MSML_DEFAULT_CHUNK_CAP (1ull<<3)   /* Default capacity of memory chunk */
 #define MSML_MAX_DIMS 4                 /* Maximum number of dimensions for a tensor */
 #define MSML_MAX_TENSOR_NAME_LEN 64     /* Maximum length for tensor name */
+#define msml_assert_name2(name, line) name ## line
+#define msml_assert_name(line) msml_assert_name2(_assert_, line)
+#define msml_static_assert(expr) extern void msml_assert_name(__LINE__)(bool STATIC_ASSERTION_FAILED[((expr)?1:-1)])
 
 extern MSML_API void* msml_default_allocator(void* blk, size_t size); /* Default memory allocator */
 
@@ -57,6 +65,7 @@ typedef enum msml_dtype_t {
     MSML_DTYPE_F32,   /* 32-bit floating-point data type */
     MSML_DTYPE_COUNT_ /* Total number of data types */
 } msml_dtype_t;
+msml_static_assert(MSML_DTYPE_COUNT_ <= 0xff);
 
 typedef struct msml_dtype_info_t {
     size_t size;         /* Size of the data type in bytes */
@@ -157,6 +166,7 @@ extern MSML_API float msml_tensor_get_scalar_physical_index(const msml_tensor_t*
 extern MSML_API void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x); /* Set scalar value at physical index */
 extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx); /* Get scalar value at virtual index */
 extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
+extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */
 
 extern MSML_API msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
 extern MSML_API void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path); /* Save tensor data as an image */
