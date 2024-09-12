@@ -186,7 +186,7 @@ static double msml__prng_next_f64(uint64_t(*state)[4]) {
     union { uint64_t u; double d; } u = { .u = r };
     return u.d - 1.0;
 }
-#define msml__prng_next_f64_interval(state, min, max) (msml__prng_next_f64(state)*((max)-(min))+(min)) /* Get next random float within [min, max]. */
+#define msml__prng_uniform_real_distribution(state, min, max) (msml__prng_next_f64(state)*((max)-(min))+(min)) /* Get next random float within [min, max]. */
 
 static void msml__prng_init(uint64_t(*state)[4], double seed) {
     seed = seed != 0.0 ? seed : 5.249176108649e-01; /* Default seed. */
@@ -374,7 +374,10 @@ void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max) {
         case MSML_DTYPE_F32: {
             int64_t n = msml_tensor_buf_len(tensor);
             float* buf = tensor->buf.f32;
-            for (int64_t i=0; i < n; ++i) buf[i] = (float)msml__prng_next_f64(&tensor->ctx->prng_state);
+            for (int64_t i=0; i < n; ++i) {
+                float r = (float)msml__prng_uniform_real_distribution(&tensor->ctx->prng_state, min, max);
+                buf[i] = r;
+            }
         } break;
         default: msml_panic("Unsupported DType: %d", tensor->dtype);
     }
