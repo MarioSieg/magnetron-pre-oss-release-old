@@ -159,6 +159,14 @@ static void msml__humanize_memory_size(size_t n, double* out, const char** unit)
     }
 }
 
+static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
+#ifdef _MSC_VER
+    msml_panic("NYI"); // TODO - maybe MSVC intrinsic available?
+#else
+    return __builtin_smulll_overflow(a, b, out);
+#endif
+}
+
 static void msml__prng_init_pre_seeded(uint64_t(*state)[4], uint64_t salt) {
     (*state)[0] = 0xa0d277570a345b8cull ^ salt;
     (*state)[1] = 0x764a296c5d4aa64full ^ salt;
@@ -226,7 +234,11 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks));
     msml__ctx_push_chunk(ctx);
-    msml__prng_init_pre_seeded(&ctx->prng_state, (uintptr_t)ctx ^ (uintptr_t)ctx_info.alloc_fn);
+    if (ctx_info.prng_init_seed) {
+        msml__prng_init(&ctx->prng_state, ctx_info.prng_seed);
+    } else {
+        msml__prng_init_pre_seeded(&ctx->prng_state, (uintptr_t)ctx ^ (uintptr_t)ctx_info.alloc_fn);
+    }
     printf("MSML context created.\n");
     return ctx;
 }
@@ -277,6 +289,10 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     const int64_t prefix##1 = (xk)->var[1]; \
     const int64_t prefix##2 = (xk)->var[2]; \
     const int64_t prefix##3 = (xk)->var[3]; \
+    (void)prefix##0; \
+    (void)prefix##1; \
+    (void)prefix##2; \
+    (void)prefix##3;
 
 #define msml__dot4_unrolled_var_arr(arr, x0, x1, x2, x3) \
     ( \
@@ -302,7 +318,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     int64_t buf_size = scalar_size;
     for (int64_t i=0; i < rank; ++i) {
         msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
-        buf_size *= msml_max(1, dims[i]);
+        msml_assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
     }
     msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + buf_size); /* Allocate memory for tensor struct and data */
     memset(tensor, 0, sizeof(*tensor));
@@ -313,8 +329,9 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     for (int64_t i=0; i < MSML_MAX_DIMS; ++i)
         tensor->dims[i] = i < rank ? msml_max(1, dims[i]) : 1;
     *tensor->strides = scalar_size;
-    for (int i=1; i < MSML_MAX_DIMS; ++i)
-        tensor->strides[i] = tensor->strides[i-1] * tensor->dims[i-1];
+    for (int i=1; i < MSML_MAX_DIMS; ++i) {
+        msml_assert(!msml__imull64_ov(tensor->strides[i-1], tensor->dims[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
+    }
     tensor->buf.u8 = (uint8_t*)(tensor + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return tensor;
 }

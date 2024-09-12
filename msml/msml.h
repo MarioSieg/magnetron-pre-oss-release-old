@@ -37,10 +37,12 @@ extern "C" {
 extern MSML_API void* msml_default_allocator(void* blk, size_t size); /* Default memory allocator */
 
 typedef struct msml_ctx_info_t {
-    void* (*alloc_fn)(void* blk, size_t size); /* Custom allocator function */
-    size_t pool_chunk_size;                    /* Size of each memory pool chunk */
-    size_t pool_chunks_cap;                    /* Maximum chunks in the pool */
-    void* user_data;                           /* User-defined data */
+    void* (*alloc_fn)(void* blk, size_t size);  /* Custom allocator function */
+    size_t pool_chunk_size;                     /* Size of each memory pool chunk */
+    size_t pool_chunks_cap;                     /* Maximum chunks in the pool */
+    double prng_seed;                           /* Seed for PRNG if prng_init_seed == true */
+    bool prng_init_seed;                        /* Set custom seed for prng. */
+    void* user_data;                            /* User-defined data */
 } msml_ctx_info_t;
 
 typedef struct msml_ctx_t msml_ctx_t; /* Opaque context type for managing memory pools */
