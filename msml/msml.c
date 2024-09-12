@@ -1248,9 +1248,17 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, 
 ** +--------------------------+
 ** |          Tensor N        | typeof(msml__storage_tensor_header) + DATA, N = header.stored_tensors
 ** +--------------------------+
+**
+** WORKFLOW
+** 1. Write file header (msml__storage_header) DONE IN msml__storage_header_serialize
+** 2. Write all tensors (msml__storage_tensor_header + tensor data) DONE IN msml__serialize_tensor_to_buffer WITH msml__storage_tensor_serialize
+** 3. Compute checksum of whole buffer. Except fields in msml__storage_header BEFORE msml__storage_header_checksum_offset. DONE IN msml__storage_header_fixup_checksum.
+**    So checksum is computed from BUFFER_START+msml__storage_header_checksum_offset ... BUFFER_END (BUFFER_START contains the header).
+** 4. Write back full checksum into msml__storage_header.checksum DONE IN msml__storage_header_fixup_checksum.
+** 5. Use your serialized tensor buffer (dump to file, send to network etc.)
 */
 
-#define MSML__HEADER_KEY 0x68539076fd713daeull
+#define MSML__HEADER_KEY 0x68539076fd713daeull /* Key to XOR-encrypt some header fields. */
 
 #define msml__adjust_header_field_u8(x) (*(x)^=(MSML__HEADER_KEY&0xff))
 #define msml__adjust_header_field_u32(x) (*(x)^=(MSML__HEADER_KEY&~0u), msml__bswap32(x))
@@ -1281,7 +1289,7 @@ static void msml__storage_header_serialize(
     memcpy(&msml_magic, "MSML", sizeof("MSML")-1);
     msml__storage_header header = {
         .magic = msml_magic,
-        .checksum = 0, /* Written later. */
+        .checksum = 0, /* Written later with msml__storage_header_fixup_checksum. */
         .msml_version = MSML_VERSION,
         .storage_version = MSML_STORAGE_VERSION,
         .stored_tensors = tensor_count
@@ -1289,7 +1297,7 @@ static void msml__storage_header_serialize(
 
     /* Fixup header endianess */
     msml__adjust_header_field_u32(&header.magic);
-    /* msml__adjust_header_field_u32(&header.checksum); ! Checksum is set later */
+    /* msml__adjust_header_field_u32(&header.checksum); ! Checksum is set later with msml__storage_header_fixup_checksum */
     msml__adjust_header_field_u32(&header.msml_version);
     msml__adjust_header_field_u32(&header.storage_version);
     msml__adjust_header_field_u32(&header.stored_tensors);
@@ -1317,7 +1325,7 @@ typedef struct MSML_ALIGN(4) msml__storage_tensor_header { /* Order & size matte
 } msml__storage_tensor_header;
 msml_static_assert(sizeof(msml__storage_tensor_header)%4 == 0);
 
-static void msml__storage_tensor_header_serialize(
+static void msml__storage_tensor_serialize_single(
     uint8_t** pp,
     const uint8_t* end,
     const msml_tensor_t* tensor
@@ -1393,7 +1401,7 @@ static void msml__serialize_tensor_to_buffer(
     /* Write all tensors */
     for (size_t i=0; i < tensor_count; ++i) {
         const msml_tensor_t* tensor = tensors[i];
-        msml__storage_tensor_header_serialize(&p, end, tensor);
+        msml__storage_tensor_serialize_single(& p, end, tensor);
     }
 
     /* Write checksum back into buffer header after it has been computed. */
