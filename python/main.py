@@ -65,6 +65,7 @@ ffi.cdef(f'''
     float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
+    msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
 
     msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
@@ -302,6 +303,13 @@ class Tensor:
         tensor._create_internal(ctx, name, dtype, dims)
         tensor.fill_random(r_min, r_max)
         return tensor
+
+    @staticmethod
+    def load(ctx: Context, file_path: str):
+        assert file_path.endswith('.msml'), 'File must be a MSML file'
+        """Loads a tensor from a binary MSML file."""
+        instance = C.msml_tensor_load(ctx.ctx, bytes(file_path, 'utf-8'))
+        return Tensor(internal_instance=instance)
 
     @staticmethod
     def from_image(ctx: Context,

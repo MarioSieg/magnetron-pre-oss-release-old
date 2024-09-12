@@ -159,6 +159,50 @@ static void msml__humanize_memory_size(size_t n, double* out, const char** unit)
     }
 }
 
+#ifdef _WIN32
+#include <wchar.h>
+extern __declspec(dllimport) int __stdcall MultiByteToWideChar(
+    unsigned int cp,
+    unsigned long flags,
+    const char* str,
+    int cbmb,
+    wchar_t* widestr,
+    int cchwide
+);
+extern __declspec(dllimport) int __stdcall WideCharToMultiByte(
+    unsigned int cp,
+    unsigned long flags,
+    const wchar_t* widestr,
+    int cchwide,
+    char* str,
+    int cbmb,
+    const char* defchar,
+    int* used_default
+);
+#endif
+
+static FILE* msml__fopen(const char* file, const char* mode) {
+    msml_assert(file && *file && mode && *mode, "Invalid file name or mode");
+    FILE* f = NULL;
+    #ifdef _WIN32
+        wchar_t w_mode[64];
+        wchar_t w_file[1024];
+        if (MultiByteToWideChar(65001 /* UTF8 */, 0, filename, -1, w_file, sizeof(w_file)/sizeof(*w_file)) == 0) return NULL;
+        if (MultiByteToWideChar(65001 /* UTF8 */, 0, mode, -1, w_mode, sizeof(w_mode)/sizeof(*w_mode)) == 0) return NULL;
+        #if defined(_MSC_VER) && _MSC_VER >= 1400
+           if (_wfopen_s(&f, w_file, w_mode) != 0)
+               return NULL;
+        #else
+           f = _wfopen(w_file, w_mode);
+        #endif
+    #elif defined(_MSC_VER) && _MSC_VER >= 1400
+        if (fopen_s(&f, filename, mode) != 0) return NULL;
+    #else
+        f = fopen(file, mode);
+    #endif
+    return f;
+}
+
 static void MSML_AINLINE MSML_UNUSED msml__bswap32(uint32_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     (void)p_x;
 #if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -1412,7 +1456,7 @@ static void msml__serialize_tensor_to_buffer(
 }
 
 void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name) {
-    FILE* f = fopen(file_name, "wb"); // TODO: Windows handle UTF-8 file opening
+    FILE* f = msml__fopen(file_name, "wb");
     msml_assert(f, "Failed to open MSML file for writing: %s", file_name);
     msml_ctx_t* ctx = tensor->ctx;
     const msml_tensor_t** tensors = &tensor;
@@ -1421,9 +1465,17 @@ void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name) {
     size_t buf_size = 0;
     msml__serialize_tensor_to_buffer(tensor->ctx, tensors, len, &buf, &buf_size);
     msml__save_fwrite(f, file_name, buf, buf_size);
-    (*ctx->alloc_fn)(buf, 0); /* Free temporary buffer */
+    (*ctx->alloc_fn)(buf, 0); /* Free serialized buffer */
     fclose(f);
     msml_log_info("Saved tensor to: '%s', %.03f MiB written.", file_name, (double)buf_size/(double)(1<<20));
+}
+
+msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name) {
+    FILE* f = msml__fopen(file_name, "rb");
+    msml_assert(f, "Failed to open MSML file for writing: %s", file_name);
+    // TODO
+    fclose(f);
+    return NULL;
 }
 
 #undef msml__auto_bswap_u64
