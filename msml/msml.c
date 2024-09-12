@@ -272,14 +272,22 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     printf("MSML context destroyed.\n");
 }
 
-#define load_local_storage_group(xk, prefix, var) \
+#define msml__load_local_storage_group(xk, prefix, var) \
     const int64_t prefix##0 = (xk)->var[0]; \
     const int64_t prefix##1 = (xk)->var[1]; \
     const int64_t prefix##2 = (xk)->var[2]; \
     const int64_t prefix##3 = (xk)->var[3]; \
 
-#define resolve_physical_ptr(tensor, d0, d1, d2, d3) \
-    ((tensor)->buf.u8 + d0*(tensor)->strides[0] + d1*(tensor)->strides[1] + d2*(tensor)->strides[2] + d3*(tensor)->strides[3])
+#define msml__dot4_unrolled_var_arr(arr, x0, x1, x2, x3) \
+    ( \
+        arr[0]*(x0) \
+        + arr[1]*(x1) \
+        + arr[2]*(x2) \
+        + arr[3]*(x3) \
+    )
+
+#define msml__resolve_physical_ptr(tensor, d0, d1, d2, d3) \
+    ((tensor)->buf.u8 + msml__dot4_unrolled_var_arr((tensor)->strides, d0, d1, d2, d3))
 
 const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_] = {
     [MSML_DTYPE_F32] = {
@@ -1066,7 +1074,7 @@ bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor) {
 }
 
 void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
-    load_local_storage_group(tensor, d, dims);
+    msml__load_local_storage_group(tensor, d, dims);
     (*p_idx)[3] = v_idx / (d2*d1*d0);
     (*p_idx)[2] = (v_idx - (*p_idx)[3]*d2*d1*d0) / (d1*d0);
     (*p_idx)[1] = (v_idx - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0) / d0;
@@ -1085,7 +1093,7 @@ bool msml_tensor_is_contiguous(const msml_tensor_t* tensor) {
 }
 
 float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
-    const uint8_t* dst = resolve_physical_ptr(tensor, d0, d1, d2, d3);
+    const uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: return *(float*)dst;
         default: msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
@@ -1093,7 +1101,7 @@ float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t
 }
 
 void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x) {
-    uint8_t* dst = resolve_physical_ptr(tensor, d0, d1, d2, d3);
+    uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: *(float*)dst = x; break;
         default: msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
