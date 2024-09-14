@@ -9,7 +9,12 @@
 
 #include <stdio.h>
 #include <stdarg.h>
+#include <math.h>
 #include <time.h>
+
+#ifdef _MSC_VER
+#   include <intrin.h>
+#endif
 
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
 #   define STB_IMAGE_IMPLEMENTATION
@@ -37,8 +42,8 @@
 #   define msml_ffs64(x) ((uint32_t)__builtin_ctzll(x))
 #   define msml_fls64(x) ((uint32_t)(__builtin_clzll(x)^63))
 #else
-    unsigned char _BitScanForward64(unsigned long*, uint64_t);
-    unsigned char _BitScanReverse64(unsigned long*, uint64_t);
+    unsigned char _BitScanForward64(unsigned long*, unsigned __int64);
+    unsigned char _BitScanReverse64(unsigned long*, unsigned __int64);
 #   pragma intrinsic(_BitScanForward64)
 #   pragma intrinsic(_BitScanReverse64)
 #	define MSML_NORET __declspec(noreturn)
@@ -49,7 +54,7 @@
 #   define MSML_COLDPROC
 #   define MSML_PACKED __declspec(align(1))
 #   define MSML_FALLTHROUGH
-#   define MSML_UNUSED __declspec(unused)
+#   define MSML_UNUSED
 #	define msml_likely(x) (x)
 #	define msml_unlikely(x) (x)
     static __forceinline uint32_t msml_ffs(const uint32_t x) {
@@ -77,7 +82,11 @@
 #define MSML_CCRESET "\x1b[0m"
 #define MSML_STRINGIZE(x) MSML_STRINGIZE2(x)
 #define MSML_STRINGIZE2(x) #x
-#define MSML_SRC_NAME __FILE_NAME__ ":" MSML_STRINGIZE(__LINE__)
+#ifdef _MSC_VER
+#   define MSML_SRC_NAME __FILE__ ":" MSML_STRINGIZE(__LINE__)
+#else
+#   define MSML_SRC_NAME __FILE_NAME__ ":" MSML_STRINGIZE(__LINE__)
+#endif
 #define msml_log_info(msg, ...) fprintf(stdout,  "[MSML] " MSML_SRC_NAME " " msg "\n", ## __VA_ARGS__)
 #define msml_log_warn(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
 
@@ -188,7 +197,7 @@ static FILE* msml__fopen(const char* file, const char* mode) {
     #ifdef _WIN32
         wchar_t w_mode[64];
         wchar_t w_file[1024];
-        if (MultiByteToWideChar(65001 /* UTF8 */, 0, filename, -1, w_file, sizeof(w_file)/sizeof(*w_file)) == 0) return NULL;
+        if (MultiByteToWideChar(65001 /* UTF8 */, 0, file, -1, w_file, sizeof(w_file)/sizeof(*w_file)) == 0) return NULL;
         if (MultiByteToWideChar(65001 /* UTF8 */, 0, mode, -1, w_mode, sizeof(w_mode)/sizeof(*w_mode)) == 0) return NULL;
         #if defined(_MSC_VER) && _MSC_VER >= 1400
            if (_wfopen_s(&f, w_file, w_mode) != 0)
@@ -346,9 +355,9 @@ static void msml__prng_init_pre_seeded(uint64_t(*state)[4], uint64_t salt) {
   state[i] = z
 
 #define tausworthe223_step(self, z, r) \
-  tausworthe223_gen(self, z, r, 0, 63, 31, 18);\
-  tausworthe223_gen(self, z, r, 1, 58, 19, 28);\
-  tausworthe223_gen(self, z, r, 2, 55, 24,  7);\
+  tausworthe223_gen(self, z, r, 0, 63, 31, 18); \
+  tausworthe223_gen(self, z, r, 1, 58, 19, 28); \
+  tausworthe223_gen(self, z, r, 2, 55, 24,  7); \
   tausworthe223_gen(self, z, r, 3, 47, 21,  8)
 
 static double msml__prng_next_f64(uint64_t(*state)[4]) {
@@ -368,7 +377,7 @@ static void msml__prng_init(uint64_t(*state)[4], double seed) {
     for (size_t i = 0; i < 4; ++i) {
         uint32_t m = 1u << (r & 0xff); /* Mask. */
         r >>= 8;
-        double d = seed = seed * M_PI + M_E;
+        double d = seed = seed * 3.14159265358979323846 + 2.71828182845904523536;
         uint64_t u;
         memcpy(&u, &d, sizeof(u));
         if (u < m) { u += m; }
@@ -1361,7 +1370,7 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, 
 #define msml__adjust_header_field_u32(x) (*(x)^=(MSML__HEADER_KEY&~0u), msml__bswap32(x))
 #define msml__adjust_header_field_u64(x) (*(x)^=MSML__HEADER_KEY, msml__bswap64(x))
 
-typedef struct MSML_ALIGN(4) msml__storage_header { /* Order & size matter, do NOT reorder!. */
+typedef struct msml__storage_header { /* Order & size matter, do NOT reorder!. */
     uint32_t magic;
     uint32_t checksum;
     uint32_t msml_version;
@@ -1389,7 +1398,7 @@ static void msml__storage_header_serialize(
         .checksum = 0, /* Written later with msml__storage_header_fixup_checksum. */
         .msml_version = MSML_VERSION,
         .storage_version = MSML_STORAGE_VERSION,
-        .stored_tensors = tensor_count
+        .stored_tensors = (uint32_t)tensor_count
     };
 
     /* Fixup header endianess */
@@ -1412,7 +1421,7 @@ static void msml__storage_header_fixup_checksum(uint8_t* base, size_t total_size
     memcpy(base+offsetof(msml__storage_header, checksum), &checksum, sizeof(checksum)); /* Overwrite computed checksum in buffer at correct pos. */
 }
 
-typedef struct MSML_ALIGN(4) msml__storage_tensor_header { /* Order & size matter, do NOT reorder! */
+typedef struct msml__storage_tensor_header { /* Order & size matter, do NOT reorder! */
     int64_t dims[MSML_MAX_DIMS];
     uint8_t rank;
     uint8_t dtype; /* Type: msml_dtype_t */

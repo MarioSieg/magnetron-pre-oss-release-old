@@ -19,3 +19,5 @@ _deps
 /python/.vscode
 /python/.idea
 **/.DS_Store
+.vs/
+out/

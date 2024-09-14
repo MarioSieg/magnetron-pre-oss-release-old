@@ -13,13 +13,15 @@ endif()
 
 add_library(msml SHARED msml/msml.h msml/msml.c)
 target_include_directories(msml PRIVATE msml/optional)
-target_compile_options(msml PRIVATE
-    -Wall
-    -Werror
-    -Wpedantic
-    -std=c99
-    -Wno-gnu-zero-variadic-macro-arguments
-)
+if (NOT WIN32)
+    target_compile_options(msml PRIVATE
+        -Wall
+        -Werror
+        -Wpedantic
+        -std=c99
+        -Wno-gnu-zero-variadic-macro-arguments
+    )
+endif()
 if (${MSML_ENABLE_IMAGE_SUPPORT})
     target_compile_definitions(msml PRIVATE MSML_ENABLE_IMAGE_SUPPORT)
 endif()
