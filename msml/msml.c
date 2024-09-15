@@ -103,8 +103,9 @@ struct msml_ctx_t {
     union {
         uint64_t tausworthe[4];
         struct {
-            int64_t idx;
-            uint64_t state[312];
+            uint32_t remaining;
+            uint32_t next;
+            uint32_t state[624];
         } mersenne;
     } prng_state;
     msml_prng_algorithm_t prng_algorithm;
@@ -360,48 +361,48 @@ static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { 
   tausworthe223_gen(self, z, r, 2, 55, 24,  7); \
   tausworthe223_gen(self, z, r, 3, 47, 21,  8)
 
-/* Generate n random floats within [min, max]. */
+/* Generate n uniform random floats within [min, max]. */
 static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n, float min, float max) {
-    float rescale = (max - min) + min;
+    float rescale_uniform = (max - min) + min;
     switch (ctx->prng_algorithm) {
         case MSML_PRNG_TAUSWORTHE: {
+            uint64_t* state = ctx->prng_state.tausworthe;
             for (int64_t ii=0; ii < out_n; ++ii) {
-                uint64_t z, r = 0;
-                uint64_t* state = ctx->prng_state.tausworthe;
-                tausworthe223_step(state, z, r);
-                r = (r & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* Transform using IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
+                uint64_t z, y = 0;
+                tausworthe223_step(state, z, y);
+                y = (y & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* Transform using IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
                 double d;
-                memcpy(&d, &r, sizeof(d));
-                out_gen[ii] = rescale * (float)(d - 1.0);
+                memcpy(&d, &y, sizeof(d));
+                out_gen[ii] = rescale_uniform * (float)(d - 1.0);
             }
         } break;
-        case MSML_PRNG_MERSENNE_TWISTER_64: {
-            const size_t n = sizeof(ctx->prng_state.mersenne.state)/sizeof(*ctx->prng_state.mersenne.state);
-            int64_t* idx = &ctx->prng_state.mersenne.idx;
-            uint64_t* mt = ctx->prng_state.mersenne.state;
-            static const uint64_t mag01[2] = {0, 0xb5026f5aa96619e9ull};
+        case MSML_PRNG_MERSENNE_TWISTER: {
+            uint32_t* rem = &ctx->prng_state.mersenne.remaining;
+            uint32_t* next = &ctx->prng_state.mersenne.next;
+            uint32_t* state = ctx->prng_state.mersenne.state;
+            static const uint64_t mag01[2] = {0, 0x9908b0df};
             for (int64_t ii=0; ii < out_n; ++ii) {
-                uint64_t x;
-                if (*idx >= n) { /* Generate n words at once. */
-                    size_t i=0;
-                    for (; i < n-156; ++i) {
-                        x = (mt[i]&0xffffffff80000000ull)|(mt[i+1]&0x7fffffffull);
-                        mt[i] = mt[i+156] ^ (x>>1) ^ mag01[x&1];
+                if (--*rem <= 0) {
+                    *rem = 624;
+                    *next = 0;
+                    uint32_t y, i;
+                    for (i = 0; i < 624-397; ++i) {
+                        y = (state[i] & 0x80000000u) | (state[i+1] & 0x7fffffffu);
+                        state[i] = state[i+397] ^ (y>>1) ^ mag01[y&1];
                     }
-                    for (; i < n-1; ++i) {
-                        x = (mt[i]&0xffffffff80000000ull)|(mt[i+1]&0x7fffffffull);
-                        mt[i] = mt[i+(156-n)] ^ (x>>1) ^ mag01[x&1];
+                    for (; i < 624-1; ++i) {
+                        y = (state[i] & 0x80000000u) | (state[i + 1] & 0x7fffffffu);
+                        state[i] = state[i + (397-624)] ^ (y>>1) ^ mag01[y&1];
                     }
-                    x = (mt[n-1]&0xffffffff80000000ull)|(mt[0]&0x7fffffffull);
-                    mt[n-1] = mt[156-1] ^ (x>>1) ^ mag01[x&1];
-                    *idx = 0; /* Reset index. */
+                    y = (state[624-1] & 0x80000000u) | (*state & 0x7fffffffu);
+                    state[624-1] = state[397-1] ^ (y>>1) ^ mag01[y&1];
                 }
-                x = mt[(*idx)++];
-                x ^= (x>>29) & 0x5555555555555555ull;
-                x ^= (x<<17) & 0x71d67fffeda60000ull;
-                x ^= (x<<37) & 0xfff7eee000000000ull;
-                x ^= (x>>43);
-                out_gen[ii] = rescale * (float)((double)(x>>11) * (1.0/9007199254740991.0)); /* Transform to [0, 1] f64 */
+                uint32_t y = state[(*next)++];
+                y ^= y >> 11;
+                y ^= (y << 7) & 0x9d2c5680;
+                y ^= (y << 15) & 0xefc60000;
+                y ^= y >> 18;
+                out_gen[ii] = rescale_uniform * ((float)(y & 0xffffff) * (1.0f / (float)(0x1000000)));
             }
         } break;
         default:
@@ -428,13 +429,13 @@ static void msml__prng_init(msml_ctx_t* ctx, double seed) {
                 state[i] = u;
             }
         } break;
-        case MSML_PRNG_MERSENNE_TWISTER_64: {
-            const size_t n = sizeof(ctx->prng_state.mersenne.state)/sizeof(*ctx->prng_state.mersenne.state);
-            int64_t* idx = &ctx->prng_state.mersenne.idx;
-            uint64_t* state = ctx->prng_state.mersenne.state;
-            memcpy(state, &seed, sizeof(seed));
-            for (*idx=1; *idx < n; ++*idx)
-                state[*idx] = (0x5851f42d4c957f2dull*(state[*idx-1] ^ (state[*idx-1]>>62)) + *idx);
+        case MSML_PRNG_MERSENNE_TWISTER: {
+            uint32_t* state = ctx->prng_state.mersenne.state;
+            *state = (uint32_t)seed;
+            for (size_t i=1; i < 624; ++i)
+                state[i] = ((state[i-1] ^ (state[i-1] >> 30))*1812433253 + i) & ~0u;
+            ctx->prng_state.mersenne.next = 0;
+            ctx->prng_state.mersenne.remaining = 1;
         } break;
         default:
             msml_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
