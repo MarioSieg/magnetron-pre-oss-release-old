@@ -79,8 +79,8 @@ ffi.cdef(f'''
 # Define Python wrapper classes
 
 class PRNGAlgorithm(Enum):
-    TAUSWORTHE = 0
-    MERSENNE_TWISTER = 1
+    MERSENNE_TWISTER = 0
+    TAUSWORTHE = 1
 
 
 class Context:
@@ -346,6 +346,7 @@ class Tensor:
 
 ctx = Context()
 print(ctx.get_prng_algorithm())
+ctx.set_prng_algorithm(PRNGAlgorithm.TAUSWORTHE, 0)
 tausworthe = Tensor.random(ctx, DType.F32, 'Random Tausworthe', [1024, 1024, 3])
 tausworthe.save_to_image('random_tausworthe.jpg')
 ctx.set_prng_algorithm(PRNGAlgorithm.MERSENNE_TWISTER, 0)

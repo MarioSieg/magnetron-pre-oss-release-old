@@ -365,22 +365,11 @@ static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { 
 static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n, float min, float max) {
     float rescale_uniform = (max - min) + min;
     switch (ctx->prng_algorithm) {
-        case MSML_PRNG_TAUSWORTHE: {
-            uint64_t* state = ctx->prng_state.tausworthe;
-            for (int64_t ii=0; ii < out_n; ++ii) {
-                uint64_t z, y = 0;
-                tausworthe223_step(state, z, y);
-                y = (y & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* Transform using IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
-                double d;
-                memcpy(&d, &y, sizeof(d));
-                out_gen[ii] = rescale_uniform * (float)(d - 1.0);
-            }
-        } break;
         case MSML_PRNG_MERSENNE_TWISTER: {
             uint32_t* rem = &ctx->prng_state.mersenne.remaining;
             uint32_t* next = &ctx->prng_state.mersenne.next;
             uint32_t* state = ctx->prng_state.mersenne.state;
-            static const uint64_t mag01[2] = {0, 0x9908b0df};
+            static const uint32_t mag01[2] = {0, 0x9908b0df};
             for (int64_t ii=0; ii < out_n; ++ii) {
                 if (--*rem <= 0) {
                     *rem = 624;
@@ -405,6 +394,17 @@ static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n
                 out_gen[ii] = rescale_uniform * ((float)(y & 0xffffff) * (1.0f / (float)(0x1000000)));
             }
         } break;
+        case MSML_PRNG_TAUSWORTHE: {
+            uint64_t* state = ctx->prng_state.tausworthe;
+            for (int64_t ii=0; ii < out_n; ++ii) {
+                uint64_t z, y = 0;
+                tausworthe223_step(state, z, y);
+                y = (y & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* Transform using IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
+                double d;
+                memcpy(&d, &y, sizeof(d));
+                out_gen[ii] = rescale_uniform * (float)(d - 1.0);
+            }
+        } break;
         default:
             msml_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
     }
@@ -416,6 +416,14 @@ static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n
 static void msml__prng_init(msml_ctx_t* ctx, double seed) {
     seed = seed != 0.0 ? seed : 5.249176108649e-01; /* Default seed. */
     switch (ctx->prng_algorithm) {
+        case MSML_PRNG_MERSENNE_TWISTER: {
+            uint32_t* state = ctx->prng_state.mersenne.state;
+            *state = (uint32_t)seed;
+            for (size_t i=1; i < 624; ++i)
+                state[i] = ((state[i-1] ^ (state[i-1] >> 30))*1812433253 + i) & ~0u;
+            ctx->prng_state.mersenne.next = 0;
+            ctx->prng_state.mersenne.remaining = 1;
+        } break;
         case MSML_PRNG_TAUSWORTHE: {
             uint64_t* state = ctx->prng_state.tausworthe;
             uint32_t r = 0x11090601;  /* Four 8 bit-seeds merged into a scalar. */
@@ -428,14 +436,6 @@ static void msml__prng_init(msml_ctx_t* ctx, double seed) {
                 if (u < m) { u += m; }
                 state[i] = u;
             }
-        } break;
-        case MSML_PRNG_MERSENNE_TWISTER: {
-            uint32_t* state = ctx->prng_state.mersenne.state;
-            *state = (uint32_t)seed;
-            for (size_t i=1; i < 624; ++i)
-                state[i] = ((state[i-1] ^ (state[i-1] >> 30))*1812433253 + i) & ~0u;
-            ctx->prng_state.mersenne.next = 0;
-            ctx->prng_state.mersenne.remaining = 1;
         } break;
         default:
             msml_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);

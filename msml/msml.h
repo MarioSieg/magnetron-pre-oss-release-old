@@ -45,8 +45,8 @@ extern "C" {
 extern MSML_API void* msml_default_allocator(void* blk, size_t size); /* Default memory allocator */
 
 typedef enum msml_prng_algorithm_t {
+    MSML_PRNG_MERSENNE_TWISTER,     /* Mersenne Twister PRNG */
     MSML_PRNG_TAUSWORTHE,           /* Tausworthe PRNG */
-    MSML_PRNG_MERSENNE_TWISTER,  /* Mersenne Twister PRNG */
     MSML_PRNG_COUNT_                /* Total number of PRNG algorithms */
 } msml_prng_algorithm_t;
 
