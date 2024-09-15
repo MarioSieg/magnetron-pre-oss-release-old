@@ -79,8 +79,8 @@ ffi.cdef(f'''
 # Define Python wrapper classes
 
 class PRNGAlgorithm(Enum):
-    MERSENNE_TWISTER = 0
-    TAUSWORTHE = 1
+    MERSENNE_TWISTER = 0 # Default - Mersenne Twister Generator
+    TAUSWORTHE = 1 # Tausworthe Generator (Linear-feedback shift register)
 
 
 class Context:
