@@ -44,13 +44,19 @@ extern "C" {
 
 extern MSML_API void* msml_default_allocator(void* blk, size_t size); /* Default memory allocator */
 
+typedef enum msml_prng_algorithm_t {
+    MSML_PRNG_TAUSWORTHE,           /* Tausworthe PRNG */
+    MSML_PRNG_MERSENNE_TWISTER_64,  /* Mersenne Twister PRNG */
+    MSML_PRNG_COUNT_                /* Total number of PRNG algorithms */
+} msml_prng_algorithm_t;
+
 typedef struct msml_ctx_info_t {
     void* (*alloc_fn)(void* blk, size_t size);  /* Custom allocator function */
     size_t pool_chunk_size;                     /* Size of each memory pool chunk */
     size_t pool_chunks_cap;                     /* Maximum chunks in the pool */
     double prng_seed;                           /* Seed for PRNG if prng_init_seed == true */
-    bool prng_init_seed;                        /* Set custom seed for prng. */
     void* user_data;                            /* User-defined data */
+    msml_prng_algorithm_t prng_algorithm;       /* PRNG algorithm */
 } msml_ctx_info_t;
 
 typedef struct msml_ctx_t msml_ctx_t; /* Opaque context type for managing memory pools */
@@ -59,6 +65,8 @@ extern MSML_API msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info); /* Cre
 extern MSML_API void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size); /* Allocate memory from pool */
 extern MSML_API void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align); /* Aligned memory allocation */
 extern MSML_API size_t msml_ctx_total_memory(const msml_ctx_t* ctx); /* Get total allocated memory */
+extern MSML_API msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx); /* Get PRNG algorithm */
+extern MSML_API void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, double seed); /* Set PRNG algorithm */
 extern MSML_API void msml_ctx_destroy(msml_ctx_t* ctx); /* Destroy context and free memory */
 
 typedef enum msml_dtype_t {

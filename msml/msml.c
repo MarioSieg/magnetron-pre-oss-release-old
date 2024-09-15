@@ -100,7 +100,14 @@ struct msml_ctx_t {
     size_t alloc_acc;
     size_t mapped_total;
     size_t alloc_total;
-    uint64_t prng_state[4];
+    union {
+        uint64_t tausworthe[4];
+        struct {
+            int64_t idx;
+            uint64_t state[312];
+        } mersenne;
+    } prng_state;
+    msml_prng_algorithm_t prng_algorithm;
     uintptr_t host_thread_id;
     void* user_data;
 };
@@ -341,13 +348,6 @@ static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { 
 #endif
 }
 
-static void msml__prng_init_pre_seeded(uint64_t(*state)[4], uint64_t salt) {
-    (*state)[0] = 0xa0d277570a345b8cull ^ salt;
-    (*state)[1] = 0x764a296c5d4aa64full ^ salt;
-    (*state)[2] = 0x51220704070adeaaull ^ salt;
-    (*state)[3] = 0x2a2717b5a7b7b927ull ^ salt;
-}
-
 #define tausworthe223_gen(state, z, r, i, k, q, v) \
   z = state[i]; \
   z = (((z << q) ^ z) >> (k-v)) ^ ((z & ((uint64_t)(int64_t)-1 << (64-k))) << v); \
@@ -360,31 +360,85 @@ static void msml__prng_init_pre_seeded(uint64_t(*state)[4], uint64_t salt) {
   tausworthe223_gen(self, z, r, 2, 55, 24,  7); \
   tausworthe223_gen(self, z, r, 3, 47, 21,  8)
 
-static double msml__prng_next_f64(uint64_t(*state)[4]) {
-    uint64_t z, r = 0;
-    uint64_t* p_state = *state;
-    tausworthe223_step(p_state, z, r);
-    r = (r & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
-    double d;
-    memcpy(&d, &r, sizeof(d));
-    return d - 1.0;
-}
-#define msml__prng_uniform_real_distribution(state, min, max) (msml__prng_next_f64(state)*((max)-(min))+(min)) /* Get next random float within [min, max]. */
-
-static void msml__prng_init(uint64_t(*state)[4], double seed) {
-    seed = seed != 0.0 ? seed : 5.249176108649e-01; /* Default seed. */
-    uint32_t r = 0x11090601;  /* Four 8 bit-seeds merged into a scalar. */
-    for (size_t i = 0; i < 4; ++i) {
-        uint32_t m = 1u << (r & 0xff); /* Mask. */
-        r >>= 8;
-        double d = seed = seed * 3.14159265358979323846 + 2.71828182845904523536;
-        uint64_t u;
-        memcpy(&u, &d, sizeof(u));
-        if (u < m) { u += m; }
-        (*state)[i] = u;
+/* Generate n random floats within [min, max]. */
+static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n, float min, float max) {
+    float rescale = (max - min) + min;
+    switch (ctx->prng_algorithm) {
+        case MSML_PRNG_TAUSWORTHE: {
+            for (int64_t ii=0; ii < out_n; ++ii) {
+                uint64_t z, r = 0;
+                uint64_t* state = ctx->prng_state.tausworthe;
+                tausworthe223_step(state, z, r);
+                r = (r & 0x000fffffffffffffull) + 0x3ff0000000000000ull; /* Transform using IEEE-754 binary-64 pattern in the range 1.0 <= x < 2.0. */
+                double d;
+                memcpy(&d, &r, sizeof(d));
+                out_gen[ii] = rescale * (float)(d - 1.0);
+            }
+        } break;
+        case MSML_PRNG_MERSENNE_TWISTER_64: {
+            const size_t n = sizeof(ctx->prng_state.mersenne.state)/sizeof(*ctx->prng_state.mersenne.state);
+            int64_t* idx = &ctx->prng_state.mersenne.idx;
+            uint64_t* mt = ctx->prng_state.mersenne.state;
+            static const uint64_t mag01[2] = {0, 0xb5026f5aa96619e9ull};
+            for (int64_t ii=0; ii < out_n; ++ii) {
+                uint64_t x;
+                if (*idx >= n) { /* Generate n words at once. */
+                    size_t i=0;
+                    for (; i < n-156; ++i) {
+                        x = (mt[i]&0xffffffff80000000ull)|(mt[i+1]&0x7fffffffull);
+                        mt[i] = mt[i+156] ^ (x>>1) ^ mag01[x&1];
+                    }
+                    for (; i < n-1; ++i) {
+                        x = (mt[i]&0xffffffff80000000ull)|(mt[i+1]&0x7fffffffull);
+                        mt[i] = mt[i+(156-n)] ^ (x>>1) ^ mag01[x&1];
+                    }
+                    x = (mt[n-1]&0xffffffff80000000ull)|(mt[0]&0x7fffffffull);
+                    mt[n-1] = mt[156-1] ^ (x>>1) ^ mag01[x&1];
+                    *idx = 0; /* Reset index. */
+                }
+                x = mt[(*idx)++];
+                x ^= (x>>29) & 0x5555555555555555ull;
+                x ^= (x<<17) & 0x71d67fffeda60000ull;
+                x ^= (x<<37) & 0xfff7eee000000000ull;
+                x ^= (x>>43);
+                out_gen[ii] = rescale * (float)((double)(x>>11) * (1.0/9007199254740991.0)); /* Transform to [0, 1] f64 */
+            }
+        } break;
+        default:
+            msml_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
     }
-    for (int i = 0; i < (rand() % (64 + 1 - 16) + 16); ++i)
-        (void)msml__prng_next_f64(state);
+}
+
+#undef tausworthe223_step
+#undef tausworthe223_gen
+
+static void msml__prng_init(msml_ctx_t* ctx, double seed) {
+    seed = seed != 0.0 ? seed : 5.249176108649e-01; /* Default seed. */
+    switch (ctx->prng_algorithm) {
+        case MSML_PRNG_TAUSWORTHE: {
+            uint64_t* state = ctx->prng_state.tausworthe;
+            uint32_t r = 0x11090601;  /* Four 8 bit-seeds merged into a scalar. */
+            for (size_t i = 0; i < 4; ++i) {
+                uint32_t m = 1u << (r & 0xff); /* Mask. */
+                r >>= 8;
+                double d = seed = seed * 3.14159265358979323846 + 2.71828182845904523536;
+                uint64_t u;
+                memcpy(&u, &d, sizeof(u));
+                if (u < m) { u += m; }
+                state[i] = u;
+            }
+        } break;
+        case MSML_PRNG_MERSENNE_TWISTER_64: {
+            const size_t n = sizeof(ctx->prng_state.mersenne.state)/sizeof(*ctx->prng_state.mersenne.state);
+            int64_t* idx = &ctx->prng_state.mersenne.idx;
+            uint64_t* state = ctx->prng_state.mersenne.state;
+            memcpy(state, &seed, sizeof(seed));
+            for (*idx=1; *idx < n; ++*idx)
+                state[*idx] = (0x5851f42d4c957f2dull*(state[*idx-1] ^ (state[*idx-1]>>62)) + *idx);
+        } break;
+        default:
+            msml_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
+    }
 }
 
 static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
@@ -410,13 +464,9 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks));
     msml__ctx_push_chunk(ctx);
-    uintptr_t host_tid = msml__thread_id();
-    if (ctx_info.prng_init_seed) {
-        msml__prng_init(&ctx->prng_state, ctx_info.prng_seed);
-    } else {
-        msml__prng_init_pre_seeded(&ctx->prng_state, host_tid ^ (uintptr_t)ctx ^ (uintptr_t)ctx_info.alloc_fn);
-    }
-    ctx->host_thread_id = host_tid;
+    ctx->prng_algorithm = ctx_info.prng_algorithm;
+    msml__prng_init(ctx, ctx_info.prng_seed);
+    ctx->host_thread_id = msml__thread_id();
     printf("MSML context created.\n");
     return ctx;
 }
@@ -448,6 +498,15 @@ size_t msml_ctx_total_memory(const msml_ctx_t* ctx) {
     mem += sizeof(*ctx->chunks) * ctx->chunk_cap;
     mem += ctx->mapped_total;
     return mem;
+}
+
+msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx) {
+    return ctx->prng_algorithm;
+}
+
+void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, double seed) {
+    ctx->prng_algorithm = algorithm;
+    msml__prng_init(ctx, seed);
 }
 
 void msml_ctx_destroy(msml_ctx_t* ctx) {
@@ -577,10 +636,7 @@ void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max) {
         case MSML_DTYPE_F32: {
             int64_t n = msml_tensor_buf_len(tensor);
             float* buf = tensor->buf.f32;
-            for (int64_t i=0; i < n; ++i) {
-                float r = (float)msml__prng_uniform_real_distribution(&tensor->ctx->prng_state, min, max);
-                buf[i] = r;
-            }
+            msml__prng_generate_n(tensor->ctx, buf, n, min, max);
         } break;
         default: msml_panic("Unsupported DType: %d", tensor->dtype);
     }

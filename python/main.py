@@ -22,11 +22,15 @@ DIM_MAX = 0x7fffffffffffffff
 ffi.cdef(f'''
     typedef struct msml_ctx_info_t msml_ctx_info_t;
     typedef struct msml_ctx_t msml_ctx_t;
+    typedef int msml_prng_algorithm_t;
     typedef int msml_dtype_t;
     typedef int msml_desired_color_channels_t;
     typedef struct msml_tensor_t msml_tensor_t;
 
     msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
+    size_t msml_ctx_total_memory(const msml_ctx_t* ctx);
+    msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx);
+    void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, double seed);
     void msml_ctx_destroy(msml_ctx_t* ctx);
 
     msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
@@ -74,6 +78,11 @@ ffi.cdef(f'''
 
 # Define Python wrapper classes
 
+class PRNGAlgorithm(Enum):
+    TAUSWORTHE = 0
+    MERSENNE_TWISTER = 1
+
+
 class Context:
     """Manages the MSML context and tensor lifecycles."""
 
@@ -81,6 +90,18 @@ class Context:
         self.ctx = C.msml_ctx_create(ffi.NULL)
         # Use weak references to manage the lifecycle of tensors, as they are owned by the context
         self.allocated_tensors = weakref.WeakSet()
+
+    def total_memory(self) -> int:
+        """Returns the total memory allocated in the context in bytes."""
+        return C.msml_ctx_total_memory(self.ctx)
+
+    def get_prng_algorithm(self) -> PRNGAlgorithm:
+        """Returns the PRNG algorithm used by the context."""
+        return PRNGAlgorithm(C.msml_ctx_get_prng_algorithm(self.ctx))
+
+    def set_prng_algorithm(self, algorithm: PRNGAlgorithm, seed: float):
+        """Sets the PRNG algorithm and seed for the context."""
+        C.msml_ctx_set_prng_algorithm(self.ctx, algorithm.value, seed)
 
     def __del__(self):
         """Ensure tensors are cleaned up when the context is destroyed."""
@@ -324,14 +345,10 @@ class Tensor:
 
 
 ctx = Context()
-img = Tensor.from_image(ctx, 'Cat', '../test_data/car.jpg')
-for i in range(img.image_width()):
-    img.set_scalar_virtual_index(i * 3 + 0, 0)
-    img.set_scalar_virtual_index(i * 3 + 1, 0)
-    img.set_scalar_virtual_index(i * 3 + 2, 1)
-img.print(False)
-img.save_to_image('cat_out.jpg')
-img.save('cat.msml')
-img2 = Tensor.random(ctx, DType.F32, 'Random Image', [4, 4, 3])
-img2.save_to_image('random.jpg')
-img2.save('random.msml')
+print(ctx.get_prng_algorithm())
+tausworthe = Tensor.random(ctx, DType.F32, 'Random Tausworthe', [1024, 1024, 3])
+tausworthe.save_to_image('random_tausworthe.jpg')
+ctx.set_prng_algorithm(PRNGAlgorithm.MERSENNE_TWISTER, 0)
+print(ctx.get_prng_algorithm())
+mersenne = Tensor.random(ctx, DType.F32, 'Random Mersenne Twister', [1024, 1024, 3])
+mersenne.save_to_image('random_mersenne.jpg')
