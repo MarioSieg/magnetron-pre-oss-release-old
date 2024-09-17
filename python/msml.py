@@ -79,8 +79,8 @@ ffi.cdef(f'''
 # Define Python wrapper classes
 
 class PRNGAlgorithm(Enum):
-    MERSENNE_TWISTER = 0 # Default - Mersenne Twister Generator
-    TAUSWORTHE = 1 # Tausworthe Generator (Linear-feedback shift register)
+    MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
+    PCG = 1  # Permuted Congruential Generator
 
 
 class Context:
@@ -319,7 +319,7 @@ class Tensor:
 
     @staticmethod
     def random(ctx: Context, dtype: DType, name: str | None, dims: list[int], r_min: float = 0.0, r_max: float = 1.0):
-        """Creates a tensor filled with zeros."""
+        """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, name, dtype, dims)
         tensor.fill_random(r_min, r_max)
@@ -346,9 +346,9 @@ class Tensor:
 
 ctx = Context()
 print(ctx.get_prng_algorithm())
-ctx.set_prng_algorithm(PRNGAlgorithm.TAUSWORTHE, 0)
-tausworthe = Tensor.random(ctx, DType.F32, 'Random Tausworthe', [1024, 1024, 3])
-tausworthe.save_to_image('random_tausworthe.jpg')
+ctx.set_prng_algorithm(PRNGAlgorithm.PCG, 0)
+pcg = Tensor.random(ctx, DType.F32, 'Random PCG', [1024, 1024, 3])
+pcg.save_to_image('random_pcg.jpg')
 ctx.set_prng_algorithm(PRNGAlgorithm.MERSENNE_TWISTER, 0)
 print(ctx.get_prng_algorithm())
 mersenne = Tensor.random(ctx, DType.F32, 'Random Mersenne Twister', [1024, 1024, 3])

@@ -86,9 +86,9 @@ TEST(msml_tensor_t, init_4d) {
     msml_ctx_destroy(ctx);
 }
 
-TEST(msml_tensor_t, random_tausworthe) {
+TEST(msml_tensor_t, random_pcg) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
-    msml_ctx_set_prng_algorithm(ctx, MSML_PRNG_TAUSWORTHE, 0.0);
+    msml_ctx_set_prng_algorithm(ctx, MSML_PRNG_PCG, 0.0);
 
     msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 128, 128, 128, 128);
     msml_tensor_fill_random(tensor, 0.0, 1.0);
@@ -133,7 +133,7 @@ TEST(msml_tensor_t, random_mersenne) {
 
 TEST(msml_tensor_t, random_switch_to_mersenne) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
-    msml_ctx_set_prng_algorithm(ctx, MSML_PRNG_TAUSWORTHE, 0.0);
+    msml_ctx_set_prng_algorithm(ctx, MSML_PRNG_PCG, 0.0);
 
     msml_tensor_t* tmp = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 128, 128, 128, 128);
     msml_tensor_fill_random(tmp, 0.0, 1.0);

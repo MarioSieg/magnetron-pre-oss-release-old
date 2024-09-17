@@ -45,8 +45,8 @@ extern "C" {
 extern MSML_API void* msml_default_allocator(void* blk, size_t size); /* Default memory allocator */
 
 typedef enum msml_prng_algorithm_t {
-    MSML_PRNG_MERSENNE_TWISTER,     /* Mersenne Twister PRNG */
-    MSML_PRNG_TAUSWORTHE,           /* Tausworthe PRNG (Linear-feedback shift register) */
+    MSML_PRNG_MERSENNE_TWISTER, /* Mersenne Twister PRNG */
+    MSML_PRNG_PCG, /* Permuted Congruential Generator PRNG */
     MSML_PRNG_COUNT_                /* Total number of PRNG algorithms */
 } msml_prng_algorithm_t;
 
@@ -54,7 +54,7 @@ typedef struct msml_ctx_info_t {
     void* (*alloc_fn)(void* blk, size_t size);  /* Custom allocator function */
     size_t pool_chunk_size;                     /* Size of each memory pool chunk */
     size_t pool_chunks_cap;                     /* Maximum chunks in the pool */
-    double prng_seed;                           /* Seed for PRNG if prng_init_seed == true */
+    uint64_t prng_seed;                           /* Seed for PRNG if prng_init_seed == true */
     void* user_data;                            /* User-defined data */
     msml_prng_algorithm_t prng_algorithm;       /* PRNG algorithm */
 } msml_ctx_info_t;
