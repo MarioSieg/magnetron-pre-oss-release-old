@@ -2,7 +2,9 @@
 # MSML - Single header STB-style machine learning library in C99.
 # MIT licensed.
 # Python bindings for MSML.
+
 import math
+import platform
 import weakref
 
 from cffi import FFI
@@ -10,7 +12,15 @@ from enum import Enum
 
 # Load shared library
 
-MSML_LIB = '../bin/debug/libmsml.dylib'
+if platform.system() == 'Windows':
+    MSML_LIB = '../bin/debug/msml.dll'
+elif platform.system() == 'Linux':
+    MSML_LIB = '../bin/debug/libmsml.so'
+elif platform.system() == 'Darwin':
+    MSML_LIB = '../bin/debug/libmsml.dylib'
+else:
+    raise RuntimeError('Unsupported platform')
+
 ffi = FFI()
 C = ffi.dlopen(MSML_LIB)
 
