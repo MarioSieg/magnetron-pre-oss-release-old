@@ -348,7 +348,11 @@ static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { 
 #ifdef _MSC_VER
     msml_panic("NYI"); // TODO - maybe MSVC intrinsic available?
 #else
+#if __SIZEOF_LONG__ == 8
+    return __builtin_smull_overflow(a, b, out);
+#else
     return __builtin_smulll_overflow(a, b, out);
+#endif
 #endif
 }
 
