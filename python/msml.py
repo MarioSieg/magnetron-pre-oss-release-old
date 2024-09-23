@@ -166,10 +166,10 @@ class Tensor:
         """Sets all elements of the tensor to x."""
         C.msml_tensor_fill(self.tensor, x)
 
-    def fill_random(self, r_min: float = 0.0, r_max: float = 1.0):
-        assert r_min < r_max
+    def fill_random(self, interval: (float, float)=(0.0, 1.0)):
+        assert interval[0] < interval[1]
         """Sets all elements of the tensor to random values within [min, max]"""
-        C.msml_tensor_fill_random(self.tensor, r_min, r_max)
+        C.msml_tensor_fill_random(self.tensor, interval[0], interval[1])
 
     def print(self, with_data: bool):
         """Prints the tensor metadata and optionally its data."""
@@ -328,11 +328,11 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def random(ctx: Context, dtype: DType, name: str | None, dims: list[int], r_min: float = 0.0, r_max: float = 1.0):
+    def random(ctx: Context, dtype: DType, name: str | None, dims: list[int], interval: (float, float)=(0.0, 1.0)):
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, name, dtype, dims)
-        tensor.fill_random(r_min, r_max)
+        tensor.fill_random(interval)
         return tensor
 
     @staticmethod
@@ -363,3 +363,5 @@ ctx.set_prng_algorithm(PRNGAlgorithm.MERSENNE_TWISTER, 0)
 print(ctx.get_prng_algorithm())
 mersenne = Tensor.random(ctx, DType.F32, 'Random Mersenne Twister', [1024, 1024, 3])
 mersenne.save_to_image('random_mersenne.jpg')
+mersenne = Tensor.random(ctx, DType.F32, 'Random Mersenne Twister', [4, 4], interval=(-10.0, 10.0))
+mersenne.print(True)

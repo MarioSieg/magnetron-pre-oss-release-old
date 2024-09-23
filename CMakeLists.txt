@@ -17,9 +17,9 @@ if (NOT WIN32)
     target_compile_options(msml PRIVATE
         -Wall
         -Werror
-        -Wpedantic
         -std=c99
         -Wno-gnu-zero-variadic-macro-arguments
+        -Wno-error=overflow
     )
 endif()
 if (${MSML_ENABLE_IMAGE_SUPPORT})

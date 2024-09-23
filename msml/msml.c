@@ -358,13 +358,12 @@ static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { 
 
 /* Generate n uniform random floats within [min, max]. */
 static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n, float min, float max) {
-    float rescale_uniform = (max - min) + min;
+    float rescale_uniform = max - min;
     switch (ctx->prng_algorithm) {
         case MSML_PRNG_MERSENNE_TWISTER: {
             uint32_t* rem = &ctx->prng_state.mersenne.remaining;
             uint32_t* next = &ctx->prng_state.mersenne.next;
             uint32_t* state = ctx->prng_state.mersenne.state;
-            static const uint32_t mag01[2] = {0, 0x9908b0df};
             for (int64_t ii=0; ii < out_n; ++ii) {
                 if (--*rem <= 0) {
                     *rem = 624;
@@ -372,21 +371,21 @@ static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n
                     uint32_t y, i;
                     for (i = 0; i < 624-397; ++i) {
                         y = (state[i] & 0x80000000u) | (state[i+1] & 0x7fffffffu);
-                        state[i] = state[i+397] ^ (y>>1) ^ mag01[y&1];
+                        state[i] = state[i+397] ^ (y>>1) ^ ((y&1) ? 0 : 0x9908b0dfu);
                     }
                     for (; i < 624-1; ++i) {
                         y = (state[i] & 0x80000000u) | (state[i + 1] & 0x7fffffffu);
-                        state[i] = state[i + (397-624)] ^ (y>>1) ^ mag01[y&1];
+                        state[i] = state[i + (397-624)] ^ (y>>1) ^ ((y&1) ? 0 : 0x9908b0dfu);
                     }
                     y = (state[624-1] & 0x80000000u) | (*state & 0x7fffffffu);
-                    state[624-1] = state[397-1] ^ (y>>1) ^ mag01[y&1];
+                    state[624-1] = state[397-1] ^ (y>>1) ^ ((y&1) ? 0 : 0x9908b0dfu);
                 }
                 uint32_t y = state[(*next)++];
                 y ^= y >> 11;
                 y ^= (y << 7) & 0x9d2c5680;
                 y ^= (y << 15) & 0xefc60000;
                 y ^= y >> 18;
-                out_gen[ii] = rescale_uniform * ((float)(y & ((1u<<24)-1)) * (1.0f / (float)(1u<<24)));
+                out_gen[ii] = min + rescale_uniform * ((float)(y & ((1u<<24)-1)) * (1.0f / (float)(1u<<24)));
             }
         } break;
         case MSML_PRNG_PCG: {
@@ -398,7 +397,7 @@ static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n
                 uint32_t mixed = ((prev>>18u) ^ prev) >> 27u;
                 uint32_t rot = prev >> 59u;
                 uint32_t y = (mixed>>rot) | (mixed << ((-rot)&31));
-                out_gen[ii] = rescale_uniform * ((float)(y & ((1u<<24)-1)) * (1.0f / (float)(1u<<24)));
+                out_gen[ii] = min + rescale_uniform * ((float)(y & ((1u<<24)-1)) * (1.0f / (float)(1u<<24)));
             }
         } break;
         default:
