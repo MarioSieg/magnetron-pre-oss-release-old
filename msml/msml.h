@@ -42,7 +42,10 @@ extern "C" {
 #define msml_assert_name(line) msml_assert_name2(_assert_, line)
 #define msml_static_assert(expr) extern void msml_assert_name(__LINE__)(bool STATIC_ASSERTION_FAILED[((expr)?1:-1)])
 
-extern MSML_API void* msml_default_allocator(void* blk, size_t size); /* Default memory allocator */
+extern MSML_API void* msml_default_allocator_impl(void* blk, size_t size); /* Default memory allocator */
+#ifndef msml_allocator /* Default allocator, can be overridden by defining it before.  */
+#define msml_allocator msml_default_allocator_impl
+#endif
 
 typedef enum msml_prng_algorithm_t {
     MSML_PRNG_MERSENNE_TWISTER, /* Mersenne Twister PRNG */
@@ -66,7 +69,7 @@ extern MSML_API void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size); /* Allo
 extern MSML_API void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align); /* Aligned memory allocation */
 extern MSML_API size_t msml_ctx_total_memory(const msml_ctx_t* ctx); /* Get total allocated memory */
 extern MSML_API msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx); /* Get PRNG algorithm */
-extern MSML_API void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, double seed); /* Set PRNG algorithm */
+extern MSML_API void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed); /* Set PRNG algorithm */
 extern MSML_API void msml_ctx_destroy(msml_ctx_t* ctx); /* Destroy context and free memory */
 
 typedef enum msml_dtype_t {
@@ -139,6 +142,7 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 
 typedef struct msml_tensor_t msml_tensor_t; /* Opaque type representing a tensor */
 
+extern MSML_API msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor); /* Get the context of the tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank); /* Create a tensor with specified dimensions */
 extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1); /* Create 1D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */

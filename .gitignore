@@ -18,6 +18,7 @@ _deps
 /python/.venv
 /python/.vscode
 /python/.idea
+/python/__pycache__
 **/.DS_Store
 .vs/
 out/

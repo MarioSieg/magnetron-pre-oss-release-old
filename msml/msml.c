@@ -16,7 +16,19 @@
 #   include <intrin.h>
 #endif
 
+msml_static_assert(sizeof(0u) == 4);
+msml_static_assert(sizeof(0ull) == 8);
+
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
+#   define STBI_MALLOC(sz) msml_allocator(NULL, (sz))
+#   define STBI_FREE(ptr) msml_allocator((ptr), 0)
+#   define STBI_REALLOC(ptr, sz) msml_allocator((ptr), (sz))
+#   define STBIR_MALLOC(sz, usr) msml_allocator(NULL, (sz))
+#   define STBIR_FREE(ptr, usr) msml_allocator((ptr), 0)
+#   define STBIR_REALLOC(ptr, sz, usr) msml_allocator((ptr), (sz))
+#   define STBIW_MALLOC(sz) msml_allocator(NULL, (sz))
+#   define STBIW_FREE(ptr) msml_allocator((ptr), 0)
+#   define STBIW_REALLOC(ptr, sz) msml_allocator((ptr), (sz))
 #   define STB_IMAGE_IMPLEMENTATION
 #   include <stb_image.h>
 #   define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -149,7 +161,7 @@ static MSML_NORET void msml_panic(const char* msg, ...) {
     }
 #define msml_assert2(expr) msml_assert(expr, "")
 
-void* msml_default_allocator(void* blk, size_t size) {
+void* msml_default_allocator_impl(void* blk, size_t size) {
     if (!size) {
         free(blk);
         return NULL;
@@ -439,7 +451,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     msml_ctx_info_t ctx_info;
     memset(&ctx_info, 0, sizeof(ctx_info));
     if (info) ctx_info = *info;
-    ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_default_allocator;
+    ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_allocator;
     msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx));
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
@@ -489,7 +501,7 @@ msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx) {
     return ctx->prng_algorithm;
 }
 
-void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, double seed) {
+void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed) {
     ctx->prng_algorithm = algorithm;
     msml__prng_init(ctx, seed);
 }
@@ -533,6 +545,10 @@ const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_] = {
         "f32"
     },
 };
+
+msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
+    return tensor->ctx;
+}
 
 msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank) {
     msml_assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);

@@ -3,26 +3,44 @@
 # MIT licensed.
 # Python bindings for MSML.
 
-import math
 import platform
 import weakref
+import random
 
 from cffi import FFI
 from enum import Enum
+from os.path import isfile
+from ctypes.util import find_library
 
 # Load shared library
 
+# Load shared library
+
+msml_lib_locations: list[str] = []
+
 if platform.system() == 'Windows':
-    MSML_LIB = '../bin/debug/msml.dll'
+    msml_lib_locations.append('../bin/debug/msml.dll')
 elif platform.system() == 'Linux':
-    MSML_LIB = '../bin/debug/libmsml.so'
+    msml_lib_locations.append('../bin/debug/libmsml.so')
 elif platform.system() == 'Darwin':
-    MSML_LIB = '../bin/debug/libmsml.dylib'
+    msml_lib_locations.append('../bin/debug/libmsml.dylib')
 else:
     raise RuntimeError('Unsupported platform')
 
+MSML_LIB_PATH: str | None = None
+for loc in msml_lib_locations: # Try to find the shared library in the locations (mostly used for debug builds)
+    if isfile(loc):
+        MSML_LIB_PATH = loc
+        break
+    elif isfile(f'../{loc}'): # Try to find the shared library in the parent directory
+        MSML_LIB_PATH = f'../{loc}'
+        break
+if MSML_LIB_PATH is None: # If not found, try to find the shared library in the system paths
+    MSML_LIB_PATH = find_library('msml')
+assert MSML_LIB_PATH is not None, 'MSML shared library not found'
+
 ffi = FFI()
-C = ffi.dlopen(MSML_LIB)
+C = ffi.dlopen(MSML_LIB_PATH)
 
 # Define constants
 MAX_DIMS = 4
@@ -40,7 +58,7 @@ ffi.cdef(f'''
     msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
     size_t msml_ctx_total_memory(const msml_ctx_t* ctx);
     msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx);
-    void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, double seed);
+    void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed);
     void msml_ctx_destroy(msml_ctx_t* ctx);
 
     msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
@@ -92,37 +110,21 @@ class PRNGAlgorithm(Enum):
     MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
     PCG = 1  # Permuted Congruential Generator
 
-
-class Context:
-    """Manages the MSML context and tensor lifecycles."""
-
-    def __init__(self):
-        self.ctx = C.msml_ctx_create(ffi.NULL)
-        # Use weak references to manage the lifecycle of tensors, as they are owned by the context
-        self.allocated_tensors = weakref.WeakSet()
-
-    def total_memory(self) -> int:
-        """Returns the total memory allocated in the context in bytes."""
-        return C.msml_ctx_total_memory(self.ctx)
-
-    def get_prng_algorithm(self) -> PRNGAlgorithm:
-        """Returns the PRNG algorithm used by the context."""
-        return PRNGAlgorithm(C.msml_ctx_get_prng_algorithm(self.ctx))
-
-    def set_prng_algorithm(self, algorithm: PRNGAlgorithm, seed: float):
-        """Sets the PRNG algorithm and seed for the context."""
-        C.msml_ctx_set_prng_algorithm(self.ctx, algorithm.value, seed)
-
-    def __del__(self):
-        """Ensure tensors are cleaned up when the context is destroyed."""
-        for tensor in list(self.allocated_tensors):
-            tensor.__del__()
-        C.msml_ctx_destroy(self.ctx)
-
+    def __str__(self) -> str:
+        match self:
+            case PRNGAlgorithm.MERSENNE_TWISTER:
+                return 'Mersenne Twister'
+            case PRNGAlgorithm.PCG:
+                return 'Permuted Congruential Generator'
 
 class DType(Enum):
     """Enumerates the supported data types for tensors."""
     F32 = 0
+
+    def __str__(self) -> str:
+        match self:
+            case DType.F32:
+                return 'F32'
 
 
 class DesiredColorChannels(Enum):
@@ -133,26 +135,69 @@ class DesiredColorChannels(Enum):
     RGB = 3  # R32G32B32
     RGBA = 4  # R32G32B32A32
 
+    def __str__(self) -> str:
+        match self:
+            case DesiredColorChannels.AUTO:
+                return 'Auto'
+            case DesiredColorChannels.GRAY:
+                return 'Grayscale'
+            case DesiredColorChannels.GRAY_A:
+                return 'Grayscale with Alpha'
+            case DesiredColorChannels.RGB:
+                return 'RGB'
+            case DesiredColorChannels.RGBA:
+                return 'RGBA'
+
+class Context:
+    """Manages the MSML context and tensor lifecycles."""
+
+    def __init__(self):
+        self.ctx = C.msml_ctx_create(ffi.NULL)
+        # Use weak references to manage the lifecycle of tensors, as they are owned by the context
+        self.allocated_tensors = weakref.WeakSet()
+
+    @property
+    def total_memory(self) -> int:
+        """Returns the total memory allocated in the context in bytes."""
+        return C.msml_ctx_total_memory(self.ctx)
+
+    @property
+    def prng_algorithm(self) -> PRNGAlgorithm:
+        """Returns the PRNG algorithm used by the context."""
+        return PRNGAlgorithm(C.msml_ctx_get_prng_algorithm(self.ctx))
+
+    @prng_algorithm.setter
+    def prng_algorithm(self, algorithm: PRNGAlgorithm):
+        """Sets the PRNG algorithm and seed for the context."""
+        C.msml_ctx_set_prng_algorithm(self.ctx, algorithm.value, random.randint(0, 1<<63))
+
+    def __del__(self):
+        """Ensure tensors are cleaned up when the context is destroyed."""
+        for tensor in list(self.allocated_tensors):
+            tensor.__del__()
+        C.msml_ctx_destroy(self.ctx)
+
+
 
 class Tensor:
     """Represents a tensor in the MSML library."""
 
     def __init__(self, internal_instance=None):
         self.tensor = internal_instance
-        ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
+        #ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
 
     def __del__(self):
         """Destructor to release tensor resources."""
         if self.tensor is not None:
             self.tensor = None
 
-    def _create_internal(self, ctx: Context, name: str | None, dtype: DType, dims: list[int]):
+    def _create_internal(self, ctx: Context, dims: list[int], dtype: DType=DType.F32, name: str | None=None):
         assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
         for dim in dims:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
         self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
         if name is not None:
-            self.set_name(name)
+            self.name = name
 
     def fill_zeros(self):
         """Sets all elements of the tensor to zero."""
@@ -175,63 +220,100 @@ class Tensor:
         """Prints the tensor metadata and optionally its data."""
         C.msml_tensor_print(self.tensor, with_data)
 
-    def set_name(self, name: str):
-        """Sets a name for the tensor."""
-        C.msml_tensor_set_name(self.tensor, bytes(name, 'utf-8'))
-
-    def get_name(self) -> str:
+    @property
+    def name(self) -> str:
         """Returns the name of the tensor."""
         return ffi.string(C.msml_tensor_get_name(self.tensor)).decode('utf-8')
 
+    @name.setter
+    def name(self, name: str):
+        """Sets a name for the tensor."""
+        C.msml_tensor_set_name(self.tensor, bytes(name, 'utf-8'))
+
+    @property
     def rank(self) -> int:
         """Returns the rank (number of dimensions) of the tensor."""
         return C.msml_tensor_rank(self.tensor)
 
+    @property
     def dims(self) -> list[int]:
         """Returns the dimensions of the tensor."""
         ptr = C.msml_tensor_dims(self.tensor)
-        return [ptr[i] for i in range(MAX_DIMS)]
+        return [ptr[i] for i in range(self.rank)]
 
+    @property
     def strides(self) -> list[int]:
         """Returns the strides of the tensor."""
         ptr = C.msml_tensor_strides(self.tensor)
-        return [ptr[i] for i in range(MAX_DIMS)]
+        return [ptr[i] for i in range(self.rank)]
 
+    @property
     def dtype(self) -> int:
         """Returns the data type of the tensor."""
         return C.msml_tensor_dtype(self.tensor)
 
+    @property
     def buf(self) -> ffi.CData:
         """Returns the raw buffer of the tensor."""
         return C.msml_tensor_buf(self.tensor)
 
+    @property
     def buf_size(self) -> int:
         """Returns the size of the tensor buffer in bytes."""
         return C.msml_tensor_buf_size(self.tensor)
 
+    def fetch_buf_data(self) -> bytes:
+        """Returns the data of the tensor buffer."""
+        return ffi.buffer(self.buf(), self.buf_size)[:]
+
+    def fetch_buf_data_f32(self) -> list[float]:
+        """Returns the data of the tensor buffer as a list of floats."""
+        return list(ffi.unpack(ffi.cast('const float*', self.buf), self.buf_size // ffi.sizeof('float')))
+
+    @property
     def num_rows(self) -> int:
         """Returns the number of rows in the tensor, assuming it's a matrix."""
         return C.msml_tensor_num_rows(self.tensor)
 
+    @property
     def num_cols(self) -> int:
         """Returns the number of columns in the tensor, assuming it's a matrix."""
         return C.msml_tensor_num_cols(self.tensor)
 
+    @property
     def is_scalar(self) -> bool:
         """Checks if the tensor is a scalar (0D tensor)."""
         return C.msml_tensor_is_scalar(self.tensor)
 
+    @property
     def is_vector(self) -> bool:
         """Checks if the tensor is a vector (1D tensor)."""
         return C.msml_tensor_is_vector(self.tensor)
 
+    @property
     def is_matrix(self) -> bool:
         """Checks if the tensor is a matrix (2D tensor)."""
         return C.msml_tensor_is_matrix(self.tensor)
 
+    @property
     def is_higher_order_3d(self) -> bool:
         """Checks if the tensor is a higher-order 3D tensor."""
         return C.msml_tensor_is_higher_order_3d(self.tensor)
+
+    @property
+    def image_width(self) -> int:
+        """Returns the width of the image tensor. (Equals to the first dimension)"""
+        return self.dims[0]
+
+    @property
+    def image_height(self) -> int:
+        """Returns the height of the image tensor. (Equals to the second dimension)"""
+        return self.dims[1]
+
+    @property
+    def image_channels(self) -> int:
+        """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
+        return self.dims[2]
 
     def virtual_to_physical_index(self, v_idx: int) -> list[int]:
         """Converts a virtual index to a physical index."""
@@ -264,18 +346,6 @@ class Tensor:
         """Sets the scalar value at a virtual index."""
         C.msml_tensor_set_scalar_virtual_index(self.tensor, v_idx, x)
 
-    def image_width(self) -> int:
-        """Returns the width of the image tensor. (Equals to the first dimension)"""
-        return self.dims()[0]
-
-    def image_height(self) -> int:
-        """Returns the height of the image tensor. (Equals to the second dimension)"""
-        return self.dims()[1]
-
-    def image_channels(self) -> int:
-        """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
-        return self.dims()[2]
-
     def save(self, file_path: str):
         """Saves to tensor to a binary MSML file"""
         if not file_path.endswith('.msml'):
@@ -284,16 +354,16 @@ class Tensor:
 
     def save_to_image(self, file_path: str):
         """Saves the tensor as an JPG image to a file."""
-        assert self.rank() == 3, 'Tensor must be a 3D image tensor'
-        channels: int = self.image_channels()
+        assert self.rank == 3, 'Tensor must be a 3D image tensor'
+        channels: int = self.image_channels
         assert channels in (1, 3, 4), 'Invalid number of color channels'
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
-    def empty(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+    def empty(ctx: Context, dims: list[int], dtype: DType=DType.F32, name: str | None=None):
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, name, dtype, dims)
+        tensor._create_internal(ctx, dims, dtype, name)
         return tensor
 
     @staticmethod
@@ -307,18 +377,18 @@ class Tensor:
         return Tensor(C.msml_tensor_deep_clone(tensor.tensor))
 
     @staticmethod
-    def zeros(ctx: Context, dtype: DType, name: str | None, dims: list[int]):
+    def zeros(ctx: Context, dims: list[int], dtype: DType=DType.F32, name: str | None=None):
         """Creates a tensor filled with zeros."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, name, dtype, dims)
+        tensor._create_internal(ctx, dims, dtype, name)
         tensor.fill_zeros()
         return tensor
 
     @staticmethod
-    def full(ctx: Context, dtype: DType, name: str | None, dims: list[int], fill_value: float):
+    def full(ctx: Context, dims: list[int], fill_value: float, dtype: DType=DType.F32, name: str | None=None):
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, name, dtype, dims)
+        tensor._create_internal(ctx, dims, dtype, name)
         if fill_value == 0.0:
             tensor.fill_zeros()
         elif fill_value == 1.0:
@@ -328,10 +398,10 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def random(ctx: Context, dtype: DType, name: str | None, dims: list[int], interval: (float, float)=(0.0, 1.0)):
+    def random(ctx: Context, dims: list[int], interval: (float, float)=(0.0, 1.0), dtype: DType=DType.F32, name: str | None=None):
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, name, dtype, dims)
+        tensor._create_internal(ctx, dims, dtype, name)
         tensor.fill_random(interval)
         return tensor
 
@@ -352,16 +422,3 @@ class Tensor:
         instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
                                                    resize_to_dims[0], resize_to_dims[1])
         return Tensor(internal_instance=instance)
-
-
-ctx = Context()
-print(ctx.get_prng_algorithm())
-ctx.set_prng_algorithm(PRNGAlgorithm.PCG, 0)
-pcg = Tensor.random(ctx, DType.F32, 'Random PCG', [1024, 1024, 3])
-pcg.save_to_image('random_pcg.jpg')
-ctx.set_prng_algorithm(PRNGAlgorithm.MERSENNE_TWISTER, 0)
-print(ctx.get_prng_algorithm())
-mersenne = Tensor.random(ctx, DType.F32, 'Random Mersenne Twister', [1024, 1024, 3])
-mersenne.save_to_image('random_mersenne.jpg')
-mersenne = Tensor.random(ctx, DType.F32, 'Random Mersenne Twister', [4, 4], interval=(-10.0, 10.0))
-mersenne.print(True)
