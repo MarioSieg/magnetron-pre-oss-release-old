@@ -1,4 +1,4 @@
-from msml import *
+from msml.core import *
 
 ctx = Context()
 

@@ -1,7 +1,7 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 # MSML - Single header STB-style machine learning library in C99.
 # MIT licensed.
-# Python bindings for MSML.
+# Implements the core functionality of the MSML Python bindings. Requires the MSML shared library.
 
 import platform
 import weakref
@@ -21,7 +21,7 @@ msml_lib_locations: list[str] = []
 if platform.system() == 'Windows':
     msml_lib_locations.append('../bin/debug/msml.dll')
 elif platform.system() == 'Linux':
-    msml_lib_locations.append('../bin/debug/libmsml.so')
+    msml_lib_locations.append('../../bin/debug/libmsml.so')
 elif platform.system() == 'Darwin':
     msml_lib_locations.append('../bin/debug/libmsml.dylib')
 else:
