@@ -491,3 +491,28 @@ class Tensor:
         instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
                                                    resize_to_dims[0], resize_to_dims[1])
         return Tensor(internal_instance=instance)
+
+    def __add__(self, other: 'Tensor') -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.ADD, self, other)
+        return result
+
+    def __sub__(self, other: 'Tensor') -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.SUB, self, other)
+        return result
+
+    def __mul__(self, other: 'Tensor') -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.MUL, self, other)
+        return result
+
+    def __truediv__(self, other: 'Tensor') -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.DIV, self, other)
+        return result
+
+    def __matmul__(self, other: 'Tensor') -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.MATMUL, self, other)
+        return result
