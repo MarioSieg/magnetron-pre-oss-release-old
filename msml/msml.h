@@ -82,7 +82,7 @@ typedef struct msml_dtype_info_t {
     size_t size;         /* Size of the data type in bytes */
     const char* name;    /* Name of the data type */
 } msml_dtype_info_t;
-extern MSML_API const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_]; /* Info for each data type */
+extern MSML_API const msml_dtype_info_t* msml_get_dtype_info(msml_dtype_t type);
 
 typedef enum msml_desired_color_channels_t {
     MSML_COLOR_CHANNELS_AUTO,  /* Automatically detect number of color channels */
@@ -139,6 +139,30 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 #define MSML_FMT_U (MSML_FMT_UINT) /* 'u' format */
 #define MSML_FMT_X (MSML_FMT_UINT|MSML_FMT_T_HEX) /* 'x' format */
 #define MSML_FMT_G14 (MSML_FMT_G | ((14+1) << MSML_FMT_SH_PREC)) /* 'g' format with precision 14 */
+
+#define MSML_SEP ,
+#define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
+    _(NOP, "nop", 0)/* No Operation. */__\
+    _(ADD, "+", 2)/* R = A+B */__\
+    _(SUB, "-", 2)/* R = A-B */__\
+    _(MUL, "*", 2)/* R = A*B (Hadamard product). */__\
+    _(DIV, "/", 2)/* R = A/B. */__\
+    _(MATMUL, "@", 2)/* R = AB. (Matrix multiplication) */__
+
+#define _(enumerator, mnemonic, argcount) MSML_OP_##enumerator
+typedef enum msml_op_t {
+    msml_op_def(_, MSML_SEP)
+    MSML_OP__COUNT
+} msml_op_t;
+#undef _
+msml_static_assert(MSML_OP_NOP == 0);
+msml_static_assert(MSML_OP__COUNT <= 0xff);
+
+extern MSML_API const char* msml_op_get_name(msml_op_t op);
+extern MSML_API const char* msml_op_get_mnemonic(msml_op_t op);
+extern MSML_API uint8_t msml_op_get_argcount(msml_op_t op);
+#define msml_op_is_unary(op) (msml_op_get_argcount(op) == 1)
+#define msml_op_is_binary(op) (msml_op_get_argcount(op) == 2)
 
 typedef struct msml_tensor_t msml_tensor_t; /* Opaque type representing a tensor */
 

@@ -28,14 +28,14 @@ else:
     raise RuntimeError('Unsupported platform')
 
 MSML_LIB_PATH: str | None = None
-for loc in msml_lib_locations: # Try to find the shared library in the locations (mostly used for debug builds)
+for loc in msml_lib_locations:  # Try to find the shared library in the locations (mostly used for debug builds)
     if isfile(loc):
         MSML_LIB_PATH = loc
         break
-    elif isfile(f'../{loc}'): # Try to find the shared library in the parent directory
+    elif isfile(f'../{loc}'):  # Try to find the shared library in the parent directory
         MSML_LIB_PATH = f'../{loc}'
         break
-if MSML_LIB_PATH is None: # If not found, try to find the shared library in the system paths
+if MSML_LIB_PATH is None:  # If not found, try to find the shared library in the system paths
     MSML_LIB_PATH = find_library('msml')
 assert MSML_LIB_PATH is not None, 'MSML shared library not found'
 
@@ -50,9 +50,12 @@ DIM_MAX = 0x7fffffffffffffff
 ffi.cdef(f'''
     typedef struct msml_ctx_info_t msml_ctx_info_t;
     typedef struct msml_ctx_t msml_ctx_t;
+    
     typedef int msml_prng_algorithm_t;
     typedef int msml_dtype_t;
     typedef int msml_desired_color_channels_t;
+    typedef int msml_op_t;
+    
     typedef struct msml_tensor_t msml_tensor_t;
 
     msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
@@ -60,7 +63,12 @@ ffi.cdef(f'''
     msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx);
     void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed);
     void msml_ctx_destroy(msml_ctx_t* ctx);
+    
+    const char* msml_op_get_name(msml_op_t op);
+    const char* msml_op_get_mnemonic(msml_op_t op);
+    uint8_t msml_op_get_argcount(msml_op_t op);
 
+    msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
     msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
@@ -117,6 +125,7 @@ class PRNGAlgorithm(Enum):
             case PRNGAlgorithm.PCG:
                 return 'Permuted Congruential Generator'
 
+
 class DType(Enum):
     """Enumerates the supported data types for tensors."""
     F32 = 0
@@ -148,6 +157,42 @@ class DesiredColorChannels(Enum):
             case DesiredColorChannels.RGBA:
                 return 'RGBA'
 
+
+class Operation(Enum):
+    """A"""
+    NOP = 0
+    ADD = 1
+    SUB = 2
+    MUL = 3
+    DIV = 4
+    MATMUL = 5
+
+    _COUNT = MATMUL + 1
+
+    @property
+    def name(self) -> str:
+        assert self.value < self._COUNT.value
+        return ffi.string(C.msml_op_get_name(self.value)).decode('utf-8')
+
+    @property
+    def mnemonic(self) -> str:
+        assert self.value < self._COUNT.value
+        return ffi.string(C.msml_op_get_mnemonic(self.value)).decode('utf-8')
+
+    @property
+    def argument_count(self) -> int:
+        assert self.value < self._COUNT.value
+        return C.msml_op_get_argcount(self.value)
+
+    @property
+    def is_unary(self) -> bool:
+        return self.argument_count == 1
+
+    @property
+    def is_binary(self) -> bool:
+        return self.argument_count == 2
+
+
 class Context:
     """Manages the MSML context and tensor lifecycles."""
 
@@ -169,14 +214,13 @@ class Context:
     @prng_algorithm.setter
     def prng_algorithm(self, algorithm: PRNGAlgorithm):
         """Sets the PRNG algorithm and seed for the context."""
-        C.msml_ctx_set_prng_algorithm(self.ctx, algorithm.value, random.randint(0, 1<<63))
+        C.msml_ctx_set_prng_algorithm(self.ctx, algorithm.value, random.randint(0, 1 << 63))
 
     def __del__(self):
         """Ensure tensors are cleaned up when the context is destroyed."""
         for tensor in list(self.allocated_tensors):
             tensor.__del__()
         C.msml_ctx_destroy(self.ctx)
-
 
 
 class Tensor:
@@ -191,7 +235,7 @@ class Tensor:
         if self.tensor is not None:
             self.tensor = None
 
-    def _create_internal(self, ctx: Context, dims: list[int], dtype: DType=DType.F32, name: str | None=None):
+    def _create_internal(self, ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None):
         assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
         for dim in dims:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
@@ -211,7 +255,7 @@ class Tensor:
         """Sets all elements of the tensor to x."""
         C.msml_tensor_fill(self.tensor, x)
 
-    def fill_random(self, interval: (float, float)=(0.0, 1.0)):
+    def fill_random(self, interval: (float, float) = (0.0, 1.0)):
         assert interval[0] < interval[1]
         """Sets all elements of the tensor to random values within [min, max]"""
         C.msml_tensor_fill_random(self.tensor, interval[0], interval[1])
@@ -360,7 +404,7 @@ class Tensor:
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
-    def empty(ctx: Context, dims: list[int], dtype: DType=DType.F32, name: str | None=None):
+    def empty(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None):
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)
@@ -377,7 +421,7 @@ class Tensor:
         return Tensor(C.msml_tensor_deep_clone(tensor.tensor))
 
     @staticmethod
-    def zeros(ctx: Context, dims: list[int], dtype: DType=DType.F32, name: str | None=None):
+    def zeros(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None):
         """Creates a tensor filled with zeros."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)
@@ -385,7 +429,7 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def full(ctx: Context, dims: list[int], fill_value: float, dtype: DType=DType.F32, name: str | None=None):
+    def full(ctx: Context, dims: list[int], fill_value: float, dtype: DType = DType.F32, name: str | None = None):
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)
@@ -398,7 +442,8 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def random(ctx: Context, dims: list[int], interval: (float, float)=(0.0, 1.0), dtype: DType=DType.F32, name: str | None=None):
+    def random(ctx: Context, dims: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
+               name: str | None = None):
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)

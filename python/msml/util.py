@@ -7,8 +7,10 @@ from msml.core import Tensor
 from matplotlib import pyplot as plt
 import numpy as np
 
+
 def to_numpy(tensor: Tensor) -> np.array:
     return np.array(tensor.fetch_buf_data_f32(), dtype=np.float32).reshape(tensor.dims)
+
 
 def plot_tensor(tensor: Tensor, title: str | None = None) -> None:
     if title is not None:

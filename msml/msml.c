@@ -539,12 +539,43 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
 #define msml__resolve_physical_ptr(tensor, d0, d1, d2, d3) \
     ((tensor)->buf.u8 + msml__dot4_unrolled_var_arr((tensor)->strides, d0, d1, d2, d3))
 
-const msml_dtype_info_t msml_dtype_info[MSML_DTYPE_COUNT_] = {
-    [MSML_DTYPE_F32] = {
-        sizeof(float),
-        "f32"
-    },
-};
+const msml_dtype_info_t* msml_get_dtype_info(msml_dtype_t type) {
+    static const msml_dtype_info_t infos[MSML_DTYPE_COUNT_] = {
+        [MSML_DTYPE_F32] = {
+            sizeof(float),
+            "f32"
+        },
+    };
+    return infos + type;
+}
+
+const char* msml_op_get_name(msml_op_t op) {
+    #define _(enumerator, mnemonic, argcount) #enumerator
+        static const char* const names[MSML_OP__COUNT] = {
+            msml_op_def(_, MSML_SEP)
+        };
+    #undef _
+    return names[op];
+}
+
+const char* msml_op_get_mnemonic(msml_op_t op) {
+    #define _(enumerator, mnemonic, argcount) mnemonic
+        static const char* const mnemonics[MSML_OP__COUNT] = {
+            msml_op_def(_, MSML_SEP)
+        };
+    #undef _
+    return mnemonics[op];
+}
+
+uint8_t msml_op_get_argcount(msml_op_t op) {
+    #define _(enumerator, mnemonic, argcount) ((argcount)&0xff)
+        static const uint8_t arg_counts[MSML_OP__COUNT] = {
+            msml_op_def(_, MSML_SEP)
+        };
+    #undef _
+    return arg_counts[op];
+}
+
 
 msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
     return tensor->ctx;
@@ -552,7 +583,7 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
 
 msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank) {
     msml_assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
-    int64_t scalar_size = (int64_t)msml_dtype_info[type].size;
+    int64_t scalar_size = (int64_t)msml_get_dtype_info(type)->size;
     int64_t buf_size = scalar_size;
     for (int64_t i=0; i < rank; ++i) {
         msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
@@ -1216,7 +1247,7 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
     msml__humanize_memory_size(tensor->buf_size, &buf_size_cvt, &buf_size_unit);
     printf("Tensor '%s', DType: %s, Rank: %zu, Dims: [%zu, %zu, %zu, %zu], Strides: [%zu, %zu, %zu, %zu], Size: %.01f %s \n",
        tensor->name,
-       msml_dtype_info[tensor->dtype].name,
+       msml_get_dtype_info(tensor->dtype)->name,
        (size_t)tensor->rank,
        (size_t)tensor->dims[0],
        (size_t)tensor->dims[1],
@@ -1283,7 +1314,7 @@ int64_t msml_tensor_buf_size(const msml_tensor_t* tensor) {
 }
 
 int64_t msml_tensor_buf_len(const msml_tensor_t* tensor) {
-    return tensor->buf_size / (int64_t)msml_dtype_info[tensor->dtype].size;
+    return tensor->buf_size / (int64_t)msml_get_dtype_info(tensor->dtype)->size;
 }
 
 int64_t msml_tensor_num_rows(const msml_tensor_t* tensor) {
@@ -1341,14 +1372,14 @@ int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const
 }
 
 bool msml_tensor_is_contiguous(const msml_tensor_t* tensor) {
-    return *tensor->strides == (int64_t)msml_dtype_info[tensor->dtype].size;
+    return *tensor->strides == (int64_t)msml_get_dtype_info(tensor->dtype)->size;
 }
 
 float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
     const uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: return *(float*)dst;
-        default: msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+        default: msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -1356,7 +1387,7 @@ void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, in
     uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: *(float*)dst = x; break;
-        default: msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+        default: msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -1370,7 +1401,7 @@ float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t 
         case MSML_DTYPE_F32:
             return tensor->buf.f32[v_idx];
         default:
-            msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+            msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -1386,7 +1417,7 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, 
             tensor->buf.f32[v_idx] = x;
             break;
         default:
-            msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+            msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -1519,7 +1550,7 @@ static void msml__storage_tensor_serialize_single(
 
     /* Write data */
     int64_t n = msml_tensor_buf_len(tensor);
-    msml_assert2(p+n*msml_dtype_info[tensor->dtype].size <= end);
+    msml_assert2(p+n*msml_get_dtype_info(tensor->dtype)->size <= end);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: {
             const float* t_p = tensor->buf.f32;
@@ -1534,7 +1565,7 @@ static void msml__storage_tensor_serialize_single(
             break;
         }
         default:
-            msml_panic("Unsupported data type: %s", msml_dtype_info[tensor->dtype].name);
+            msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 
     *pp = p;
