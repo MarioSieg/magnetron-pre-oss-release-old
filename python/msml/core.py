@@ -44,6 +44,7 @@ C = ffi.dlopen(MSML_LIB_PATH)
 
 # Define constants
 MAX_DIMS = 4
+MAX_ARG_TENSORS = 2
 DIM_MAX = 0x7fffffffffffffff
 
 # Define C types - keep in sync carefully with the C header file, only include what is needed
@@ -74,6 +75,10 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+    msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot);
+    void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg);
+    msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor);
+    void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op);
     msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor);
     void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
@@ -226,16 +231,16 @@ class Context:
 class Tensor:
     """Represents a tensor in the MSML library."""
 
-    def __init__(self, internal_instance=None):
+    def __init__(self, internal_instance: ffi.CData | None = None) -> None:
         self.tensor = internal_instance
         #ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
 
-    def __del__(self):
+    def __del__(self) -> None:
         """Destructor to release tensor resources."""
         if self.tensor is not None:
             self.tensor = None
 
-    def _create_internal(self, ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None):
+    def _create_internal(self, ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None) -> None:
         assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
         for dim in dims:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
@@ -243,24 +248,43 @@ class Tensor:
         if name is not None:
             self.name = name
 
-    def fill_zeros(self):
+    def get_arg(self, slot: int) -> 'Tensor':
+        return Tensor(C.msml_tensor_get_arg(self.tensor, slot))
+
+    def set_arg(self, slot: int, tensor: 'Tensor') -> None:
+        C.msml_tensor_set_arg(self.tensor, slot, tensor.tensor)
+
+    def get_op(self) -> Operation:
+        return Operation(C.msml_tensor_get_op(self.tensor))
+
+    def set_op(self, op: Operation) -> None:
+        C.msml_tensor_set_op(self.tensor, op.value)
+
+    def set_op_with_args(self, op: Operation, *args) -> None:
+        assert len(args) == op.argument_count, 'Argument count does not match required argument count for operation'
+        for i in range(0, len(args)):
+            assert isinstance(args[i], Tensor)
+            self.set_arg(i, args[i])
+        self.set_op(op)
+
+    def fill_zeros(self) -> None:
         """Sets all elements of the tensor to zero."""
         C.msml_tensor_fill_zero(self.tensor)
 
-    def fill_ones(self):
+    def fill_ones(self) -> None:
         """Sets all elements of the tensor to one."""
         C.msml_tensor_fill_one(self.tensor)
 
-    def fill(self, x: float):
+    def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""
         C.msml_tensor_fill(self.tensor, x)
 
-    def fill_random(self, interval: (float, float) = (0.0, 1.0)):
+    def fill_random(self, interval: (float, float) = (0.0, 1.0)) -> None:
         assert interval[0] < interval[1]
         """Sets all elements of the tensor to random values within [min, max]"""
         C.msml_tensor_fill_random(self.tensor, interval[0], interval[1])
 
-    def print(self, with_data: bool):
+    def print(self, with_data: bool) -> None:
         """Prints the tensor metadata and optionally its data."""
         C.msml_tensor_print(self.tensor, with_data)
 
@@ -270,7 +294,7 @@ class Tensor:
         return ffi.string(C.msml_tensor_get_name(self.tensor)).decode('utf-8')
 
     @name.setter
-    def name(self, name: str):
+    def name(self, name: str) -> None:
         """Sets a name for the tensor."""
         C.msml_tensor_set_name(self.tensor, bytes(name, 'utf-8'))
 
@@ -378,7 +402,7 @@ class Tensor:
         """Returns the scalar value at a physical index."""
         return C.msml_tensor_get_scalar_physical_index(self.tensor, d0, d1, d2, d3)
 
-    def set_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int, x: float):
+    def set_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int, x: float) -> None:
         """Sets the scalar value at a physical index."""
         C.msml_tensor_set_scalar_physical_index(self.tensor, d0, d1, d2, d3, x)
 
@@ -386,17 +410,17 @@ class Tensor:
         """Returns the scalar value at a virtual index."""
         return C.msml_tensor_get_scalar_virtual_index(self.tensor, v_idx)
 
-    def set_scalar_virtual_index(self, v_idx: int, x: float):
+    def set_scalar_virtual_index(self, v_idx: int, x: float) -> None:
         """Sets the scalar value at a virtual index."""
         C.msml_tensor_set_scalar_virtual_index(self.tensor, v_idx, x)
 
-    def save(self, file_path: str):
+    def save(self, file_path: str) -> None:
         """Saves to tensor to a binary MSML file"""
         if not file_path.endswith('.msml'):
             file_path += '.msml'
         C.msml_tensor_save(self.tensor, bytes(file_path, 'utf-8'))
 
-    def save_to_image(self, file_path: str):
+    def save_to_image(self, file_path: str) -> None:
         """Saves the tensor as an JPG image to a file."""
         assert self.rank == 3, 'Tensor must be a 3D image tensor'
         channels: int = self.image_channels
@@ -404,24 +428,24 @@ class Tensor:
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
-    def empty(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None):
+    def empty(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)
         return tensor
 
     @staticmethod
-    def isomorphic_clone(tensor):
+    def isomorphic_clone(tensor) -> 'Tensor':
         """Create new empty tensor with same shape as input, but without cloning data."""
         return Tensor(C.msml_tensor_isomorphic_clone(tensor.tensor))
 
     @staticmethod
-    def deep_clone(tensor):
+    def deep_clone(tensor) -> 'Tensor':
         """Create new tensor with same shape and data as input."""
         return Tensor(C.msml_tensor_deep_clone(tensor.tensor))
 
     @staticmethod
-    def zeros(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None):
+    def zeros(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with zeros."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)
@@ -429,7 +453,7 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def full(ctx: Context, dims: list[int], fill_value: float, dtype: DType = DType.F32, name: str | None = None):
+    def full(ctx: Context, dims: list[int], fill_value: float, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)
@@ -443,7 +467,7 @@ class Tensor:
 
     @staticmethod
     def random(ctx: Context, dims: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
-               name: str | None = None):
+               name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, dims, dtype, name)
@@ -451,7 +475,7 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def load(ctx: Context, file_path: str):
+    def load(ctx: Context, file_path: str) -> 'Tensor':
         assert file_path.endswith('.msml'), 'File must be a MSML file'
         """Loads a tensor from a binary MSML file."""
         instance = C.msml_tensor_load(ctx.ctx, bytes(file_path, 'utf-8'))
@@ -462,7 +486,7 @@ class Tensor:
                    name: str | None,
                    file_path: str,
                    desired_color_channels=DesiredColorChannels.AUTO,
-                   resize_to_dims: tuple[int, int] = (0, 0)):
+                   resize_to_dims: tuple[int, int] = (0, 0)) -> 'Tensor':
         """Loads an image from a file and creates a tensor from it."""
         instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
                                                    resize_to_dims[0], resize_to_dims[1])

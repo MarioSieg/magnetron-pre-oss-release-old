@@ -139,6 +139,8 @@ struct msml_tensor_t {
         float* f32;
     } buf;
     int64_t buf_size;
+    msml_op_t op;
+    msml_tensor_t* args[MSML_MAX_ARG_TENSORS];
     char name[MSML_MAX_TENSOR_NAME_LEN];
     void* user_data;
 };
@@ -619,6 +621,25 @@ msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
 
 msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
+}
+
+msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
+    msml_assert(slot < MSML_MAX_ARG_TENSORS, "Slot must be within [0, %d)", MSML_MAX_ARG_TENSORS);
+    return tensor->args[slot];
+}
+
+void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg) {
+    msml_assert(slot < MSML_MAX_ARG_TENSORS, "Slot must be within [0, %d)", MSML_MAX_ARG_TENSORS);
+    msml_assert(tensor->args[slot] == NULL, "Argument at slot #%zu already set", slot);
+    tensor->args[slot] = arg;
+}
+
+msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor) {
+    return tensor->op;
+}
+
+void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op) {
+    tensor->op = op;
 }
 
 msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor) {

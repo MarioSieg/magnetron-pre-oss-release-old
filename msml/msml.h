@@ -140,6 +140,7 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 #define MSML_FMT_X (MSML_FMT_UINT|MSML_FMT_T_HEX) /* 'x' format */
 #define MSML_FMT_G14 (MSML_FMT_G | ((14+1) << MSML_FMT_SH_PREC)) /* 'g' format with precision 14 */
 
+#define MSML_MAX_ARG_TENSORS 2
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
     _(NOP, "nop", 0)/* No Operation. */__\
@@ -172,6 +173,10 @@ extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4); /* Create 4D tensor */
+extern MSML_API msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot); /* Return arg at index or NULL if not set. */
+extern MSML_API void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg); /* Return arg at index or NULL if not set. */
+extern MSML_API msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor); /* Get opcode for tensor. */
+extern MSML_API void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op); /* Set opcode for tensor. */
 extern MSML_API msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor); /* Create new empty tensor with same shape as input, but without cloning data. */
 extern MSML_API msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input. */
 extern MSML_API void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size); /* Copy data into tensor buffer */
