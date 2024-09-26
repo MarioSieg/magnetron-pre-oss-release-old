@@ -14,16 +14,16 @@ from ctypes.util import find_library
 
 # Load shared library
 
-# Load shared library
+BUILD_DIR = 'release'
 
 msml_lib_locations: list[str] = []
 
 if platform.system() == 'Windows':
-    msml_lib_locations.append('../bin/debug/msml.dll')
+    msml_lib_locations.append(f'../bin/{BUILD_DIR}/msml.dll')
 elif platform.system() == 'Linux':
-    msml_lib_locations.append('../../bin/debug/libmsml.so')
+    msml_lib_locations.append(f'../../bin/{BUILD_DIR}/libmsml.so')
 elif platform.system() == 'Darwin':
-    msml_lib_locations.append('../bin/debug/libmsml.dylib')
+    msml_lib_locations.append(f'../bin/{BUILD_DIR}/libmsml.dylib')
 else:
     raise RuntimeError('Unsupported platform')
 

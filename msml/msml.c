@@ -1522,13 +1522,13 @@ static void msml__blas_add_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, dims)
     msml__load_local_storage_group(y, y_s, strides)
-    const int64_t rc = msml_tensor_num_rows(r);
+    const int64_t rc = msml_tensor_num_rows(x);
     const int64_t tidx = blas_ctx->thread_idx;
     const int64_t tc = blas_ctx->n_threads;
     const int64_t rpt = (rc + tc - 1)/tc;
     const int64_t row_start = rpt * tidx;
     const int64_t row_end = msml_min(row_start+rpt, rc);
-    if (msml_tensor_is_contiguous(y)) {
+    if (y_s0 == sizeof(float)) {
         for (int64_t row_i=row_start; row_i < row_end; ++row_i) {
             const int64_t x_i3 = row_i / (x_d2*x_d1);
             const int64_t x_i2 = (row_i - x_i3*x_d2*x_d1)/x_d1;
@@ -1575,13 +1575,13 @@ static void msml__blas_sub_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, dims)
     msml__load_local_storage_group(y, y_s, strides)
-    const int64_t rc = msml_tensor_num_rows(r);
+    const int64_t rc = msml_tensor_num_rows(x);
     const int64_t tidx = blas_ctx->thread_idx;
     const int64_t tc = blas_ctx->n_threads;
     const int64_t rpt = (rc + tc - 1)/tc;
     const int64_t row_start = rpt * tidx;
     const int64_t row_end = msml_min(row_start+rpt, rc);
-    if (msml_tensor_is_contiguous(y)) {
+    if (y_s0 == sizeof(float)) {
         for (int64_t row_i=row_start; row_i < row_end; ++row_i) {
             const int64_t x_i3 = row_i / (x_d2*x_d1);
             const int64_t x_i2 = (row_i - x_i3*x_d2*x_d1)/x_d1;
@@ -1628,13 +1628,13 @@ static void msml__blas_mul_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, dims)
     msml__load_local_storage_group(y, y_s, strides)
-    const int64_t rc = msml_tensor_num_rows(r);
+    const int64_t rc = msml_tensor_num_rows(x);
     const int64_t tidx = blas_ctx->thread_idx;
     const int64_t tc = blas_ctx->n_threads;
     const int64_t rpt = (rc + tc - 1)/tc;
     const int64_t row_start = rpt * tidx;
     const int64_t row_end = msml_min(row_start+rpt, rc);
-    if (msml_tensor_is_contiguous(y)) {
+    if (y_s0 == sizeof(float)) {
         for (int64_t row_i=row_start; row_i < row_end; ++row_i) {
             const int64_t x_i3 = row_i / (x_d2*x_d1);
             const int64_t x_i2 = (row_i - x_i3*x_d2*x_d1)/x_d1;
@@ -1681,13 +1681,13 @@ static void msml__blas_div_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, dims)
     msml__load_local_storage_group(y, y_s, strides)
-    const int64_t rc = msml_tensor_num_rows(r);
+    const int64_t rc = msml_tensor_num_rows(x);
     const int64_t tidx = blas_ctx->thread_idx;
     const int64_t tc = blas_ctx->n_threads;
     const int64_t rpt = (rc + tc - 1)/tc;
     const int64_t row_start = rpt * tidx;
     const int64_t row_end = msml_min(row_start+rpt, rc);
-    if (msml_tensor_is_contiguous(y)) {
+    if (y_s0 == sizeof(float)) {
         for (int64_t row_i=row_start; row_i < row_end; ++row_i) {
             const int64_t x_i3 = row_i / (x_d2*x_d1);
             const int64_t x_i2 = (row_i - x_i3*x_d2*x_d1)/x_d1;
@@ -1752,19 +1752,14 @@ static void msml__blas_matmul_f32(
     }
 }
 
-static void MSML_HOTPROC msml__eval_compute_dag(const msml__blas_ctx* const blas_ctx, msml_tensor_t* const node) {
+static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_ctx* const blas_ctx, msml_tensor_t* const node) {
     if (!node || node->op == MSML_OP_NOP) return;
-    msml_tensor_t** args = node->args;
-    int valid_args = 0;
-    for (int i=0; i < MSML_MAX_ARG_TENSORS; ++i) { /* Eval parents */
-        //if (!args[i]) continue;
-        // TODO
+    msml_tensor_t** const args = node->args;
+    const int n_args = (int)msml_op_get_argcount(node->op);
+    for (int i=0; i < n_args; ++i) { /* Eval parents */
         msml_assert2(args[i] != 0);
-        ++valid_args;
-        msml__eval_compute_dag(blas_ctx, args[i]); /* Eval parent node recursive */
+        msml__compute_dag_eval(blas_ctx, args[i]); /* Eval parent node recursive */
     }
-    uint8_t required_args = msml_op_get_argcount(node->op);
-    msml_assert(valid_args == required_args, "Invalid argument count of op. Required: %d, Given: %d", (int)required_args, (int)valid_args);
     /* TODO: computed goto */
     switch (node->op) {
         default:
@@ -1782,7 +1777,7 @@ void MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor) {
         .n_threads = 1,
         .thread_idx = 0
     };
-    msml__eval_compute_dag(&blas_ctx, tensor);
+    msml__compute_dag_eval(& blas_ctx, tensor);
 }
 
 #define msml__save_fwrite(f, file_name, data, size) \
