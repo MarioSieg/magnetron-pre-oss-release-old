@@ -70,7 +70,7 @@ ffi.cdef(f'''
     uint8_t msml_op_get_argcount(msml_op_t op);
 
     msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank);
+    msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* shape, int64_t rank);
     msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
@@ -109,9 +109,10 @@ ffi.cdef(f'''
     void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x);
     float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
+    void msml_tensor_evaluate(msml_tensor_t* tensor);
+    
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
     msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
-
     msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
 ''')
@@ -240,11 +241,11 @@ class Tensor:
         if self.tensor is not None:
             self.tensor = None
 
-    def _create_internal(self, ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None) -> None:
-        assert 0 < len(dims) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
-        for dim in dims:
+    def _create_internal(self, ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> None:
+        assert 0 < len(shape) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
+        for dim in shape:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
-        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, dims, len(dims))
+        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, shape, len(shape))
         if name is not None:
             self.name = name
 
@@ -266,6 +267,9 @@ class Tensor:
             assert isinstance(args[i], Tensor)
             self.set_arg(i, args[i])
         self.set_op(op)
+
+    def eval(self) -> None:
+        C.msml_tensor_evaluate(self.tensor)
 
     def fill_zeros(self) -> None:
         """Sets all elements of the tensor to zero."""
@@ -304,7 +308,7 @@ class Tensor:
         return C.msml_tensor_rank(self.tensor)
 
     @property
-    def dims(self) -> list[int]:
+    def shape(self) -> list[int]:
         """Returns the dimensions of the tensor."""
         ptr = C.msml_tensor_dims(self.tensor)
         return [ptr[i] for i in range(self.rank)]
@@ -371,17 +375,17 @@ class Tensor:
     @property
     def image_width(self) -> int:
         """Returns the width of the image tensor. (Equals to the first dimension)"""
-        return self.dims[0]
+        return self.shape[0]
 
     @property
     def image_height(self) -> int:
         """Returns the height of the image tensor. (Equals to the second dimension)"""
-        return self.dims[1]
+        return self.shape[1]
 
     @property
     def image_channels(self) -> int:
         """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
-        return self.dims[2]
+        return self.shape[2]
 
     def virtual_to_physical_index(self, v_idx: int) -> list[int]:
         """Converts a virtual index to a physical index."""
@@ -428,10 +432,10 @@ class Tensor:
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
-    def empty(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+    def empty(ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, dims, dtype, name)
+        tensor._create_internal(ctx, shape, dtype, name)
         return tensor
 
     @staticmethod
@@ -445,18 +449,18 @@ class Tensor:
         return Tensor(C.msml_tensor_deep_clone(tensor.tensor))
 
     @staticmethod
-    def zeros(ctx: Context, dims: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+    def zeros(ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with zeros."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, dims, dtype, name)
+        tensor._create_internal(ctx, shape, dtype, name)
         tensor.fill_zeros()
         return tensor
 
     @staticmethod
-    def full(ctx: Context, dims: list[int], fill_value: float, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+    def full(ctx: Context, shape: list[int], fill_value: float, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, dims, dtype, name)
+        tensor._create_internal(ctx, shape, dtype, name)
         if fill_value == 0.0:
             tensor.fill_zeros()
         elif fill_value == 1.0:
@@ -466,11 +470,11 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def random(ctx: Context, dims: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
+    def random(ctx: Context, shape: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
                name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
-        tensor._create_internal(ctx, dims, dtype, name)
+        tensor._create_internal(ctx, shape, dtype, name)
         tensor.fill_random(interval)
         return tensor
 
