@@ -9,7 +9,8 @@ import numpy as np
 
 
 def to_numpy(tensor: Tensor) -> np.array:
-    return np.array(tensor.fetch_buf_data_f32(), dtype=np.float32).reshape(tensor.shape)
+    buffer: list[float] = tensor.fetch_buf_data_f32()
+    return np.array(buffer, dtype=np.float32).reshape(tensor.shape)
 
 
 def plot_tensor(tensor: Tensor, title: str | None = None) -> None:

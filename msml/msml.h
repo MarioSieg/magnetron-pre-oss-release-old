@@ -35,7 +35,7 @@ extern "C" {
 #define MSML_VERSION msml_version_pack(0, 1) /* MSML library version. */
 #define MSML_STORAGE_VERSION 1 /* MSML tensor storage file format version. */
 #define MSML_DEFAULT_CHUNK_SIZE (1ull<<30) /* Default size of memory chunk in bytes. 1 GiB */
-#define MSML_DEFAULT_CHUNK_CAP (1ull<<3)   /* Default capacity of memory chunk */
+#define MSML_DEFAULT_CHUNK_CAP 128   /* Default capacity of memory chunk */
 #define MSML_MAX_DIMS 4                 /* Maximum number of dimensions for a tensor */
 #define MSML_MAX_TENSOR_NAME_LEN 64     /* Maximum length for tensor name */
 #define msml_assert_name2(name, line) name ## line
@@ -57,14 +57,16 @@ typedef struct msml_ctx_info_t {
     void* (*alloc_fn)(void* blk, size_t size);  /* Custom allocator function */
     size_t pool_chunk_size;                     /* Size of each memory pool chunk */
     size_t pool_chunks_cap;                     /* Maximum chunks in the pool */
-    uint64_t prng_seed;                           /* Seed for PRNG if prng_init_seed == true */
-    void* user_data;                            /* User-defined data */
+    uint64_t prng_seed;                         /* Seed for PRNG if prng_init_seed == true */
+    bool warmup_chunks;                         /* If true, fresh pool chunks are filled to allocate kernel pages, can improve performance depending on scenario. */
     msml_prng_algorithm_t prng_algorithm;       /* PRNG algorithm */
+    void* user_data;                            /* User-defined data */
 } msml_ctx_info_t;
 
 typedef struct msml_ctx_t msml_ctx_t; /* Opaque context type for managing memory pools */
 
-extern MSML_API msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info); /* Create context with allocator and pool info */
+extern MSML_API msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info); /* Create context with configuration data. */
+extern MSML_API msml_ctx_t* msml_ctx_create2(size_t pool_chunk_size); /* Create context with just pool chunk size. */
 extern MSML_API void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size); /* Allocate memory from pool */
 extern MSML_API void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align); /* Aligned memory allocation */
 extern MSML_API size_t msml_ctx_total_memory(const msml_ctx_t* ctx); /* Get total allocated memory */
@@ -184,6 +186,7 @@ extern MSML_API void msml_tensor_fill_zero(msml_tensor_t* tensor); /* Set all te
 extern MSML_API void msml_tensor_fill_one(msml_tensor_t* tensor); /* Set all tensor elements to one */
 extern MSML_API void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
 extern MSML_API void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max); /* Fill tensor with random values within [min, max] */
+extern MSML_API size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor); /* Return memory used by this tensor in bytes. */
 extern MSML_API void msml_tensor_print(const msml_tensor_t* tensor, bool with_data); /* Print tensor info (with or without data) */
 extern MSML_API void msml_tensor_set_name(msml_tensor_t* tensor, const char* name); /* Set the name of the tensor */
 extern MSML_API const char* msml_tensor_get_name(const msml_tensor_t* tensor); /* Get the name of the tensor */

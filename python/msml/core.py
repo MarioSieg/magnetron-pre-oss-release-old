@@ -14,7 +14,7 @@ from ctypes.util import find_library
 
 # Load shared library
 
-BUILD_DIR = 'release'
+BUILD_DIR = 'debug'
 
 msml_lib_locations: list[str] = []
 
@@ -60,6 +60,7 @@ ffi.cdef(f'''
     typedef struct msml_tensor_t msml_tensor_t;
 
     msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
+    msml_ctx_t* msml_ctx_create2(size_t pool_chunk_size);
     size_t msml_ctx_total_memory(const msml_ctx_t* ctx);
     msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx);
     void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed);
@@ -86,6 +87,7 @@ ffi.cdef(f'''
     void msml_tensor_fill_one(msml_tensor_t* tensor);
     void msml_tensor_fill(msml_tensor_t* tensor, float x);
     void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max);
+    size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor);
     void msml_tensor_print(const msml_tensor_t* tensor, bool with_data);
     void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
     const char* msml_tensor_get_name(const msml_tensor_t* tensor);
@@ -202,8 +204,8 @@ class Operation(Enum):
 class Context:
     """Manages the MSML context and tensor lifecycles."""
 
-    def __init__(self):
-        self.ctx = C.msml_ctx_create(ffi.NULL)
+    def __init__(self, pool_chunk_size: int = 2 * (1 << 30)):  # Pool chunk size. Default: 2GiB
+        self.ctx = C.msml_ctx_create2(pool_chunk_size)
         # Use weak references to manage the lifecycle of tensors, as they are owned by the context
         self.allocated_tensors = weakref.WeakSet()
 
@@ -241,7 +243,8 @@ class Tensor:
         if self.tensor is not None:
             self.tensor = None
 
-    def _create_internal(self, ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> None:
+    def _create_internal(self, ctx: Context, shape: list[int], dtype: DType = DType.F32,
+                         name: str | None = None) -> None:
         assert 0 < len(shape) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
         for dim in shape:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
@@ -457,7 +460,8 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def full(ctx: Context, shape: list[int], fill_value: float, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+    def full(ctx: Context, shape: list[int], fill_value: float, dtype: DType = DType.F32,
+             name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, shape, dtype, name)
