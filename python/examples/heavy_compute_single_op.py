@@ -13,7 +13,7 @@ X.name = 'Coefficient'
 X.fill(3)
 
 img = R * X
-
+print(img.num_elements)
 now: int = time.time_ns()
 img.eval()
 time_took: float = (time.time_ns() - now) / 1_000_000_000

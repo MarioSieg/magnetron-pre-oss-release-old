@@ -337,6 +337,11 @@ class Tensor:
         """Returns the size of the tensor buffer in bytes."""
         return C.msml_tensor_buf_size(self.tensor)
 
+    @property
+    def num_elements(self) -> int:
+        """Returns the size of the tensor buffer in bytes."""
+        return C.msml_tensor_buf_len(self.tensor)
+
     def fetch_buf_data(self) -> bytes:
         """Returns the data of the tensor buffer."""
         return ffi.buffer(self.buf(), self.buf_size)[:]
