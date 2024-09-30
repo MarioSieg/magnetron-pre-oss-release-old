@@ -112,6 +112,8 @@ ffi.cdef(f'''
     void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x);
     float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
+    bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
+    bool msml_tensor_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
     void msml_tensor_evaluate(msml_tensor_t* tensor);
     
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
@@ -119,6 +121,7 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
     void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
 ''')
+
 
 # Define Python wrapper classes
 
@@ -129,6 +132,7 @@ def humanize_memory_size(size: int) -> str:
         size /= 1024
         unit += 1
     return f'{size:.2f} {units[unit]}'
+
 
 class PRNGAlgorithm(Enum):
     MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
@@ -425,6 +429,15 @@ class Tensor:
         """Sets the scalar value at a virtual index."""
         C.msml_tensor_set_scalar_virtual_index(self.tensor, v_idx, x)
 
+    def is_close(self, other: 'Tensor', eps: float = -1.0, print_eq_percent: bool = False) -> (bool, float):
+        """Checks if the tensor is close to another tensor within a given epsilon."""
+        """Returns a tuple with a boolean indicating if the tensors are close and the percentage of equal elements."""
+        percent_eq = ffi.new(f'double[1]')
+        is_eq: bool = C.msml_tensor_close(self.tensor, other.tensor, eps, percent_eq)
+        if print_eq_percent:
+            print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
+        return is_eq, percent_eq[0]
+
     def save(self, file_path: str) -> None:
         """Saves to tensor to a binary MSML file"""
         if not file_path.endswith('.msml'):
@@ -535,3 +548,6 @@ class Tensor:
         result = self.isomorphic_clone(self)
         result.set_op_with_args(Operation.MATMUL, self, other)
         return result
+
+    def __eq__(self, other: 'Tensor') -> bool:
+        return C.msml_tensor_eq(self.tensor, other.tensor)
