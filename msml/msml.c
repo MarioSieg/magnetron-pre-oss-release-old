@@ -1477,9 +1477,11 @@ bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b) {
         case MSML_DTYPE_F32: {
             const float* buf_a = (const float*)a->buf;
             const float* buf_b = (const float*)b->buf;
-            for (int64_t i = 0; i < n; ++i)
-                if (buf_a[i] != buf_b[i])
+            for (int64_t i = 0; i < n; ++i) {
+                if (buf_a[i] != buf_b[i]) {
                     return false;
+                }
+            }
         } break;
         default:
             msml_panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
@@ -1499,9 +1501,11 @@ bool msml_tensor_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps
         case MSML_DTYPE_F32: {
             const float* buf_a = (const float*)a->buf;
             const float* buf_b = (const float*)b->buf;
-            for (int64_t i = 0; i < n; ++i)
-                if (fabsf(buf_a[i] - buf_b[i]) <= eps) /* |x - y| <= ε     ∀ x, y ∈ A, B */
+            for (int64_t i = 0; i < n; ++i) {
+                if (fabsf(buf_a[i] - buf_b[i]) <= eps) { /* |x - y| <= ε     ∀ x, y ∈ A, B */
                     ++n_eq;
+                }
+            }
         } break;
         default:
             msml_panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
