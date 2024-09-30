@@ -121,7 +121,7 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 
 #define MSML_FMT_SH_WIDTH 16    /* Shift width for formatting */
 #define MSML_FMT_SH_PREC  24    /* Shift precision for formatting */
-#define MSML_FMT_TYPE(sf) ((FormatType)((sf) & 15))  /* Extract format type */
+#define MSML_FMT_TYPE(sf) ((msml_format_type)((sf) & 15))  /* Extract format type */
 #define MSML_FMT_WIDTH(sf) (((sf) >> MSML_FMT_SH_WIDTH) & 255u) /* Extract width */
 #define MSML_FMT_PREC(sf) ((((sf) >> MSML_FMT_SH_PREC) & 255u) - 1u) /* Extract precision */
 #define MSML_FMT_FP(sf) (((sf) >> 4) & 3) /* Extract floating-point format */
@@ -191,10 +191,11 @@ extern MSML_API void msml_tensor_print(const msml_tensor_t* tensor, bool with_da
 extern MSML_API void msml_tensor_set_name(msml_tensor_t* tensor, const char* name); /* Set the name of the tensor */
 extern MSML_API const char* msml_tensor_get_name(const msml_tensor_t* tensor); /* Get the name of the tensor */
 extern MSML_API int64_t msml_tensor_rank(const msml_tensor_t* tensor); /* Get the rank (number of dimensions) of the tensor */
-extern MSML_API const int64_t* msml_tensor_dims(const msml_tensor_t* tensor); /* Get the dimensions of the tensor */
+extern MSML_API const int64_t* msml_tensor_shape(const msml_tensor_t* tensor); /* Get the dimensions of the tensor */
 extern MSML_API const int64_t* msml_tensor_strides(const msml_tensor_t* tensor); /* Get the strides of the tensor */
 extern MSML_API msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor); /* Get the data type of the tensor */
 extern MSML_API void* msml_tensor_buf(const msml_tensor_t* tensor); /* Get the tensor buffer pointer */
+extern MSML_API float* msml_tensor_buf_f32(const msml_tensor_t* tensor); /* Get the tensor buffer pointer as float pointer. Only valid if tensor's dtype is f32, else panics. */
 extern MSML_API int64_t msml_tensor_buf_size(const msml_tensor_t* tensor); /* Get the size of the tensor buffer */
 extern MSML_API int64_t msml_tensor_buf_len(const msml_tensor_t* tensor); /* Get the length of the tensor buffer */
 extern MSML_API int64_t msml_tensor_num_rows(const msml_tensor_t* tensor); /* Get the number of rows (for 2D tensors) */

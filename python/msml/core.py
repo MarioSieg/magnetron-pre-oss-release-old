@@ -92,10 +92,11 @@ ffi.cdef(f'''
     void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
     const char* msml_tensor_get_name(const msml_tensor_t* tensor);
     int64_t msml_tensor_rank(const msml_tensor_t* tensor);
-    const int64_t* msml_tensor_dims(const msml_tensor_t* tensor);
+    const int64_t* msml_tensor_shape(const msml_tensor_t* tensor);
     const int64_t* msml_tensor_strides(const msml_tensor_t* tensor);
     msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor);
     void* msml_tensor_buf(const msml_tensor_t* tensor);
+    float* msml_tensor_buf_f32(const msml_tensor_t* tensor);
     int64_t msml_tensor_buf_size(const msml_tensor_t* tensor);
     int64_t msml_tensor_buf_len(const msml_tensor_t* tensor);
     int64_t msml_tensor_num_rows(const msml_tensor_t* tensor);
@@ -119,8 +120,15 @@ ffi.cdef(f'''
     void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
 ''')
 
-
 # Define Python wrapper classes
+
+def humanize_memory_size(size: int) -> str:
+    units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
+    unit = 0
+    while size >= 1024 and unit < len(units) - 1:
+        size /= 1024
+        unit += 1
+    return f'{size:.2f} {units[unit]}'
 
 class PRNGAlgorithm(Enum):
     MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
@@ -313,7 +321,7 @@ class Tensor:
     @property
     def shape(self) -> list[int]:
         """Returns the dimensions of the tensor."""
-        ptr = C.msml_tensor_dims(self.tensor)
+        ptr = C.msml_tensor_shape(self.tensor)
         return [ptr[i] for i in range(self.rank)]
 
     @property
@@ -323,14 +331,9 @@ class Tensor:
         return [ptr[i] for i in range(self.rank)]
 
     @property
-    def dtype(self) -> int:
+    def dtype(self) -> DType:
         """Returns the data type of the tensor."""
-        return C.msml_tensor_dtype(self.tensor)
-
-    @property
-    def buf(self) -> ffi.CData:
-        """Returns the raw buffer of the tensor."""
-        return C.msml_tensor_buf(self.tensor)
+        return DType(C.msml_tensor_dtype(self.tensor))
 
     @property
     def buf_size(self) -> int:
@@ -342,13 +345,9 @@ class Tensor:
         """Returns the size of the tensor buffer in bytes."""
         return C.msml_tensor_buf_len(self.tensor)
 
-    def fetch_buf_data(self) -> bytes:
-        """Returns the data of the tensor buffer."""
-        return ffi.buffer(self.buf(), self.buf_size)[:]
-
-    def fetch_buf_data_f32(self) -> list[float]:
+    def f32_data(self) -> list[float]:
         """Returns the data of the tensor buffer as a list of floats."""
-        return list(ffi.unpack(ffi.cast('const float*', self.buf), self.buf_size // ffi.sizeof('float')))
+        return ffi.unpack(C.msml_tensor_buf_f32(self.tensor), self.buf_size)
 
     @property
     def num_rows(self) -> int:
@@ -503,7 +502,14 @@ class Tensor:
         """Loads an image from a file and creates a tensor from it."""
         instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
                                                    resize_to_dims[0], resize_to_dims[1])
-        return Tensor(internal_instance=instance)
+        tensor = Tensor(internal_instance=instance)
+        if name is not None:
+            tensor.name = name
+        return tensor
+
+    def __str__(self) -> str:
+        fmt: str = f'Tensor {'?' if self.name == '' else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
+        return fmt
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
         result = self.isomorphic_clone(self)
