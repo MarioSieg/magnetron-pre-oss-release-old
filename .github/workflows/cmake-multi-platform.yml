@@ -67,7 +67,7 @@ jobs:
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -j4
 
     - name: Prepare Test Data # Copy test data folder to test build directory
-      run: cp -r ${{ github.workspace }}/test_data ${{ steps.strings.outputs.build-output-dir }}
+      run: cp -r ${{ github.workspace }}/test_data ${{ steps.strings.outputs.build-output-dir }}/test_data
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
