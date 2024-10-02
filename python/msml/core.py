@@ -40,6 +40,7 @@ if MSML_LIB_PATH is None:  # If not found, try to find the shared library in the
 assert MSML_LIB_PATH is not None, 'MSML shared library not found'
 
 ffi = FFI()
+ffi.dlopen('m')
 C = ffi.dlopen(MSML_LIB_PATH)
 
 # Define constants
@@ -560,7 +561,7 @@ class Tensor:
         return result
 
     def __str__(self) -> str:
-        fmt: str = f'Tensor {'?' if self.name == '' else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
+        fmt: str = f'Tensor {"?" if self.name == "" else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
         return fmt
 
     def __add__(self, other: 'Tensor') -> 'Tensor':

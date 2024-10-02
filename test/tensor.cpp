@@ -162,8 +162,8 @@ TEST(msml_tensor_t, arg_getset) {
 
 TEST(msml_tensor_t, arg_invalid_slot) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
-    msml_tensor_t* arg1 = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 10);
-    msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
+    [[maybe_unused]] msml_tensor_t* arg1 = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 10);
+    [[maybe_unused]] msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
 
     //ASSERT_DEATH_IF_SUPPORTED(msml_tensor_set_arg(tensor, 128, arg1), {});
 
@@ -339,7 +339,7 @@ TEST(msml_tensor_t, random_pcg) {
     std::vector<float> set {};
     set.reserve(msml_tensor_buf_len(tensor));
 
-    for (size_t i = 0; i < msml_tensor_buf_len(tensor); ++i) {
+    for (int64_t i = 0; i < msml_tensor_buf_len(tensor); ++i) {
         float x = buf[i];
         ASSERT_GT(x, rmin);
         ASSERT_LT(x, rmax);
@@ -371,7 +371,7 @@ TEST(msml_tensor_t, random_mersenne) {
     std::vector<float> set {};
     set.reserve(msml_tensor_buf_len(tensor));
 
-    for (size_t i = 0; i < msml_tensor_buf_len(tensor); ++i) {
+    for (int64_t i = 0; i < msml_tensor_buf_len(tensor); ++i) {
         float x = buf[i];
         ASSERT_GT(x, rmin);
         ASSERT_LT(x, rmax);

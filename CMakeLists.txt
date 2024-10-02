@@ -14,6 +14,7 @@ endif()
 add_library(msml SHARED msml/msml.h msml/msml.c)
 target_include_directories(msml PRIVATE msml/optional)
 if (NOT WIN32)
+    target_link_libraries(msml m)
     target_compile_options(msml PRIVATE
         -Wall
         -Werror

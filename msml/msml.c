@@ -363,7 +363,8 @@ static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { 
 #ifdef _MSC_VER
     int64_t high;
     int64_t low = _mul128(a, b, &high);
-    int64_t sign = low>>63;
+
+    int64_t sign = low >> 63;
     if (high == sign) {
         *out = low;
         return false;
@@ -1606,7 +1607,7 @@ static void MSML_HOTPROC msml__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (
     float* const o,
     const float* const x
 ) {
-    msml__vsoftmax_f32(n, o, x);
+    return msml__vsoftmax_f32(n, o, x);
 }
 
 static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
@@ -1749,6 +1750,12 @@ msml__blas_impl_unary_op(gelu_f32, float, msml__vgelu_f32)
 msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
 
 #undef msml__blas_impl_unary_op
+
+/*
+* const int64_t x_i3 = ri / (x_d2 * x_d1);
+* const int64_t x_i2 = (ri / x_d1) % x_d2;
+* const int64_t x_i1 = ri % x_d1;
+*/
 
 #define msml__blas_impl_binary_op(name, T, vec_op, scalar_op) \
     static void MSML_HOTPROC msml__blas_##name( \

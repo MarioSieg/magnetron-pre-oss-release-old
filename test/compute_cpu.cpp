@@ -127,7 +127,6 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             \
             msml_tensor_evaluate(r); \
             const auto* b_x = msml_tensor_buf_f32(x); \
-            const auto* b_y = msml_tensor_buf_f32(y); \
             const auto* b_r = msml_tensor_buf_f32(r); \
             ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(x)); \
             ASSERT_NE(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
