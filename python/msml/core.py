@@ -105,6 +105,9 @@ ffi.cdef(f'''
     bool msml_tensor_is_vector(const msml_tensor_t* tensor);
     bool msml_tensor_is_matrix(const msml_tensor_t* tensor);
     bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor);
+    bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_t* b);
+    bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b);
+    bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b);
     void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[{MAX_DIMS}]);
     int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[{MAX_DIMS}]);
     bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
@@ -113,7 +116,7 @@ ffi.cdef(f'''
     float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
     bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
-    bool msml_tensor_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
+    bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
     void msml_tensor_evaluate(msml_tensor_t* tensor);
     
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
@@ -383,6 +386,18 @@ class Tensor:
         """Checks if the tensor is a higher-order 3D tensor."""
         return C.msml_tensor_is_higher_order_3d(self.tensor)
 
+    def is_shape_eq(self, other: 'Tensor') -> bool:
+        """Checks if the shape is equal to another tensor."""
+        return C.msml_tensor_is_shape_eq(self.tensor, other.tensor)
+
+    def are_strides_eq(self, other: 'Tensor') -> bool:
+        """Checks if the strides are equal to another tensor."""
+        return C.msml_tensor_are_strides_eq(self.tensor, other.tensor)
+
+    def can_broadcast(self, other: 'Tensor') -> bool:
+        """Checks second tensor can be broadcasted into self."""
+        return C.msml_tensor_can_broadcast(self.tensor, other.tensor)
+
     @property
     def image_width(self) -> int:
         """Returns the width of the image tensor. (Equals to the first dimension)"""
@@ -433,7 +448,7 @@ class Tensor:
         """Checks if the tensor is close to another tensor within a given epsilon."""
         """Returns a tuple with a boolean indicating if the tensors are close and the percentage of equal elements."""
         percent_eq = ffi.new(f'double[1]')
-        is_eq: bool = C.msml_tensor_close(self.tensor, other.tensor, eps, percent_eq)
+        is_eq: bool = C.msml_tensor_isclose(self.tensor, other.tensor, eps, percent_eq)
         if print_eq_percent:
             print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
         return is_eq, percent_eq[0]

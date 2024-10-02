@@ -182,8 +182,6 @@ extern MSML_API void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op); /*
 extern MSML_API msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor); /* Create new empty tensor with same shape as input, but without cloning data. */
 extern MSML_API msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input. */
 extern MSML_API void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size); /* Copy data into tensor buffer */
-extern MSML_API void msml_tensor_fill_zero(msml_tensor_t* tensor); /* Set all tensor elements to zero */
-extern MSML_API void msml_tensor_fill_one(msml_tensor_t* tensor); /* Set all tensor elements to one */
 extern MSML_API void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
 extern MSML_API void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max); /* Fill tensor with random values within [min, max] */
 extern MSML_API size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor); /* Return memory used by this tensor in bytes. */
@@ -204,6 +202,9 @@ extern MSML_API bool msml_tensor_is_scalar(const msml_tensor_t* tensor); /* Chec
 extern MSML_API bool msml_tensor_is_vector(const msml_tensor_t* tensor); /* Check if the tensor is a vector */
 extern MSML_API bool msml_tensor_is_matrix(const msml_tensor_t* tensor); /* Check if the tensor is a matrix */
 extern MSML_API bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor); /* Check if the tensor is higher-order (3D or more) */
+extern MSML_API bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if a and b have the same shape. */
+extern MSML_API bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if a and b have the same strides. */
+extern MSML_API bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if b can be broadcasted into a. */
 extern MSML_API void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert virtual index to physical index */
 extern MSML_API int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert physical index to virtual index */
 extern MSML_API bool msml_tensor_is_contiguous(const msml_tensor_t* tensor); /* Check if the tensor memory is contiguous */
@@ -212,7 +213,7 @@ extern MSML_API void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor
 extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx); /* Get scalar value at virtual index */
 extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_API bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
-extern MSML_API bool msml_tensor_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
+extern MSML_API bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
 extern MSML_API void msml_tensor_evaluate(msml_tensor_t* tensor); /* Evaluate computation graph from root tensor. */
 
 extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */

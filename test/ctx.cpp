@@ -1,9 +1,12 @@
+// (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
+
 #include <gtest/gtest.h>
 #include <msml.h>
 
 TEST(msml_ctx_t, create_destroy) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
     ASSERT_NE(ctx, nullptr);
+    ASSERT_NE(0, msml_ctx_total_memory(ctx));
     msml_ctx_destroy(ctx);
 }
 
