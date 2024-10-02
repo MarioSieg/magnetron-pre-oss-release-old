@@ -173,6 +173,11 @@ typedef enum msml_op_t {
 msml_static_assert(MSML_OP_NOP == 0);
 msml_static_assert(MSML_OP__COUNT <= 0xff);
 
+typedef enum msml_graph_eval_order_t {
+    MSML_GRAPH_EVAL_ORDER_FORWARD = 0, /* Evaluate graph from left to right */
+    MSML_GRAPH_EVAL_ORDER_REVERSE = 1 /* Evaluate graph from right to left */
+} msml_graph_eval_order_t;
+
 extern MSML_API const char* msml_op_get_name(msml_op_t op);
 extern MSML_API const char* msml_op_get_mnemonic(msml_op_t op);
 extern MSML_API uint8_t msml_op_get_argcount(msml_op_t op);
@@ -226,7 +231,7 @@ extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* 
 extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_API bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern MSML_API bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
-extern MSML_API void msml_tensor_evaluate(msml_tensor_t* tensor); /* Evaluate computation graph from root tensor. */
+extern MSML_API void msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order); /* Evaluate computation graph from root tensor. */
 
 extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */
 extern MSML_API msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */

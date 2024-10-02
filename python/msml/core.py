@@ -55,6 +55,7 @@ ffi.cdef(f'''
     typedef int msml_dtype_t;
     typedef int msml_desired_color_channels_t;
     typedef int msml_op_t;
+    typedef int msml_graph_eval_order_t;
     
     typedef struct msml_tensor_t msml_tensor_t;
 
@@ -114,7 +115,7 @@ ffi.cdef(f'''
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
     bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
     bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
-    void msml_tensor_evaluate(msml_tensor_t* tensor);
+    void msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
     
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
     msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
@@ -224,6 +225,17 @@ class Operation(Enum):
     def is_binary(self) -> bool:
         return self.argument_count == 2
 
+class GraphEvalOrder(Enum):
+    """Enumerates the order in which the graph should be evaluated."""
+    FORWARD = 0  # Evaluate the graph in forward order (left-to-right)
+    REVERSE = 1  # Evaluate the graph in reverse order (right-to-left)
+
+    def __str__(self) -> str:
+        match self:
+            case GraphEvalOrder.FORWARD:
+                return 'Forward'
+            case GraphEvalOrder.REVERSE:
+                return 'Reverse'
 
 class Context:
     """Manages the MSML context and tensor lifecycles."""
@@ -295,8 +307,8 @@ class Tensor:
             self.set_arg(i, args[i])
         self.set_op(op)
 
-    def eval(self) -> None:
-        C.msml_tensor_evaluate(self.tensor)
+    def eval(self, order: GraphEvalOrder = GraphEvalOrder.FORWARD) -> None:
+        C.msml_tensor_evaluate(self.tensor, order.value)
 
     def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""

@@ -19,7 +19,7 @@
             msml_tensor_set_op(r, MSML_OP_##op); \
             msml_tensor_set_arg(r, 0, x); \
             \
-            msml_tensor_evaluate(r); \
+            msml_tensor_evaluate(r, MSML_GRAPH_EVAL_ORDER_FORWARD); \
             const auto* b_x = msml_tensor_buf_f32(x); \
             const auto* b_r = msml_tensor_buf_f32(r); \
             ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(r)); \
@@ -93,7 +93,7 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             msml_tensor_set_arg(r, 0, x); \
             msml_tensor_set_arg(r, 1, y); \
             \
-            msml_tensor_evaluate(r); \
+            msml_tensor_evaluate(r, MSML_GRAPH_EVAL_ORDER_FORWARD); \
             const auto* b_x = msml_tensor_buf_f32(x); \
             const auto* b_y = msml_tensor_buf_f32(y); \
             const auto* b_r = msml_tensor_buf_f32(r); \
@@ -125,7 +125,7 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             msml_tensor_set_arg(r, 0, x); \
             msml_tensor_set_arg(r, 1, y); \
             \
-            msml_tensor_evaluate(r); \
+            msml_tensor_evaluate(r, MSML_GRAPH_EVAL_ORDER_FORWARD); \
             const auto* b_x = msml_tensor_buf_f32(x); \
             const auto* b_r = msml_tensor_buf_f32(r); \
             ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(x)); \
@@ -155,7 +155,7 @@ TEST(compute_cpu, heavy_compute_single_op) {
     msml_tensor_set_op(Y, MSML_OP_MUL);
     msml_tensor_set_arg(Y, 0, R);
     msml_tensor_set_arg(Y, 1, X);
-    msml_tensor_evaluate(Y);
+    msml_tensor_evaluate(Y, MSML_GRAPH_EVAL_ORDER_FORWARD);
 
     msml_ctx_destroy(ctx);
 }
