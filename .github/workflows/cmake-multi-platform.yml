@@ -53,9 +53,6 @@ jobs:
       run: |
         echo "build-output-dir=${{ github.workspace }}/build" >> "$GITHUB_OUTPUT"
 
-    - name: Dump Working Directory
-      run: ls -la ${{ github.workspace }}
-
     - name: Configure CMake
       # Configure CMake in a 'build' subdirectory. `CMAKE_BUILD_TYPE` is only required if you are using a single-configuration generator such as make.
       # See https://cmake.org/cmake/help/latest/variable/CMAKE_BUILD_TYPE.html?highlight=cmake_build_type
@@ -69,11 +66,8 @@ jobs:
     - name: Build
       run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -j4
 
-    - name: Dump Build Directory
-      run: ls -la ${{ steps.strings.outputs.build-output-dir }}
-
     - name: Prepare Test Data # Copy test data folder to test build directory
-      run: cp -r ${{ github.workspace }}/test_data ${{ steps.strings.outputs.build-output-dir }}/test_data
+      run: cp -r ${{ github.workspace }}/test_data ${{ steps.strings.outputs.build-output-dir }}/test/test_data
 
     - name: Test
       working-directory: ${{ steps.strings.outputs.build-output-dir }}
