@@ -1606,7 +1606,7 @@ static void MSML_HOTPROC msml__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (
     float* const o,
     const float* const x
 ) {
-    return msml__vsoftmax_f32(n, o, x);
+    msml__vsoftmax_f32(n, o, x);
 }
 
 static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
