@@ -361,7 +361,16 @@ static uint32_t msml__crc32(const void* buf, size_t size) { /* Compute CRC32 che
 
 static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
 #ifdef _MSC_VER
-    msml_panic("NYI"); // TODO - maybe MSVC intrinsic available?
+    int64_t high;
+    int64_t low = _mul128(a, b, &high);
+    int64_t sign = low>>63;
+    if (high == sign) {
+        *out = low;
+        return false;
+    } else {
+        *out = low;
+        return true;
+    }
 #else
 #if __SIZEOF_LONG_LONG__ == 8 && __SIZEOF_LONG__ == 8
     return __builtin_smulll_overflow(a, b, (long long*)out);
