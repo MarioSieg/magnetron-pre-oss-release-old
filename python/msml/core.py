@@ -83,8 +83,6 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor);
     void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
-    void msml_tensor_fill_zero(msml_tensor_t* tensor);
-    void msml_tensor_fill_one(msml_tensor_t* tensor);
     void msml_tensor_fill(msml_tensor_t* tensor, float x);
     void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max);
     size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor);
@@ -301,14 +299,6 @@ class Tensor:
     def eval(self) -> None:
         C.msml_tensor_evaluate(self.tensor)
 
-    def fill_zeros(self) -> None:
-        """Sets all elements of the tensor to zero."""
-        C.msml_tensor_fill_zero(self.tensor)
-
-    def fill_ones(self) -> None:
-        """Sets all elements of the tensor to one."""
-        C.msml_tensor_fill_one(self.tensor)
-
     def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""
         C.msml_tensor_fill(self.tensor, x)
@@ -496,26 +486,18 @@ class Tensor:
         return Tensor(C.msml_tensor_deep_clone(tensor.tensor))
 
     @staticmethod
-    def zeros(ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
-        """Creates a tensor filled with zeros."""
-        tensor = Tensor(None)
-        tensor._create_internal(ctx, shape, dtype, name)
-        tensor.fill_zeros()
-        return tensor
-
-    @staticmethod
     def full(ctx: Context, shape: list[int], fill_value: float, dtype: DType = DType.F32,
              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, shape, dtype, name)
-        if fill_value == 0.0:
-            tensor.fill_zeros()
-        elif fill_value == 1.0:
-            tensor.fill_ones()
-        else:
-            tensor.fill(fill_value)
+        tensor.fill(fill_value)
         return tensor
+
+    @staticmethod
+    def zeros(ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+        """Creates a tensor filled with zeros."""
+        return Tensor.full(ctx, shape, 1.0, dtype, name)
 
     @staticmethod
     def random(ctx: Context, shape: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
