@@ -1516,8 +1516,9 @@ bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float e
 }
 
 /* CPU BLAS impl */
+#define MSML__GELU_COEFF 0.044715f
 
-static void msml__vadd_f32(
+static void MSML_HOTPROC msml__vadd_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -1528,7 +1529,7 @@ static void msml__vadd_f32(
     }
 }
 
-static void msml__vsub_f32(
+static void MSML_HOTPROC msml__vsub_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -1539,7 +1540,7 @@ static void msml__vsub_f32(
     }
 }
 
-static void msml__vmul_f32(
+static void MSML_HOTPROC msml__vmul_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -1550,7 +1551,7 @@ static void msml__vmul_f32(
     }
 }
 
-static void msml__vdiv_f32(
+static void MSML_HOTPROC msml__vdiv_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -1561,7 +1562,7 @@ static void msml__vdiv_f32(
     }
 }
 
-static float MSML_UNUSED msml__vdot_f32(
+static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
     const int64_t n,
     const float* const x,
     const float* const y
@@ -1573,13 +1574,167 @@ static float MSML_UNUSED msml__vdot_f32(
     return (float)r;
 }
 
+static void MSML_HOTPROC msml__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^x */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = expf(x[i]); /* e^x */
+    }
+}
+
+static void MSML_HOTPROC msml__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (0, ∞), x |-> e^x */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    return msml__vsoftmax_f32(n, o, x);
+}
+
+static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = 1.0f / (1.0f + expf(-x[i]));
+    }
+}
+
+static void MSML_HOTPROC msml__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> -(e^x / ((e^x + 1)^2)) */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        const float e_x = expf(x[i]);
+        const float e_x1 = e_x + 1.0f;
+        o[i] = -(e_x / (e_x1*e_x1));
+    }
+}
+
+static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> x |-> x/(1 + e^(-x)) */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = x[i] / (1.0f + expf(-x[i]));
+    }
+}
+
+static void MSML_HOTPROC msml__vsilu_dv_f32( /* silu' : ℝ -> TODO */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        msml_panic("NYI!");
+    }
+}
+
+static void MSML_HOTPROC msml__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = tanhf(x[i]);
+    }
+}
+
+static void MSML_HOTPROC msml__vtanh_dv_f32( /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        const float cx = coshf(x[i]);
+        o[i] = 1.0f / (cx*cx);
+    }
+}
+
+static void MSML_HOTPROC msml__vrelu_f32( /* relu : ℝ -> ℝ^+, x |-> max {x, 0} */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = msml_max(x[i], 0.0f);
+    }
+}
+
+static void MSML_HOTPROC msml__vrelu_dv_f32( /* relu' : ℝ -> ℝ^+, x |-> { 0 if x < 0, UB if x = 0, else 1 */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = x[i] <= 0.0f ? 0.0f : 1.0f; /* relu' is mathematically undefined for x = 0, but we return 0 in this case. */
+    }
+}
+
+static void MSML_HOTPROC msml__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = 0.5f*x[i]*(1.0f + tanhf(0.79788456080286535587989211986876f*x[i]*(1.0f + MSML__GELU_COEFF*x[i]*x[i])));
+    }
+}
+
+static void MSML_HOTPROC msml__vgelu_dv_f32( /* gelu' : ℝ -> ℝ, x |-> TODO */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        msml_panic("NYI"); /* TODO */
+    }
+}
+
 typedef struct msml__blas_ctx {
     int64_t n_threads;
     int64_t thread_idx;
 } msml__blas_ctx;
 
+#define msml__blas_impl_unary_op(name, T, vec_op) \
+    static void MSML_HOTPROC msml__blas_##name( \
+        const msml__blas_ctx* const blas_ctx, \
+        msml_tensor_t* const r, \
+        const msml_tensor_t* const x \
+    ) { \
+        msml_assert2(msml_tensor_is_shape_eq(x, r)); \
+        uint8_t* const b_r = (uint8_t*)r->buf; \
+        const uint8_t* const b_x = (const uint8_t*)x->buf; \
+        msml__load_local_storage_group(r, r_s, strides) \
+        msml__load_local_storage_group(x, x_s, strides) \
+        const int64_t rc = msml_tensor_num_rows(x); \
+        const int64_t cc = msml_tensor_num_cols(x); \
+        for (int64_t ri=0; ri < rc; ++ri) { \
+            vec_op(cc, (T*)(b_r + ri*r_s1), (const T*)(b_x + ri*x_s1)); \
+        } \
+    }
+
+msml__blas_impl_unary_op(softmax_f32, float, msml__vsoftmax_f32)
+msml__blas_impl_unary_op(softmax_dv_f32, float, msml__vsoftmax_dv_f32)
+msml__blas_impl_unary_op(sigmoid_f32, float, msml__vsigmoid_f32)
+msml__blas_impl_unary_op(sigmoid_dv_f32, float, msml__vsigmoid_dv_f32)
+msml__blas_impl_unary_op(silu_f32, float, msml__vsilu_f32)
+msml__blas_impl_unary_op(silu_dv_f32, float, msml__vsilu_dv_f32)
+msml__blas_impl_unary_op(tanh_f32, float, msml__vtanh_f32)
+msml__blas_impl_unary_op(tanh_dv_f32, float, msml__vtanh_dv_f32)
+msml__blas_impl_unary_op(relu_f32, float, msml__vrelu_f32)
+msml__blas_impl_unary_op(relu_dv_f32, float, msml__vrelu_dv_f32)
+msml__blas_impl_unary_op(gelu_f32, float, msml__vgelu_f32)
+msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
+
+#undef msml__blas_impl_unary_op
+
 #define msml__blas_impl_binary_op(name, T, vec_op, scalar_op) \
-    static void msml__blas_##name( \
+    static void MSML_HOTPROC msml__blas_##name( \
         const msml__blas_ctx* const blas_ctx, \
         msml_tensor_t* const r, \
         const msml_tensor_t* const x, \
@@ -1599,16 +1754,16 @@ typedef struct msml__blas_ctx {
         msml_assert2(r_s0 == sizeof(T)); \
         msml_assert2(x_s0 == sizeof(T)); \
         const int64_t rc = msml_tensor_num_rows(x);  \
-        const int64_t tidx = blas_ctx->thread_idx;  \
+        const int64_t ti = blas_ctx->thread_idx;  \
         const int64_t tc = blas_ctx->n_threads;  \
         const int64_t rpt = (rc + tc - 1)/tc;  \
-        const int64_t row_start = rpt * tidx;  \
-        const int64_t row_end = msml_min(row_start+rpt, rc); \
+        const int64_t rs = rpt * ti;  \
+        const int64_t re = msml_min(rs+rpt, rc); \
         if (y_s0 == sizeof(T)) { \
-            for (int64_t row_i=row_start; row_i < row_end; ++row_i) { \
-                const int64_t x_i3 = row_i / (x_d2*x_d1); \
-                const int64_t x_i2 = (row_i - x_i3*x_d2*x_d1)/x_d1; \
-                const int64_t x_i1 = row_i - x_i3*x_d2*x_d1 - x_i2*x_d1; \
+            for (int64_t ri=rs; ri < re; ++ri) { \
+                const int64_t x_i3 = ri / (x_d2*x_d1); \
+                const int64_t x_i2 = (ri - x_i3*x_d2*x_d1)/x_d1; \
+                const int64_t x_i1 = ri - x_i3*x_d2*x_d1 - x_i2*x_d1; \
                 const int64_t y_i3 = x_i3 % y_d3; \
                 const int64_t y_i2 = x_i2 % y_d2; \
                 const int64_t y_i1 = x_i1 % y_d1; \
@@ -1621,10 +1776,10 @@ typedef struct msml__blas_ctx {
                 } \
             } \
         } else { \
-            for (int64_t row_i=row_start; row_i < row_end; ++row_i) { \
-                const int64_t x_i3 = row_i / (x_d2*x_d1); \
-                const int64_t x_i2 = (row_i - x_i3*x_d2*x_d1)/x_d1; \
-                const int64_t x_i1 = row_i - x_i3*x_d2*x_d1 - x_i2*x_d1; \
+            for (int64_t ri=rs; ri < re; ++ri) { \
+                const int64_t x_i3 = ri / (x_d2*x_d1); \
+                const int64_t x_i2 = (ri - x_i3*x_d2*x_d1)/x_d1; \
+                const int64_t x_i1 = ri - x_i3*x_d2*x_d1 - x_i2*x_d1; \
                 const int64_t y_i3 = x_i3 % y_d3; \
                 const int64_t y_i2 = x_i2 % y_d2; \
                 const int64_t y_i1 = x_i1 % y_d1; \
@@ -1641,6 +1796,8 @@ msml__blas_impl_binary_op(add_f32, float, msml__vadd_f32, +)
 msml__blas_impl_binary_op(sub_f32, float, msml__vsub_f32, -)
 msml__blas_impl_binary_op(mul_f32, float, msml__vmul_f32, *)
 msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
+
+#undef msml__blas_impl_binary_op
 
 static void msml__blas_matmul_f32(
     const msml__blas_ctx* const blas_ctx,
@@ -1683,10 +1840,21 @@ static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_ctx* const blas
         msml_assert2(args[i] != 0);
         msml__compute_dag_eval(blas_ctx, args[i]); /* Eval parent node recursive */
     }
-    /* TODO: computed goto */
+    /* TODO: computed goto / dispatch table */
     switch (node->op) {
-        default:
-        case MSML_OP_NOP: return;
+        case MSML_OP_NOP: default: return;
+        case MSML_OP_SOFTMAX: msml__blas_softmax_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_SOFTMAX_DV: msml__blas_softmax_dv_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_SIGMOID: msml__blas_sigmoid_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_SIGMOID_DV: msml__blas_sigmoid_dv_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_SILU: msml__blas_silu_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_SILU_DV: msml__blas_silu_dv_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_TANH: msml__blas_tanh_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_TANH_DV: msml__blas_tanh_dv_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_RELU: msml__blas_relu_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_RELU_DV: msml__blas_relu_dv_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_GELU: msml__blas_gelu_f32(blas_ctx, node, args[0]); return;
+        case MSML_OP_GELU_DV: msml__blas_gelu_dv_f32(blas_ctx, node, args[0]); return;
         case MSML_OP_ADD: msml__blas_add_f32(blas_ctx, node, args[0], args[1]); return;
         case MSML_OP_SUB: msml__blas_sub_f32(blas_ctx, node, args[0], args[1]); return;
         case MSML_OP_MUL: msml__blas_mul_f32(blas_ctx, node, args[0], args[1]); return;

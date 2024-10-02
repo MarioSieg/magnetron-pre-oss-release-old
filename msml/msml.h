@@ -145,12 +145,24 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 #define MSML_MAX_ARG_TENSORS 2
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
-    _(NOP, "nop", 0)/* No Operation. */__\
-    _(ADD, "+", 2)/* R = A+B */__\
-    _(SUB, "-", 2)/* R = A-B */__\
-    _(MUL, "*", 2)/* R = A*B (Hadamard product). */__\
-    _(DIV, "/", 2)/* R = A/B. */__\
-    _(MATMUL, "@", 2)/* R = AB. (Matrix multiplication) */__
+    _(NOP,          "nop",      0)/* No Operation. */__\
+    _(SOFTMAX,      "softmax",  1)/* R = softmax(X) */__\
+    _(SOFTMAX_DV,   "softmax'", 1)/* R = softmax'(X) */__\
+    _(SIGMOID,      "sigmoid",  1)/* R = sigmoid(X) */__\
+    _(SIGMOID_DV,   "sigmoid'", 1)/* R = sigmoid'(X) */__\
+    _(SILU,         "SiLU",     1)/* R = silu(X) */__\
+    _(SILU_DV,      "SiLU'",    1)/* R = silu'(X) */__\
+    _(TANH,         "tanh",     1)/* R = tanh(X) */__\
+    _(TANH_DV,      "tanh'",    1)/* R = tanh'(X) */__\
+    _(RELU,         "ReLU",     1)/* R = relu(X) */__\
+    _(RELU_DV,      "ReLU'",    1)/* R = relu'(X) */__\
+    _(GELU,         "GeLU",     1)/* R = gelu(X) */__\
+    _(GELU_DV,      "GeLU'",    1)/* R = gelu'(X) */__\
+    _(ADD,          "+",        2)/* R = relu(X) */__\
+    _(SUB,          "-",        2)/* R = X-Y */__\
+    _(MUL,          "*",        2)/* R = X*Y (Hadamard prod) */__\
+    _(DIV,          "/",        2)/* R = X/Y. */__\
+    _(MATMUL,       "@",        2)/* R = XY. (Matmul) */__
 
 #define _(enumerator, mnemonic, argcount) MSML_OP_##enumerator
 typedef enum msml_op_t {

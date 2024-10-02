@@ -14,7 +14,7 @@ from ctypes.util import find_library
 
 # Load shared library
 
-BUILD_DIR = 'debug'
+BUILD_DIR = 'release'
 
 msml_lib_locations: list[str] = []
 
@@ -184,11 +184,23 @@ class DesiredColorChannels(Enum):
 class Operation(Enum):
     """A"""
     NOP = 0
-    ADD = 1
-    SUB = 2
-    MUL = 3
-    DIV = 4
-    MATMUL = 5
+    SOFTMAX = 1
+    SOFTMAX_DV = 2
+    SIGMOID = 3
+    SIGMOID_DV = 4
+    SILU = 5
+    SILU_DV = 6
+    TANH = 7
+    TANH_DV = 8
+    RELU = 9
+    RELU_DV = 10
+    GELU = 11
+    GELU_DV = 12
+    ADD = 13
+    SUB = 14
+    MUL = 15
+    DIV = 16
+    MATMUL = 17
 
     _COUNT = MATMUL + 1
 
@@ -534,6 +546,36 @@ class Tensor:
         if name is not None:
             tensor.name = name
         return tensor
+
+    def softmax(self, derivative: bool = False) -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.SOFTMAX_DV if derivative else Operation.SOFTMAX, self)
+        return result
+
+    def sigmoid(self, derivative: bool = False) -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
+        return result
+
+    def silu(self, derivative: bool = False) -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.SILU_DV if derivative else Operation.SILU, self)
+        return result
+
+    def tanh(self, derivative: bool = False) -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.TANH_DV if derivative else Operation.TANH, self)
+        return result
+
+    def relu(self, derivative: bool = False) -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.RELU_DV if derivative else Operation.RELU, self)
+        return result
+
+    def gelu(self, derivative: bool = False) -> 'Tensor':
+        result = self.isomorphic_clone(self)
+        result.set_op_with_args(Operation.GELU_DV if derivative else Operation.GELU, self)
+        return result
 
     def __str__(self) -> str:
         fmt: str = f'Tensor {'?' if self.name == '' else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
