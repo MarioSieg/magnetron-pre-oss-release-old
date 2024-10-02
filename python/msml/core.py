@@ -1,6 +1,4 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-# MSML - Single header STB-style machine learning library in C99.
-# MIT licensed.
 # Implements the core functionality of the MSML Python bindings. Requires the MSML shared library.
 
 import platform
@@ -332,13 +330,13 @@ class Tensor:
     def shape(self) -> list[int]:
         """Returns the dimensions of the tensor."""
         ptr = C.msml_tensor_shape(self.tensor)
-        return [ptr[i] for i in range(self.rank)]
+        return ffi.unpack(C.msml_tensor_shape(self.tensor), self.rank)
 
     @property
     def strides(self) -> list[int]:
         """Returns the strides of the tensor."""
         ptr = C.msml_tensor_strides(self.tensor)
-        return [ptr[i] for i in range(self.rank)]
+        return ffi.unpack(C.msml_tensor_strides(self.tensor), self.rank)
 
     @property
     def dtype(self) -> DType:
