@@ -182,7 +182,7 @@ extern MSML_API uint8_t msml_op_get_argcount(msml_op_t op);
 typedef struct msml_tensor_t msml_tensor_t; /* Opaque type representing a tensor */
 
 extern MSML_API msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor); /* Get the context of the tensor */
-extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank); /* Create a tensor with specified dimensions */
+extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* slice, size_t slice_offset); /* Create a tensor with specified dimensions */
 extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1); /* Create 1D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */

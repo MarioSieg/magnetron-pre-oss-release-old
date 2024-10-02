@@ -140,6 +140,8 @@ struct msml_tensor_t {
     int64_t buf_size;
     msml_op_t op;
     msml_tensor_t* args[MSML_MAX_ARG_TENSORS];
+    msml_tensor_t* slice;
+    size_t slice_offset;
     char name[MSML_MAX_TENSOR_NAME_LEN];
     void* user_data;
 };
@@ -1164,15 +1166,20 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
     return tensor->ctx;
 }
 
-msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank) {
+msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* slice, size_t slice_offset) {
     msml_assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
+    if (slice && slice->slice) { /* Accumulate relative slice offset. */
+        slice_offset += slice->slice_offset;
+        slice = slice->slice;
+    }
     int64_t scalar_size = msml_get_dtype_info(type)->size;
     int64_t buf_size = scalar_size;
     for (int64_t i=0; i < rank; ++i) {
         msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
         msml_assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
     }
-    msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + buf_size); /* Allocate memory for tensor struct and data */
+    msml_assert2(!slice || !buf_size || buf_size + slice_offset <= slice->buf_size); /* Slice must be within sliced tensor data range. */
+    msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + (slice ? 0 : buf_size)); /* Allocate memory for tensor struct and data */
     memset(tensor, 0, sizeof(*tensor));
     tensor->ctx = ctx;
     tensor->rank = rank;
@@ -1184,24 +1191,24 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     for (int i=1; i < MSML_MAX_DIMS; ++i) {
         msml_assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i - 1], tensor->strides + i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
     }
-    tensor->buf = (uint8_t*)(tensor + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
+    tensor->buf = slice ? (uint8_t*)slice->buf+slice_offset : (uint8_t*)(tensor+1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return tensor;
 }
 
 msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1}, 1);
+    return msml_tensor_create(ctx, type, (int64_t[]){d1}, 1, NULL, 0);
 }
 
 msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2}, 2);
+    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2}, 2, NULL, 0);
 }
 
 msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3}, 3);
+    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3}, 3, NULL, 0);
 }
 
 msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4);
+    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4, NULL, 0);
 }
 
 msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
@@ -1224,7 +1231,7 @@ void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op) {
 }
 
 msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor) {
-    msml_tensor_t* isomorph = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->shape, tensor->rank);
+    msml_tensor_t* isomorph = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->shape, tensor->rank, NULL, 0);
     return isomorph;
 }
 
