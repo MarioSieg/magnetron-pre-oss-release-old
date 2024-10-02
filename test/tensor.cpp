@@ -394,6 +394,9 @@ TEST(msml_tensor_t, load_from_image) {
     ASSERT_EQ(msml_tensor_shape(t)[0], 1536);
     ASSERT_EQ(msml_tensor_shape(t)[1], 2048);
     ASSERT_EQ(msml_tensor_shape(t)[2], 3); // RGB
+    ASSERT_EQ(msml_tensor_shape(t)[0], msml_tensor_image_width(t));
+    ASSERT_EQ(msml_tensor_shape(t)[1], msml_tensor_image_height(t));
+    ASSERT_EQ(msml_tensor_shape(t)[2], msml_tensor_image_channels(t)); // RGB
 
     auto* buf = msml_tensor_buf_f32(t);
     for (int64_t i=0; i < msml_tensor_buf_len(t); ++i) {

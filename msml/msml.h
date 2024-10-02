@@ -220,9 +220,9 @@ extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* f
 extern MSML_API msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */
 extern MSML_API msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
 extern MSML_API void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path); /* Save tensor data as an image */
-#define msml_tensor_image_width(tensor) (msml_tensor_dims(tensor)[0]) /* Get image width from tensor */
-#define msml_tensor_image_height(tensor) (msml_tensor_dims(tensor)[1]) /* Get image height from tensor */
-#define msml_tensor_image_channels(tensor) (msml_tensor_dims(tensor)[2]) /* Get image channels from tensor */
+#define msml_tensor_image_width(tensor) (msml_tensor_shape(tensor)[0]) /* Get image width from tensor */
+#define msml_tensor_image_height(tensor) (msml_tensor_shape(tensor)[1]) /* Get image height from tensor */
+#define msml_tensor_image_channels(tensor) (msml_tensor_shape(tensor)[2]) /* Get image channels from tensor */
 
 #ifdef __cplusplus
 }
