@@ -22,6 +22,7 @@ if (NOT WIN32)
         -Wno-gnu-zero-variadic-macro-arguments
         -Wno-error=overflow
         -Ofast
+        -march=native
     )
 endif()
 if (${MSML_ENABLE_IMAGE_SUPPORT})

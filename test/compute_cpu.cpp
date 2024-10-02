@@ -5,7 +5,7 @@
 #include <cmath>
 
 #define impl_test_unary_op(name, op, scalar_op) \
-    TEST(compute, name##_same_shape) { \
+    TEST(compute_cpu, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
         for (int64_t i0=1; i0 <= 14; ++i0) \
@@ -76,7 +76,7 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
 #undef impl_test_unary_op
 
 #define impl_test_binary_op(name, op, scalar_op) \
-    TEST(compute, name##_same_shape) { \
+    TEST(compute_cpu, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
         for (int64_t i0=1; i0 <= 14; ++i0) \
@@ -107,7 +107,7 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
         msml_ctx_destroy(ctx); \
     } \
      \
-    TEST(compute, name##_scalar_broadcast) { \
+    TEST(compute_cpu, name##_scalar_broadcast) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
         for (int64_t factor=2; factor <= 8; ++factor) \
@@ -144,3 +144,18 @@ impl_test_binary_op(mul_f32, MUL, *)
 impl_test_binary_op(div_f32, DIV, /)
 
 #undef impl_test_binary_op
+
+TEST(compute_cpu, heavy_compute_single_op) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    msml_tensor_t* R = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 16384, 16384, 3);
+    msml_tensor_t* X = msml_tensor_isomorphic_clone(R);
+    msml_tensor_fill(X, 3.0);
+    msml_tensor_t* Y = msml_tensor_isomorphic_clone(R);
+    msml_tensor_set_op(Y, MSML_OP_MUL);
+    msml_tensor_set_arg(Y, 0, R);
+    msml_tensor_set_arg(Y, 1, X);
+    msml_tensor_evaluate(Y);
+
+    msml_ctx_destroy(ctx);
+}
