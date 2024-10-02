@@ -283,16 +283,16 @@ TEST(msml_tensor_t, isclose) {
 TEST(msml_tensor_t, copy_buffer_from) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
-    std::array<float, 2*2*2*2> data {};
-    std::fill(data.begin(), data.end(), 2.5);
+    std::array<float, 2*2*2*2> buf {};
+    for (auto& x : buf) x = 2.5f;
 
     msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
-    ASSERT_EQ(msml_tensor_buf_size(tensor), sizeof(data));
-    ASSERT_EQ(msml_tensor_buf_len(tensor), data.size());
-    msml_tensor_copy_buffer_from(tensor, data.data(), sizeof(data));
+    ASSERT_EQ(msml_tensor_buf_size(tensor), sizeof(buf));
+    ASSERT_EQ(msml_tensor_buf_len(tensor), buf.size());
+    msml_tensor_copy_buffer_from(tensor, buf.data(), sizeof(buf));
 
     const void* a = msml_tensor_buf(tensor);
-    const void* b = data.data();
+    const void* b = buf.data();
     ASSERT_NE(a, b);
     ASSERT_EQ(0, std::memcmp(a, b, msml_tensor_buf_size(tensor)));
 
