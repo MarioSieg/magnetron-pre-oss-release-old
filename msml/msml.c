@@ -95,10 +95,10 @@ msml_static_assert(sizeof(0ull) == 8);
 #define MSML_CCRESET "\x1b[0m"
 #define MSML_STRINGIZE(x) MSML_STRINGIZE2(x)
 #define MSML_STRINGIZE2(x) #x
-#ifdef _MSC_VER
-#   define MSML_SRC_NAME __FILE__ ":" MSML_STRINGIZE(__LINE__)
-#else
+#ifdef __FILE_NAME__
 #   define MSML_SRC_NAME __FILE_NAME__ ":" MSML_STRINGIZE(__LINE__)
+#else
+#   define MSML_SRC_NAME __FILE__ ":" MSML_STRINGIZE(__LINE__)
 #endif
 #define msml_log_info(msg, ...) fprintf(stdout,  "[MSML] " MSML_SRC_NAME " " msg "\n", ## __VA_ARGS__)
 #define msml_log_warn(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
