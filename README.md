@@ -1,7 +1,7 @@
 # msml
 MSML is a minimalistic machine learning library written in C99, designed for speed, flexibility, and ease of integration.<br>
-With no runtime allocations and lightweight architecture, MSML is perfect for efficient model training and inference..<br>
-Python bindings make it accessible for both C and Python developers..<br>
+With no runtime allocations and lightweight architecture, MSML is perfect for efficient model training and inference.<br>
+Python bindings make it accessible for both C and Python developers.<br>
 
 ### Key Features
 * Zero Runtime Allocations: Memory pools handle everything, optimizing performance during training and inference.
