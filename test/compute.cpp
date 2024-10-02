@@ -7,24 +7,29 @@
     TEST(compute, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
-        msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 3, 4, 5, 9); \
-        msml_tensor_t* y = msml_tensor_isomorphic_clone(x); \
-        msml_tensor_fill_random(x, 0.0f, 1.0f); \
-        msml_tensor_fill_random(y, -5.0f, 5.0f); \
-        \
-        msml_tensor_t* r = msml_tensor_isomorphic_clone(x); \
-        msml_tensor_set_op(r, MSML_OP_##op); \
-        msml_tensor_set_arg(r, 0, x); \
-        msml_tensor_set_arg(r, 1, y); \
-        \
-        msml_tensor_evaluate(r); \
-        const auto* b_x = msml_tensor_buf_f32(x); \
-        const auto* b_y = msml_tensor_buf_f32(y); \
-        const auto* b_r = msml_tensor_buf_f32(r); \
-        ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
-        ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(y)); \
-        for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
-            ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
+        for (int64_t i0=1; i0 <= 16; ++i0) \
+        for (int64_t i1=1; i1 <= 16; ++i1) \
+        for (int64_t i2=1; i2 <= 16; ++i2) \
+        for (int64_t i3=1; i3 <= 16; ++i3) { \
+            msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
+            msml_tensor_t* y = msml_tensor_isomorphic_clone(x); \
+            msml_tensor_fill_random(x, 0.0f, 1.0f); \
+            msml_tensor_fill_random(y, -5.0f, 5.0f); \
+            \
+            msml_tensor_t* r = msml_tensor_isomorphic_clone(x); \
+            msml_tensor_set_op(r, MSML_OP_##op); \
+            msml_tensor_set_arg(r, 0, x); \
+            msml_tensor_set_arg(r, 1, y); \
+            \
+            msml_tensor_evaluate(r); \
+            const auto* b_x = msml_tensor_buf_f32(x); \
+            const auto* b_y = msml_tensor_buf_f32(y); \
+            const auto* b_r = msml_tensor_buf_f32(r); \
+            ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
+            ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(y)); \
+            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
+            } \
         } \
         \
         msml_ctx_destroy(ctx); \
@@ -33,25 +38,30 @@
     TEST(compute, name##_scalar_broadcast) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
-        constexpr int factor = 5; \
-        msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 3*factor, 4*factor, 5*factor, 9*factor); \
-        msml_tensor_t* y = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 3, 4, 5, 9); \
-        msml_tensor_fill_random(x, 0.0f, 1.0f); \
-        msml_tensor_fill(y, 2.2f); \
-        \
-        msml_tensor_t* r = msml_tensor_isomorphic_clone(x); \
-        msml_tensor_set_op(r, MSML_OP_##op); \
-        msml_tensor_set_arg(r, 0, x); \
-        msml_tensor_set_arg(r, 1, y); \
-        \
-        msml_tensor_evaluate(r); \
-        const auto* b_x = msml_tensor_buf_f32(x); \
-        const auto* b_y = msml_tensor_buf_f32(y); \
-        const auto* b_r = msml_tensor_buf_f32(r); \
-        ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(x)); \
-        ASSERT_NE(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
-        for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
-            ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
+        for (int64_t factor=2; factor <= 8; ++factor) \
+        for (int64_t i0=1; i0 <= 5; ++i0) \
+        for (int64_t i1=1; i1 <= 5; ++i1) \
+        for (int64_t i2=1; i2 <= 5; ++i2) \
+        for (int64_t i3=1; i3 <= 5; ++i3) { \
+            msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor); \
+            msml_tensor_t* y = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
+            msml_tensor_fill_random(x, 0.0f, 1.0f); \
+            msml_tensor_fill(y, 2.2f); \
+            \
+            msml_tensor_t* r = msml_tensor_isomorphic_clone(x); \
+            msml_tensor_set_op(r, MSML_OP_##op); \
+            msml_tensor_set_arg(r, 0, x); \
+            msml_tensor_set_arg(r, 1, y); \
+            \
+            msml_tensor_evaluate(r); \
+            const auto* b_x = msml_tensor_buf_f32(x); \
+            const auto* b_y = msml_tensor_buf_f32(y); \
+            const auto* b_r = msml_tensor_buf_f32(r); \
+            ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(x)); \
+            ASSERT_NE(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
+            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
+            } \
         } \
         \
         msml_ctx_destroy(ctx); \
