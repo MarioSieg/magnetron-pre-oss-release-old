@@ -1505,11 +1505,8 @@ bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float e
         case MSML_DTYPE_F32: {
             const float* buf_a = (const float*)a->buf;
             const float* buf_b = (const float*)b->buf;
-            for (int64_t i = 0; i < n; ++i) {
-                if (fabsf(buf_a[i] - buf_b[i]) <= eps) { /* |x - y| <= ε     ∀ x, y ∈ A, B */
-                    ++n_eq;
-                }
-            }
+            for (int64_t i = 0; i < n; ++i)  /* |x - y| <= ε     ∀ x, y ∈ A, B */
+                if (fabsf(buf_a[i] - buf_b[i]) <= eps) ++n_eq;
         } break;
         default:
             msml_panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
@@ -1618,7 +1615,8 @@ typedef struct msml__blas_ctx {
                 T* const p_r = (T*)(b_r + x_i3*r_s3 + x_i2*r_s2 + x_i1*r_s1); \
                 const T* const p_x = (const T*)(b_x + x_i3*x_s3 + x_i2*x_s2 + x_i1*x_s1); \
                 const T* const p_y = (const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1); \
-                for (int64_t i=0; i < x_d0 / y_d0; ++i) { \
+                const int64_t pa = x_d0 / y_d0; \
+                for (int64_t i=0; i < pa; ++i) { \
                     vec_op(y_d0, p_r + i*y_d0, p_x + i*y_d0, p_y); \
                 } \
             } \

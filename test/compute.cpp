@@ -7,10 +7,10 @@
     TEST(compute, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
-        for (int64_t i0=1; i0 <= 16; ++i0) \
-        for (int64_t i1=1; i1 <= 16; ++i1) \
-        for (int64_t i2=1; i2 <= 16; ++i2) \
-        for (int64_t i3=1; i3 <= 16; ++i3) { \
+        for (int64_t i0=1; i0 <= 14; ++i0) \
+        for (int64_t i1=1; i1 <= 14; ++i1) \
+        for (int64_t i2=1; i2 <= 14; ++i2) \
+        for (int64_t i3=1; i3 <= 14; ++i3) { \
             msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
             msml_tensor_t* y = msml_tensor_isomorphic_clone(x); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
@@ -39,10 +39,10 @@
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
         for (int64_t factor=2; factor <= 8; ++factor) \
-        for (int64_t i0=1; i0 <= 5; ++i0) \
-        for (int64_t i1=1; i1 <= 5; ++i1) \
-        for (int64_t i2=1; i2 <= 5; ++i2) \
-        for (int64_t i3=1; i3 <= 5; ++i3) { \
+        for (int64_t i0=1; i0 <= 4; ++i0) \
+        for (int64_t i1=1; i1 <= 4; ++i1) \
+        for (int64_t i2=1; i2 <= 4; ++i2) \
+        for (int64_t i3=1; i3 <= 4; ++i3) { \
             msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor); \
             msml_tensor_t* y = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \

@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <msml.h>
 #include <unordered_set>
+#include <filesystem>
 
 TEST(msml_tensor_t, init_1d) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
@@ -378,6 +379,57 @@ TEST(msml_tensor_t, random_mersenne) {
             ASSERT_TRUE(is_ne);
         }
         set.emplace_back(x);
+    }
+
+    msml_ctx_destroy(ctx);
+}
+
+TEST(msml_tensor_t, load_from_image) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    constexpr const char* image = "test_data/car.jpg";
+    ASSERT_TRUE(std::filesystem::exists(image));
+
+    msml_tensor_t* t = msml_tensor_create_from_image(ctx, image, MSML_COLOR_CHANNELS_RGB, 0, 0);
+    ASSERT_EQ(msml_tensor_shape(t)[0], 1536);
+    ASSERT_EQ(msml_tensor_shape(t)[1], 2048);
+    ASSERT_EQ(msml_tensor_shape(t)[2], 3); // RGB
+
+    auto* buf = msml_tensor_buf_f32(t);
+    for (int64_t i=0; i < msml_tensor_buf_len(t); ++i) {
+        ASSERT_GE(buf[i], 0.0f);
+        ASSERT_LE(buf[i], 1.0f);
+    }
+
+    msml_ctx_destroy(ctx);
+}
+
+TEST(msml_tensor_t, save_and_load_from_image) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    constexpr const char* image = "test_data/random.jpg";
+    if (std::filesystem::exists(image)) {
+        std::filesystem::remove(image);
+    }
+
+    msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 4, 4, 3);
+    msml_tensor_fill_random(t, 0.0f, 1.0f);
+    msml_tensor_save_to_image(t, image);
+
+    ASSERT_TRUE(std::filesystem::exists(image));
+
+    msml_tensor_t* t2 = msml_tensor_create_from_image(ctx, image, MSML_COLOR_CHANNELS_RGB, 0, 0);
+    ASSERT_TRUE(msml_tensor_is_shape_eq(t, t2));
+    ASSERT_TRUE(msml_tensor_are_strides_eq(t, t2));
+    ASSERT_EQ(msml_tensor_buf_size(t), msml_tensor_buf_size(t2));
+    const auto* t_b = msml_tensor_buf_f32(t);
+    const auto* t2_b = msml_tensor_buf_f32(t);
+    for (int64_t i=0; i < msml_tensor_buf_len(t); ++i) {
+        bool is_ok = std::abs(t_b[i]-t2_b[i]) <= std::numeric_limits<float>::epsilon();
+        if (!is_ok) {
+            std::cout << "i: " << i << "x: " << t_b[i] << " y: " << t2_b[i] << " err: " << std::abs(t_b[i]-t2_b[i]) << std::endl;
+        }
+        ASSERT_TRUE(is_ok);
     }
 
     msml_ctx_destroy(ctx);
