@@ -23,4 +23,4 @@ _deps
 **/.DS_Store
 .vs/
 out/
-test_data/random.jpg
+/test_data/random.jpg

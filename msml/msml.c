@@ -1270,6 +1270,7 @@ size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor) {
 }
 
 void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
+    msml_assert(tensor->dtype == MSML_DTYPE_F32, "Tensor must be F32");
     double buf_size_cvt = 0.0;
     const char* buf_size_unit = NULL;
     msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
@@ -1299,7 +1300,7 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
                     // TODO: dtype check
                     float x = buf[i3 * tensor->shape[1] * tensor->shape[0] + i2 * tensor->shape[0] + i1];
                     char fmt_buf[128];
-                    msml__fmt_f64(MSML_FMT_G14, x, fmt_buf);
+                    *msml__fmt_f64(MSML_FMT_G14, x, fmt_buf) = '\0';
                     printf("%s ", fmt_buf);
                 }
                 putchar('\n');
