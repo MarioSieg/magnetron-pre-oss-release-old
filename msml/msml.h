@@ -171,6 +171,7 @@ typedef enum msml_op_t {
 } msml_op_t;
 #undef _
 msml_static_assert(MSML_OP_NOP == 0);
+msml_static_assert(MSML_OP_MATMUL+1 == MSML_OP__COUNT);
 msml_static_assert(MSML_OP__COUNT <= 0xff);
 
 typedef enum msml_graph_eval_order_t {

@@ -103,6 +103,8 @@ msml_static_assert(sizeof(0ull) == 8);
 #define msml_log_info(msg, ...) fprintf(stdout,  "[MSML] " MSML_SRC_NAME " " msg "\n", ## __VA_ARGS__)
 #define msml_log_warn(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
 
+typedef struct msml__blas_compute_info_t msml__blas_compute_info_t; /* Forward declaration. */
+
 struct msml_ctx_t {
     void* (*alloc_fn)(void* blk, size_t size);
     size_t chunk_size;
@@ -127,6 +129,7 @@ struct msml_ctx_t {
     } prng_state;
     msml_prng_algorithm_t prng_algorithm;
     uintptr_t host_thread_id;
+    void (*blas_dispatch[MSML_OP__COUNT])(const msml__blas_compute_info_t* bci, msml_tensor_t* r, const msml_tensor_t** inputs); /* BLAS dispatch table. Specialized for host CPU architecture. */
     void* user_data;
 };
 
@@ -460,13 +463,13 @@ static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
     ctx->chunks[ctx->chunk_len++] = chunk;
 }
 
+static void msml__blas_compute_dispatch_table_install(msml_ctx_t* ctx); /* Forward declaration. */
+
 msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     printf("Creating MSML context...\n");
-
     msml_ctx_info_t ctx_info = {0};
     if (info) ctx_info = *info;
     ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_allocator;
-
     msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx));
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
@@ -474,13 +477,13 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     ctx->chunk_size = ctx_info.pool_chunk_size ? msml_max(ctx_info.pool_chunk_size, 8) : MSML_DEFAULT_CHUNK_SIZE;
     ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->warmup_chunks = ctx_info.warmup_chunks;
-
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks));
-    msml__ctx_push_chunk(ctx);
+    msml__ctx_push_chunk(ctx); /* Allocate the first chunk. */
     uint64_t host_tid = msml__thread_id();
     ctx->prng_algorithm = ctx_info.prng_algorithm;
-    msml__prng_init(ctx, ctx_info.prng_seed^host_tid^(uintptr_t)ctx^(uintptr_t)&ctx_info);
+    msml__prng_init(ctx, ctx_info.prng_seed^host_tid^(uintptr_t)ctx^(uintptr_t)&ctx_info); /* Initialize PRNG state. */
     ctx->host_thread_id = host_tid;
+    msml__blas_compute_dispatch_table_install(ctx); /* Install BLAS dispatch table, specialized for host CPU arch. */
     printf("MSML context created.\n");
     return ctx;
 }
@@ -1713,18 +1716,19 @@ static void MSML_HOTPROC msml__vgelu_dv_f32( /* gelu' : ℝ -> ℝ, x |-> TODO *
     }
 }
 
-typedef struct msml__compute_info_local {
+struct msml__blas_compute_info_t {
+    msml_ctx_t* ctx;
     int64_t n_threads;
     int64_t thread_idx;
-} msml__compute_info_local;
+};
 
 #define msml__blas_impl_unary_op(name, T, vec_op) \
     static void MSML_HOTPROC msml__blas_##name( \
-        const msml__compute_info_local* const cil, \
+        const msml__blas_compute_info_t* const bci, \
         msml_tensor_t* const r, \
         const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */ \
     ) { \
-        (void)cil; \
+        (void)bci; \
         const msml_tensor_t* const x = inputs[0]; \
         msml_assert2(msml_tensor_is_shape_eq(x, r)); \
         uint8_t* const b_r = (uint8_t*)r->buf; \
@@ -1761,7 +1765,7 @@ msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
 
 #define msml__blas_impl_binary_op(name, T, vec_op, scalar_op) \
     static void MSML_HOTPROC msml__blas_##name( \
-        const msml__compute_info_local* const cil, \
+        const msml__blas_compute_info_t* const bci, \
         msml_tensor_t* const r, \
         const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */ \
     ) { \
@@ -1781,8 +1785,8 @@ msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
         msml_assert2(r_s0 == sizeof(T)); \
         msml_assert2(x_s0 == sizeof(T)); \
         const int64_t rc = msml_tensor_num_rows(x);  \
-        const int64_t ti = cil->thread_idx;  \
-        const int64_t tc = cil->n_threads;  \
+        const int64_t ti = bci->thread_idx;  \
+        const int64_t tc = bci->n_threads;  \
         const int64_t rpt = (rc + tc - 1)/tc;  \
         const int64_t rs = rpt * ti;  \
         const int64_t re = msml_min(rs+rpt, rc); \
@@ -1827,7 +1831,7 @@ msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
 #undef msml__blas_impl_binary_op
 
 static void msml__blas_matmul_f32(
-    const msml__compute_info_local* const blas_ctx,
+    const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const r,
     const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1860,11 +1864,41 @@ static void msml__blas_matmul_f32(
     }
 }
 
-static void MSML_HOTPROC msml__compute_dag_eval(const msml__compute_info_local* cil, msml_tensor_t* node, bool forward);
+/* Dispatch table for default CPU-implementation. */
+static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[MSML_OP__COUNT])(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**)) {
+    (*dispatch_lut)[MSML_OP_NOP] = NULL;
+    (*dispatch_lut)[MSML_OP_SOFTMAX] = &msml__blas_softmax_f32;
+    (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;
+    (*dispatch_lut)[MSML_OP_SIGMOID] = &msml__blas_sigmoid_f32;
+    (*dispatch_lut)[MSML_OP_SIGMOID_DV] = &msml__blas_sigmoid_dv_f32;
+    (*dispatch_lut)[MSML_OP_SILU] = &msml__blas_silu_f32;
+    (*dispatch_lut)[MSML_OP_SILU_DV] = &msml__blas_silu_dv_f32;
+    (*dispatch_lut)[MSML_OP_TANH] = &msml__blas_tanh_f32;
+    (*dispatch_lut)[MSML_OP_TANH_DV] = &msml__blas_tanh_dv_f32;
+    (*dispatch_lut)[MSML_OP_RELU] = &msml__blas_relu_f32;
+    (*dispatch_lut)[MSML_OP_RELU_DV] = &msml__blas_relu_dv_f32;
+    (*dispatch_lut)[MSML_OP_GELU] = &msml__blas_gelu_f32;
+    (*dispatch_lut)[MSML_OP_GELU_DV] = &msml__blas_gelu_dv_f32;
+    (*dispatch_lut)[MSML_OP_ADD] = &msml__blas_add_f32;
+    (*dispatch_lut)[MSML_OP_SUB] = &msml__blas_sub_f32;
+    (*dispatch_lut)[MSML_OP_MUL] = &msml__blas_mul_f32;
+    (*dispatch_lut)[MSML_OP_DIV] = &msml__blas_div_f32;
+    (*dispatch_lut)[MSML_OP_MATMUL] = &msml__blas_matmul_f32;
+}
+
+static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
+    msml__blas_compute_dispatch_table_default(&ctx->blas_dispatch);
+    /* TODO: Add support for custom implementations for host CPU arch. */
+    for (int i=MSML_OP_NOP+1; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
+        msml_assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name(i));
+    }
+}
+
+static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t* const bci, msml_tensor_t* const node, bool forward);
 
 static unsigned msml__process_parent_inputs(
     const msml_tensor_t*** const out_inputs,
-    const msml__compute_info_local* const cil,
+    const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const node,
     const bool forward
 ) {
@@ -1873,41 +1907,24 @@ static unsigned msml__process_parent_inputs(
     for (uint32_t i=0; i < n_inputs; ++i) { /* Eval parents and verify arguments */
         uint32_t idx = forward ? i : n_inputs-i-1; /* Left-to-right or right-to-left */
         msml_assert(inputs[idx] != NULL, "Invalid argument %d for node %s", i, msml_op_get_name(node->op));
-        msml__compute_dag_eval(cil, inputs[idx], forward); /* Eval parent node recursive */
+        msml__compute_dag_eval(bci, inputs[idx], forward); /* Eval parent node recursive */
     }
     *out_inputs = (const msml_tensor_t**)inputs;
     return n_inputs;
 }
 
-static void MSML_HOTPROC msml__compute_dag_eval(const msml__compute_info_local* const cil, msml_tensor_t* const node, bool forward) {
-    if (!node || node->op == MSML_OP_NOP) return;
+static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t* const bci, msml_tensor_t* const node, bool forward) {
+    const msml_op_t op = node->op;
+    if (op == MSML_OP_NOP || op >= MSML_OP__COUNT) return; /* NOP */
     const msml_tensor_t** inputs;
-    msml__process_parent_inputs(&inputs, cil, node, forward);
-    /* TODO: computed goto / dispatch table */
-    switch (node->op) {
-        case MSML_OP_NOP: default: return;
-        case MSML_OP_SOFTMAX: msml__blas_softmax_f32(cil, node, inputs); return;
-        case MSML_OP_SOFTMAX_DV: msml__blas_softmax_dv_f32(cil, node, inputs); return;
-        case MSML_OP_SIGMOID: msml__blas_sigmoid_f32(cil, node, inputs); return;
-        case MSML_OP_SIGMOID_DV: msml__blas_sigmoid_dv_f32(cil, node, inputs); return;
-        case MSML_OP_SILU: msml__blas_silu_f32(cil, node, inputs); return;
-        case MSML_OP_SILU_DV: msml__blas_silu_dv_f32(cil, node, inputs); return;
-        case MSML_OP_TANH: msml__blas_tanh_f32(cil, node, inputs); return;
-        case MSML_OP_TANH_DV: msml__blas_tanh_dv_f32(cil, node, inputs); return;
-        case MSML_OP_RELU: msml__blas_relu_f32(cil, node, inputs); return;
-        case MSML_OP_RELU_DV: msml__blas_relu_dv_f32(cil, node, inputs); return;
-        case MSML_OP_GELU: msml__blas_gelu_f32(cil, node, inputs); return;
-        case MSML_OP_GELU_DV: msml__blas_gelu_dv_f32(cil, node, inputs); return;
-        case MSML_OP_ADD: msml__blas_add_f32(cil, node, inputs); return;
-        case MSML_OP_SUB: msml__blas_sub_f32(cil, node, inputs); return;
-        case MSML_OP_MUL: msml__blas_mul_f32(cil, node, inputs); return;
-        case MSML_OP_DIV: msml__blas_div_f32(cil, node, inputs); return;
-        case MSML_OP_MATMUL: msml__blas_matmul_f32(cil, node, inputs); return;
-    }
+    msml__process_parent_inputs(&inputs, bci, node, forward); /* Eval parents and verify arguments */
+    void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
+    (*(*(dispatch_lut+op)))(bci, node, inputs); /* Dispatch to CPU implementation */
 }
 
 void MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
-    msml__compute_info_local blas_ctx = {
+    msml__blas_compute_info_t blas_ctx = {
+        .ctx = tensor->ctx,
         .n_threads = 1,
         .thread_idx = 0
     };
