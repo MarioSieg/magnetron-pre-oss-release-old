@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <msml.h>
+#include <cstring>
 #include <unordered_set>
 #include <filesystem>
 

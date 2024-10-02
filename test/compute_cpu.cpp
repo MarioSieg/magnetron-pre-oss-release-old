@@ -2,6 +2,7 @@
 
 #include <gtest/gtest.h>
 #include <msml.h>
+#include <cmath>
 
 #define impl_test_unary_op(name, op, scalar_op) \
     TEST(compute, name##_same_shape) { \
@@ -23,7 +24,7 @@
             const auto* b_r = msml_tensor_buf_f32(r); \
             ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(r)); \
             for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
-                ASSERT_FLOAT_EQ(b_r[i], scalar_op(b_x[i])); \
+                ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), 0.000001); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
             } \
         } \
         \
