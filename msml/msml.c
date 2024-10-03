@@ -17,6 +17,14 @@
 #   include <intrin.h>
 #endif
 
+#ifdef __APPLE__
+#   include <mach/mach.h>
+#   include <mach/vm_statistics.h>
+#   include <sys/sysctl.h>
+#   include <sys/types.h>
+#   include <unistd.h>
+#endif
+
 msml_static_assert(sizeof(0u) == 4);
 msml_static_assert(sizeof(0ull) == 8);
 
@@ -106,7 +114,14 @@ msml_static_assert(sizeof(0ull) == 8);
 typedef struct msml__blas_compute_info_t msml__blas_compute_info_t; /* Forward declaration. */
 
 struct msml_ctx_t {
-    void* (*alloc_fn)(void* blk, size_t size);
+    void* (*alloc_fn)(void* blk, size_t size); /* Memory allocator. */
+    char sys_os_name[128]; /* OS name. */
+    char sys_cpu_name[128]; /* CPU name. */
+    uint32_t sys_cpu_virtual_cores; /* Virtual CPUs. */
+    uint32_t sys_cpu_physical_cores; /* Physical CPU cores. */
+    uint32_t sys_cpu_sockets; /* CPU sockets. */
+    uint64_t sys_phys_mem_total; /* Total physical memory in bytes. */
+    uint64_t sys_phys_mem_free; /* Free physical memory in bytes. */
     size_t chunk_size;
     size_t chunk_len;
     size_t chunk_cap;
@@ -457,28 +472,66 @@ static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
     ctx->chunks[ctx->chunk_len++] = chunk;
 }
 
-static void msml__blas_compute_dispatch_table_install(msml_ctx_t* ctx); /* Forward declaration. */
+static void msml__system_host_info_query(msml_ctx_t* ctx); /* Query host system information. */
+static void msml__blas_compute_dispatch_table_install(msml_ctx_t* ctx); /* Install BLAS dispatch table. */
 
 msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
-    printf("Creating MSML context...\n");
+    puts("Creating MSML context...");
+
+    const char* compiler_name = "Unknown";
+    int compiler_version_major = 0, compiler_version_minor = 0;
+    #ifdef __clang__
+        compiler_name = "Clang";
+        compiler_version_major = __clang_major__;
+        compiler_version_minor = __clang_minor__;
+    #elif defined(__GNUC__)
+        compiler_name = "GCC";
+        compiler_version_major = __GNUC__;
+        compiler_version_minor = __GNUC_MINOR__;
+    #elif defined(_MSC_VER)
+        compiler_name = "MSVC";
+        compiler_version_major = _MSC_VER / 100;
+        compiler_version_minor = _MSC_VER % 100;
+    #endif
+    printf("MSML v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d\n", msml_version_major(MSML_VERSION), msml_version_minor(MSML_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
+
+    /* Initialize context with default values or from context info. */
     msml_ctx_info_t ctx_info = {0};
     if (info) ctx_info = *info;
-    ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_allocator;
-    msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx));
+    ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_allocator; /* Use default allocator if not provided. */
+    msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx)); /* Allocate context. */
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
     ctx->user_data = ctx_info.user_data;
     ctx->chunk_size = ctx_info.pool_chunk_size ? msml_max(ctx_info.pool_chunk_size, 8) : MSML_DEFAULT_CHUNK_SIZE;
     ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->warmup_chunks = ctx_info.warmup_chunks;
-    ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks));
+
+    /* Query and print host system information. */
+    msml__system_host_info_query(ctx);
+    printf("OS/Kernel: %s\n", ctx->sys_os_name);
+    printf("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u\n", ctx->sys_cpu_name, ctx->sys_cpu_virtual_cores, ctx->sys_cpu_physical_cores, ctx->sys_cpu_sockets);
+    double mem_total, mem_free, mem_used;
+    const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
+    msml__humanize_memory_size(ctx->sys_phys_mem_total, &mem_total, &mem_unit_total);
+    msml__humanize_memory_size(ctx->sys_phys_mem_free, &mem_free, &mem_unit_free);
+    msml__humanize_memory_size(ctx->sys_phys_mem_total - ctx->sys_phys_mem_free, &mem_used, &mem_unit_used);
+    double mem_used_percent = (double)(ctx->sys_phys_mem_total-ctx->sys_phys_mem_free)/(double)ctx->sys_phys_mem_total*100.0;
+    printf("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)\n", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
+
+    ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks)); /* Allocate chunk pointers. */
     msml__ctx_push_chunk(ctx); /* Allocate the first chunk. */
+
+    /* Initialize PRNG state. */
     uint64_t host_tid = msml__thread_id();
     ctx->prng_algorithm = ctx_info.prng_algorithm;
     msml__prng_init(ctx, ctx_info.prng_seed^host_tid^(uintptr_t)ctx^(uintptr_t)&ctx_info); /* Initialize PRNG state. */
     ctx->host_thread_id = host_tid;
-    msml__blas_compute_dispatch_table_install(ctx); /* Install BLAS dispatch table, specialized for host CPU arch. */
-    printf("MSML context created.\n");
+
+    /* Install BLAS dispatch table, specialized for host CPU arch. */
+    msml__blas_compute_dispatch_table_install(ctx);
+
+    puts("MSML context created.");
     return ctx;
 }
 
@@ -541,7 +594,7 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     msml__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
     msml__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
     printf("Allocated in pool: %.03f %s, Mapped memory: %.03f %s\n", alloc_total, alloc_unit, mapped_total, mapped_unit);
-    printf("MSML context destroyed.\n");
+    puts("MSML context destroyed.");
 }
 
 #define msml__load_local_storage_group(xk, prefix, var) \
@@ -2133,6 +2186,108 @@ msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name) {
 }
 
 #undef msml__save_fwrite
+
+#if defined(__APPLE__) || defined(__linux__)
+    static bool msml__sysctl_mib01(uint8_t (*out)[256], size_t* o_len, int mib0, int mib1) { /* Get sysctl data */
+        memset(out, 0, sizeof(*out));
+        *o_len = 0;
+        #ifdef __APPLE__
+            int name[2] = {mib0, mib1};
+            size_t len = 0;
+            if (msml_unlikely(sysctl(name, sizeof(name) / sizeof(*name), NULL, &len, NULL, 0))) return false; /* Get length */
+            if (msml_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
+            if (msml_unlikely(sysctl(name, sizeof(name) / sizeof(*name), *out, &len, NULL, 0))) return false; /* Get data */
+            *o_len = len;
+            return true;
+        #else
+        #error "Unsupported platform"
+        #endif
+    }
+    static bool msml__sysctl_key(uint8_t (*out)[256], size_t* o_len, const char* key) { /* Get sysctl data */
+        memset(out, 0, sizeof(*out));
+        *o_len = 0;
+        #ifdef __APPLE__
+            size_t len = 0;
+            if (msml_unlikely(sysctlbyname(key, NULL, &len, NULL, 0))) return false; /* Get length */
+            if (msml_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
+            if (msml_unlikely(sysctlbyname(key, *out, &len, NULL, 0))) return false; /* Get data */
+            *o_len = len;
+            return true;
+        #else
+        #error "Unsupported platform"
+        #endif
+    }
+    static uint64_t msml__sysctl_unpack_int(const uint8_t (*in)[256], size_t len) { /* Unpack sysctl data */
+        switch (len) {
+            case sizeof(uint16_t): { uint16_t r; memcpy(&r, *in, sizeof(r)); return r; }
+            case sizeof(uint32_t): { uint32_t r; memcpy(&r, *in, sizeof(r)); return r; }
+            case sizeof(uint64_t): { uint64_t r; memcpy(&r, *in, sizeof(r)); return r; }
+            default: return 0;
+        }
+    }
+#endif
+
+static void msml_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get OS name */
+    #ifdef __APPLE__
+        size_t len;
+        uint8_t tmp[256];
+        if (msml_likely(msml__sysctl_mib01(&tmp, &len, CTL_KERN, KERN_VERSION) && len && *tmp))
+            snprintf(*out_os_name, sizeof(*out_os_name), "%s", (const char*)tmp);
+    #else
+    #error "Unsupported platform"
+    #endif
+}
+
+static void msml_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* Get CPU name */
+    #ifdef __APPLE__
+        size_t len;
+        uint8_t tmp[256];
+        if (msml_likely(msml__sysctl_key(&tmp, &len, "machdep.cpu.brand_string") && len && *tmp))
+            snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", (const char*)tmp);
+    #else
+    #error "Unsupported platform"
+    #endif
+}
+
+static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t* out_physical, uint32_t* out_sockets) { /* Get CPU virtual (logical) cores. */
+    #ifdef __APPLE__
+        uint8_t tmp[256];
+        size_t len;
+        if (msml_likely(msml__sysctl_key(&tmp, &len, "machdep.cpu.thread_count") && len))
+            *out_virtual = msml__sysctl_unpack_int(&tmp, len);
+        if (msml_likely(msml__sysctl_key(&tmp, &len, "machdep.cpu.core_count") && len))
+            *out_physical = msml__sysctl_unpack_int(&tmp, len);
+        if (msml_likely(msml__sysctl_key(&tmp, &len, "hw.packages") && len))
+            *out_sockets = msml__sysctl_unpack_int(&tmp, len);
+    #else
+    #error "Unsupported platform"
+    #endif
+}
+
+static void msml__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint64_t* out_phys_mem_free) { /* Get physical memory */
+    #ifdef __APPLE__
+        uint8_t tmp[256];
+        size_t len;
+        if (msml_likely(msml__sysctl_mib01(&tmp, &len, CTL_HW, HW_MEMSIZE) && len))
+            *out_phys_mem_total = msml__sysctl_unpack_int(&tmp, len);
+        struct vm_statistics64 stats;
+        natural_t count = HOST_VM_INFO64_COUNT;
+        if (msml_likely(host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)(&stats), &count) == KERN_SUCCESS))
+            *out_phys_mem_free = stats.free_count * getpagesize();
+    #else
+    #error "Unsupported platform"
+    #endif
+}
+
+static void msml__system_host_info_query(msml_ctx_t* ctx) {
+    msml_system_host_info_query_os_name(&ctx->sys_os_name);
+    msml_system_host_info_query_cpu_name(&ctx->sys_cpu_name);
+    msml_system_host_info_query_cpu_cores(&ctx->sys_cpu_virtual_cores, &ctx->sys_cpu_physical_cores, &ctx->sys_cpu_sockets);
+    msml__system_host_info_query_memory(&ctx->sys_phys_mem_total, &ctx->sys_phys_mem_free);
+
+    if (msml_unlikely(!*ctx->sys_os_name)) snprintf(ctx->sys_os_name, sizeof(ctx->sys_os_name), "Unknown");
+    if (msml_unlikely(!*ctx->sys_cpu_name)) snprintf(ctx->sys_cpu_name, sizeof(ctx->sys_cpu_name), "Unknown");
+}
 
 msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
