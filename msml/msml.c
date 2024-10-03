@@ -366,15 +366,9 @@ static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { 
 #ifdef _MSC_VER
     int64_t high;
     int64_t low = _mul128(a, b, &high);
-
     int64_t sign = low >> 63;
-    if (high == sign) {
-        *out = low;
-        return false;
-    } else {
-        *out = low;
-        return true;
-    }
+    *out = low;
+    return high != sign;
 #else
 #if __SIZEOF_LONG_LONG__ == 8 && __SIZEOF_LONG__ == 8
     return __builtin_smulll_overflow(a, b, (long long*)out);
@@ -512,8 +506,8 @@ void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
 }
 
 void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
-    msml_assert(align && !(align & (align - 1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
-    return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size + align-1) + align-1) & ~(align-1));
+    msml_assert(align && !(align&(align-1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
+    return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size+align-1)+align-1)&~(align-1));
 }
 
 size_t msml_ctx_total_memory(const msml_ctx_t* ctx) {
@@ -1187,7 +1181,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     }
     int64_t scalar_size = msml_get_dtype_info(type)->size;
     int64_t buf_size = scalar_size;
-    for (int64_t i=0; i < rank; ++i) {
+    for (int64_t i=0; i < rank; ++i) { /* Calculate buffer size and check for overflow. */
         msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
         msml_assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
     }
@@ -1198,11 +1192,11 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     tensor->rank = rank;
     tensor->dtype = type;
     tensor->buf_size = buf_size;
-    for (int64_t i=0; i < MSML_MAX_DIMS; ++i)
+    for (int64_t i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
         tensor->shape[i] = i < rank ? msml_max(1, dims[i]) : 1;
     *tensor->strides = scalar_size;
-    for (int i=1; i < MSML_MAX_DIMS; ++i) {
-        msml_assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i - 1], tensor->strides + i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
+    for (int i=1; i < MSML_MAX_DIMS; ++i) { /* Calculate strides and check for overflow. */
+        msml_assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
     }
     tensor->buf = slice ? (uint8_t*)slice->buf+slice_offset : (uint8_t*)(tensor+1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return tensor;
@@ -1889,14 +1883,14 @@ static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lu
 static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
     msml__blas_compute_dispatch_table_default(&ctx->blas_dispatch);
     /* TODO: Add support for custom implementations for host CPU arch. */
-    for (int i=MSML_OP_NOP+1; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
+    for (int i=1+MSML_OP_NOP; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
         msml_assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name(i));
     }
 }
 
-static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t* const bci, msml_tensor_t* const node, bool forward);
+static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t* bci, msml_tensor_t* node, bool forward);
 
-static unsigned msml__process_parent_inputs(
+static unsigned MSML_HOTPROC msml__process_parent_inputs(
     const msml_tensor_t*** const out_inputs,
     const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const node,

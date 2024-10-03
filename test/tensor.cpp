@@ -258,6 +258,28 @@ TEST(msml_tensor_t, equals) {
     msml_ctx_destroy(ctx);
 }
 
+TEST(msml_tensor_t, slice) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
+    msml_tensor_fill(origin, 2.0f);
+    int64_t slice_dims[] = {10, 4, 2, 5};
+    msml_tensor_t* slice1 = msml_tensor_create(ctx, MSML_DTYPE_F32, slice_dims, 4, origin, 0);
+    ASSERT_EQ(msml_tensor_buf(slice1), msml_tensor_buf(origin));
+    ASSERT_EQ(msml_tensor_buf_size(slice1), msml_tensor_buf_size(origin));
+    ASSERT_EQ(msml_tensor_buf_len(slice1), msml_tensor_buf_len(origin));
+    auto* buf = msml_tensor_buf_f32(slice1);
+    for (int64_t i=0; i < msml_tensor_buf_len(slice1); ++i) {
+        ASSERT_FLOAT_EQ(buf[i], 2.0f);
+    }
+    msml_tensor_t* slice2 = msml_tensor_create(ctx, MSML_DTYPE_F32, slice_dims, 2, origin, sizeof(float) * 10);
+    ASSERT_EQ(msml_tensor_buf(slice2), static_cast<std::uint8_t*>(msml_tensor_buf(origin)) + sizeof(float)*10);
+    ASSERT_EQ(msml_tensor_buf_size(slice2), 10*4*sizeof(float) - sizeof(float)*10);
+    ASSERT_EQ(msml_tensor_buf_len(slice2), 10*4* - 10);
+
+    msml_ctx_destroy(ctx);
+}
+
 TEST(msml_tensor_t, isclose) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
