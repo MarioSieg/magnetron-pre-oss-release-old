@@ -495,6 +495,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     puts("Creating MSML context...");
     int64_t time_stamp_start = msml_hpc_clock_us();
 
+    /* Print MSML version and compiler info. */
     const char* compiler_name = "Unknown";
     int compiler_version_major = 0, compiler_version_minor = 0;
     #ifdef __clang__
@@ -511,6 +512,20 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
         compiler_version_minor = _MSC_VER % 100;
     #endif
     printf("MSML v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d\n", msml_version_major(MSML_VERSION), msml_version_minor(MSML_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
+
+    /* Enable fast math optimizations for x86-64 platforms. */
+    #if MSML_CFG_X86_64_FAST_MATH && (defined(__x86_64__) || defined(_M_X64))
+        /*
+        ** Enable non-IEEE hardware optimizations in MXCSR:
+        ** 0x0040: DAZ (Denormals Are Zeros) -> Converts denormal inputs to zero.
+        ** 0x8000: FTZ (Flush To Zero) -> Sets underflow results to zero.
+        ** See Intel Manual Vol. 1 §10.2.3.3-4 for details.
+        */
+        unsigned mxcsr;
+        __asm__ __volatile__("stmxcsr\t%0":"=m"(mxcsr)); /* Store MXCSR register to var. */
+        mxcsr |= 0x8040; /* Enable DAZ and FTZ bits. */
+        __asm__ __volatile__("ldmxcsr\t%0"::"m"(mxcsr)); /* Load MXCSR register from var. */
+    #endif
 
     /* Initialize context with default values or from context info. */
     msml_ctx_info_t ctx_info = {0};
@@ -536,6 +551,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     double mem_used_percent = fabs((double)(ctx->sys_phys_mem_total-ctx->sys_phys_mem_free))/(double)ctx->sys_phys_mem_total*100.0;
     printf("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)\n", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 
+    /* Prepare memory pool. */
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks)); /* Allocate chunk pointers. */
     msml__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
@@ -548,6 +564,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     /* Install BLAS dispatch table, specialized for host CPU arch. */
     msml__blas_compute_dispatch_table_install(ctx);
 
+    /* Print context initialization time. */
     printf("MSML context initialized in %.05f ms.\n", msml_hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
 }

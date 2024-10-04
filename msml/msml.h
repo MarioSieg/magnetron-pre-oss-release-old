@@ -7,6 +7,9 @@
 #ifndef MSML_INCLUDE_MSML_H
 #define MSML_INCLUDE_MSML_H
 
+/* Compile time config macros */
+#define MSML_CFG_X86_64_FAST_MATH 1 /* Use fast math for x86_64 by setting mxcsr control register. */
+
 #include <string.h>
 #include <stdlib.h>
 #include <stddef.h>
