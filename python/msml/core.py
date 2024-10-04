@@ -416,7 +416,7 @@ class Tensor:
 
     def f32_data(self) -> list[float]:
         """Returns the data of the tensor buffer as a list of floats."""
-        return ffi.unpack(C.msml_tensor_buf_f32(self.tensor), self.buf_size)
+        return ffi.unpack(C.msml_tensor_buf_f32(self.tensor), self.num_elements)
 
     @property
     def num_rows(self) -> int:
