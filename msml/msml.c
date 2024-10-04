@@ -307,6 +307,22 @@ static inline uintptr_t msml__thread_id(void) {
     return tid;
 }
 
+static int64_t msml_hpc_clock_us(void) { /* High precision clock in microseconds. */
+    #if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+        struct timespec ts;
+        clock_gettime(CLOCK_MONOTONIC, &ts);
+        return (int64_t)ts.tv_sec*1000000 + (int64_t)ts.tv_nsec/1000;
+    #else
+    #error "Unsupported platform"
+    #endif
+}
+static int64_t msml_hpc_clock_elapsed_us(int64_t start) { /* High precision clock elapsed time in microseconds. */
+    return llabs(msml_hpc_clock_us() - start);
+}
+static double msml_hpc_clock_elapsed_ms(int64_t start) { /* High precision clock elapsed time in milliseconds. */
+    return (double)msml_hpc_clock_elapsed_us(start) * 1.0e-3;
+}
+
 static void MSML_AINLINE msml__bswap32(uint32_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     (void)p_x;
 #if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -477,6 +493,7 @@ static void msml__blas_compute_dispatch_table_install(msml_ctx_t* ctx); /* Insta
 
 msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     puts("Creating MSML context...");
+    int64_t time_stamp_start = msml_hpc_clock_us();
 
     const char* compiler_name = "Unknown";
     int compiler_version_major = 0, compiler_version_minor = 0;
@@ -531,7 +548,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     /* Install BLAS dispatch table, specialized for host CPU arch. */
     msml__blas_compute_dispatch_table_install(ctx);
 
-    puts("MSML context created.");
+    printf("MSML context initialized in %.05f ms.\n", msml_hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
 }
 
