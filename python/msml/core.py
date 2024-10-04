@@ -61,9 +61,16 @@ ffi.cdef(f'''
 
     msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
     msml_ctx_t* msml_ctx_create2(size_t pool_chunk_size);
-    size_t msml_ctx_total_memory(const msml_ctx_t* ctx);
+    size_t msml_ctx_total_allocated_pool_memory(const msml_ctx_t* ctx);
     msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx);
     void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed);
+    const char* msml_ctx_get_os_name(const msml_ctx_t* ctx);
+    const char* msml_ctx_get_cpu_name(const msml_ctx_t* ctx);
+    uint32_t msml_ctx_get_cpu_virtual_cores(const msml_ctx_t* ctx);
+    uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx);
+    uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx);
+    uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx);
+    uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx);
     void msml_ctx_destroy(msml_ctx_t* ctx);
     
     const char* msml_op_get_name(msml_op_t op);
@@ -225,6 +232,7 @@ class Operation(Enum):
     def is_binary(self) -> bool:
         return self.argument_count == 2
 
+
 class GraphEvalOrder(Enum):
     """Enumerates the order in which the graph should be evaluated."""
     FORWARD = 0  # Evaluate the graph in forward order (left-to-right)
@@ -237,6 +245,7 @@ class GraphEvalOrder(Enum):
             case GraphEvalOrder.REVERSE:
                 return 'Reverse'
 
+
 class Context:
     """Manages the MSML context and tensor lifecycles."""
 
@@ -246,9 +255,9 @@ class Context:
         self.allocated_tensors = weakref.WeakSet()
 
     @property
-    def total_memory(self) -> int:
+    def total_allocated_pool_memory(self) -> int:
         """Returns the total memory allocated in the context in bytes."""
-        return C.msml_ctx_total_memory(self.ctx)
+        return C.msml_ctx_total_allocated_pool_memory(self.ctx)
 
     @property
     def prng_algorithm(self) -> PRNGAlgorithm:
@@ -259,6 +268,46 @@ class Context:
     def prng_algorithm(self, algorithm: PRNGAlgorithm):
         """Sets the PRNG algorithm and seed for the context."""
         C.msml_ctx_set_prng_algorithm(self.ctx, algorithm.value, random.randint(0, 1 << 63))
+
+    @property
+    def os_name(self) -> str:
+        """Returns the name of the operating system."""
+        return ffi.string(C.msml_ctx_get_os_name(self.ctx)).decode('utf-8')
+
+    @property
+    def cpu_name(self) -> str:
+        """Returns the name of the CPU."""
+        return ffi.string(C.msml_ctx_get_cpu_name(self.ctx)).decode('utf-8')
+
+    @property
+    def cpu_virtual_cores(self) -> int:
+        """Returns the number of virtual cores of the CPU."""
+        return C.msml_ctx_get_cpu_virtual_cores(self.ctx)
+
+    @property
+    def cpu_physical_cores(self) -> int:
+        """Returns the number of physical cores of the CPU."""
+        return C.msml_ctx_get_cpu_physical_cores(self.ctx)
+
+    @property
+    def cpu_sockets(self) -> int:
+        """Returns the number of CPU sockets."""
+        return C.msml_ctx_get_cpu_sockets(self.ctx)
+
+    @property
+    def physical_memory_total(self) -> int:
+        """Returns the total physical memory in bytes."""
+        return C.msml_ctx_get_physical_memory_total(self.ctx)
+
+    @property
+    def physical_memory_free(self) -> int:
+        """Returns the free physical memory in bytes."""
+        return C.msml_ctx_get_physical_memory_free(self.ctx)
+
+    @property
+    def physical_memory_used(self) -> int:
+        """Returns the used physical memory in bytes."""
+        return abs(self.physical_memory_total - self.physical_memory_free)
 
     def __del__(self):
         """Ensure tensors are cleaned up when the context is destroyed."""

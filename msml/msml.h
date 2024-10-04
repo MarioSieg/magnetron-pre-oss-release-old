@@ -69,9 +69,16 @@ extern MSML_API msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info); /* Cre
 extern MSML_API msml_ctx_t* msml_ctx_create2(size_t pool_chunk_size); /* Create context with just pool chunk size. */
 extern MSML_API void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size); /* Allocate memory from pool */
 extern MSML_API void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align); /* Aligned memory allocation */
-extern MSML_API size_t msml_ctx_total_memory(const msml_ctx_t* ctx); /* Get total allocated memory */
+extern MSML_API size_t msml_ctx_total_allocated_pool_memory(const msml_ctx_t* ctx); /* Get total allocated pool memory */
 extern MSML_API msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx); /* Get PRNG algorithm */
 extern MSML_API void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed); /* Set PRNG algorithm */
+extern MSML_API const char* msml_ctx_get_os_name(const msml_ctx_t* ctx); /* Get the name of the operating system */
+extern MSML_API const char* msml_ctx_get_cpu_name(const msml_ctx_t* ctx); /* Get the name of the CPU */
+extern MSML_API uint32_t msml_ctx_get_cpu_virtual_cores(const msml_ctx_t* ctx); /* Get the number of virtual cores */
+extern MSML_API uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx); /* Get the number of physical cores */
+extern MSML_API uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx); /* Get the number of CPU sockets */
+extern MSML_API uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx); /* Get the total physical memory in bytes */
+extern MSML_API uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx); /* Get the free physical memory in bytes */
 extern MSML_API void msml_ctx_destroy(msml_ctx_t* ctx); /* Destroy context and free memory */
 
 typedef enum msml_dtype_t {

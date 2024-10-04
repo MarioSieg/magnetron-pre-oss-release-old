@@ -462,4 +462,6 @@ TEST(msml_tensor_t, save_and_load_from_image) {
     }
 
     msml_ctx_destroy(ctx);
+
+    std::filesystem::remove(image);
 }

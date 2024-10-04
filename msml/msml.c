@@ -515,8 +515,8 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
     msml__humanize_memory_size(ctx->sys_phys_mem_total, &mem_total, &mem_unit_total);
     msml__humanize_memory_size(ctx->sys_phys_mem_free, &mem_free, &mem_unit_free);
-    msml__humanize_memory_size(ctx->sys_phys_mem_total - ctx->sys_phys_mem_free, &mem_used, &mem_unit_used);
-    double mem_used_percent = (double)(ctx->sys_phys_mem_total-ctx->sys_phys_mem_free)/(double)ctx->sys_phys_mem_total*100.0;
+    msml__humanize_memory_size((size_t)llabs((int64_t)ctx->sys_phys_mem_total-(int64_t)ctx->sys_phys_mem_free), &mem_used, &mem_unit_used);
+    double mem_used_percent = fabs((double)(ctx->sys_phys_mem_total-ctx->sys_phys_mem_free))/(double)ctx->sys_phys_mem_total*100.0;
     printf("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)\n", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 
     ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks)); /* Allocate chunk pointers. */
@@ -563,24 +563,30 @@ void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
     return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size+align-1)+align-1)&~(align-1));
 }
 
-size_t msml_ctx_total_memory(const msml_ctx_t* ctx) {
+size_t msml_ctx_total_allocated_pool_memory(const msml_ctx_t* ctx) {
     size_t mem = sizeof(*ctx);
     mem += sizeof(*ctx->chunks) * ctx->chunk_cap;
     mem += ctx->alloc_total;
     return mem;
 }
 
-msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx) {
-    return ctx->prng_algorithm;
-}
+msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx) { return ctx->prng_algorithm; }
 
 void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed) {
     ctx->prng_algorithm = algorithm;
     msml__prng_init(ctx, seed);
 }
 
+const char* msml_ctx_get_os_name(const msml_ctx_t* ctx) { return ctx->sys_os_name; }
+const char* msml_ctx_get_cpu_name(const msml_ctx_t* ctx) { return ctx->sys_cpu_name; }
+uint32_t msml_ctx_get_cpu_virtual_cores(const msml_ctx_t* ctx) { return ctx->sys_cpu_virtual_cores; }
+uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx) { return ctx->sys_cpu_physical_cores; }
+uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx) { return ctx->sys_cpu_sockets; }
+uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx) { return ctx->sys_phys_mem_total; }
+uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx) { return ctx->sys_phys_mem_free; }
+
 void msml_ctx_destroy(msml_ctx_t* ctx) {
-    size_t mem_total = msml_ctx_total_memory(ctx);
+    size_t mem_total = msml_ctx_total_allocated_pool_memory(ctx);
     size_t mem_mapped = ctx->mapped_total;
     void* (*alloc)(void* blk, size_t size) = ctx->alloc_fn;
     for (size_t i=0; i < ctx->chunk_len; ++i) /* Free individual chunks */
