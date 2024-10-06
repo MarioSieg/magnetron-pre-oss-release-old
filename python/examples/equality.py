@@ -5,7 +5,7 @@ ctx = Context()
 # A and B are equal
 # A and C are not equal
 A = Tensor.random(ctx, [4, 4, 2])
-B = Tensor.deep_clone(A)
+B = Tensor.clone(A)
 C = Tensor.random(ctx, [4, 4, 2])
 
 # Check for strict equality (floating point errors might occur)

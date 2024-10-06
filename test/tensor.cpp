@@ -186,7 +186,7 @@ TEST(msml_tensor_t, deep_clone) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_deep_clone(origin);
+    msml_tensor_t* clone = msml_tensor_clone(origin);
     ASSERT_NE(origin, clone);
     ASSERT_EQ(msml_tensor_rank(origin), msml_tensor_rank(clone));
     ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(clone)[0]);
@@ -217,7 +217,7 @@ TEST(msml_tensor_t, isomorphic_clone) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_isomorphic_clone(origin);
+    msml_tensor_t* clone = msml_tensor_isomorphic(origin);
     ASSERT_NE(origin, clone);
     ASSERT_EQ(msml_tensor_rank(origin), msml_tensor_rank(clone));
     ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(clone)[0]);
@@ -248,8 +248,8 @@ TEST(msml_tensor_t, equals) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_deep_clone(origin);
-    msml_tensor_t* clone2 = msml_tensor_isomorphic_clone(origin);
+    msml_tensor_t* clone = msml_tensor_clone(origin);
+    msml_tensor_t* clone2 = msml_tensor_isomorphic(origin);
     msml_tensor_fill_random(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(msml_tensor_eq(origin, clone));
     ASSERT_FALSE(msml_tensor_eq(origin, clone2));
@@ -258,7 +258,7 @@ TEST(msml_tensor_t, equals) {
     msml_ctx_destroy(ctx);
 }
 
-TEST(msml_tensor_t, slice) {
+TEST(msml_tensor_t, view) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
@@ -274,8 +274,12 @@ TEST(msml_tensor_t, slice) {
     }
     msml_tensor_t* slice2 = msml_tensor_create(ctx, MSML_DTYPE_F32, slice_dims, 2, origin, sizeof(float) * 10);
     ASSERT_EQ(msml_tensor_buf(slice2), static_cast<std::uint8_t*>(msml_tensor_buf(origin)) + sizeof(float)*10);
-    ASSERT_EQ(msml_tensor_buf_size(slice2), 10*4*sizeof(float) - sizeof(float)*10);
-    ASSERT_EQ(msml_tensor_buf_len(slice2), 10*4* - 10);
+    ASSERT_EQ(msml_tensor_buf_size(slice2), 10*4*sizeof(float));
+    ASSERT_EQ(msml_tensor_buf_len(slice2), 10*4);
+    auto* buf_slice2 = msml_tensor_buf_f32(slice2);
+    for (int64_t i = 0; i < msml_tensor_buf_len(slice2); ++i) {
+        ASSERT_FLOAT_EQ(buf_slice2[i], 2.0f);
+    }
 
     msml_ctx_destroy(ctx);
 }
@@ -285,8 +289,8 @@ TEST(msml_tensor_t, isclose) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_deep_clone(origin);
-    msml_tensor_t* clone2 = msml_tensor_isomorphic_clone(origin);
+    msml_tensor_t* clone = msml_tensor_clone(origin);
+    msml_tensor_t* clone2 = msml_tensor_isomorphic(origin);
     msml_tensor_fill_random(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(msml_tensor_isclose(origin, clone, FLT_EPSILON, nullptr));
     ASSERT_FALSE(msml_tensor_isclose(origin, clone2, FLT_EPSILON, nullptr));

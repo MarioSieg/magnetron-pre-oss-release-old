@@ -166,8 +166,8 @@ struct msml_tensor_t {
     int64_t buf_size;
     msml_op_t op;
     msml_tensor_t* inputs[MSML_MAX_ARG_TENSORS];
-    msml_tensor_t* slice;
-    size_t slice_offset;
+    msml_tensor_t* view;
+    size_t view_offs;
     char name[MSML_MAX_TENSOR_NAME_LEN];
     void* user_data;
 };
@@ -1274,11 +1274,11 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
     return tensor->ctx;
 }
 
-msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* slice, size_t slice_offset) {
+msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs) {
     msml_assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
-    if (slice && slice->slice) { /* Accumulate relative slice offset. */
-        slice_offset += slice->slice_offset;
-        slice = slice->slice;
+    if (view && view->view) { /* Accumulate relative view offset. */
+        view_offs += view->view_offs;
+        view = view->view;
     }
     int64_t scalar_size = msml_get_dtype_info(type)->size;
     int64_t buf_size = scalar_size;
@@ -1286,20 +1286,22 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
         msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
         msml_assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
     }
-    msml_assert2(!slice || !buf_size || buf_size + slice_offset <= slice->buf_size); /* Slice must be within sliced tensor data range. */
-    msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + (slice ? 0 : buf_size)); /* Allocate memory for tensor struct and data */
+    msml_assert2(!view || !buf_size || buf_size + view_offs <= view->buf_size); /* Slice must be within viewed tensor data range. */
+    msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + (view ? 0 : buf_size)); /* Allocate memory for tensor struct and data */
     memset(tensor, 0, sizeof(*tensor));
     tensor->ctx = ctx;
     tensor->rank = rank;
     tensor->dtype = type;
     tensor->buf_size = buf_size;
-    for (int64_t i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
+    tensor->view = view;
+    tensor->view_offs = view_offs;
+    for (int i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
         tensor->shape[i] = i < rank ? msml_max(1, dims[i]) : 1;
     *tensor->strides = scalar_size;
     for (int i=1; i < MSML_MAX_DIMS; ++i) { /* Calculate strides and check for overflow. */
         msml_assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
     }
-    tensor->buf = slice ? (uint8_t*)slice->buf+slice_offset : (uint8_t*)(tensor+1); /* Set buffer pointer to the end of the tensor struct, where data follows */
+    tensor->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(tensor + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return tensor;
 }
 
@@ -1319,6 +1321,25 @@ msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
     return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4, NULL, 0);
 }
 
+msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor) {
+    msml_tensor_t* isomorph = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->shape, tensor->rank, NULL, 0);
+    msml_tensor_fmt_name(isomorph, "%s (isomorph)", tensor->name);
+    return isomorph;
+}
+
+msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor) {
+    msml_tensor_t* clone = msml_tensor_isomorphic(tensor);
+    memcpy(clone->buf, tensor->buf, tensor->buf_size);
+    msml_tensor_fmt_name(clone, "%s (clone)", tensor->name);
+    return clone;
+}
+
+msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor) {
+    msml_tensor_t* view = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->shape, tensor->rank, tensor, 0);
+    msml_tensor_fmt_name(view, "%s (view)", tensor->name);
+    return view;
+}
+
 msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
     msml_assert(slot < MSML_MAX_ARG_TENSORS, "Slot must be within [0, %d)", MSML_MAX_ARG_TENSORS);
     return tensor->inputs[slot];
@@ -1336,17 +1357,6 @@ msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor) {
 
 void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op) {
     tensor->op = op;
-}
-
-msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor) {
-    msml_tensor_t* isomorph = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->shape, tensor->rank, NULL, 0);
-    return isomorph;
-}
-
-msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor) {
-    msml_tensor_t* clone = msml_tensor_isomorphic_clone(tensor);
-    memcpy(clone->buf, tensor->buf, tensor->buf_size);
-    return clone;
 }
 
 void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size) {
@@ -1429,6 +1439,13 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
 void msml_tensor_set_name(msml_tensor_t* tensor, const char* name) {
     strncpy(tensor->name, name, MSML_MAX_TENSOR_NAME_LEN);
     tensor->name[MSML_MAX_TENSOR_NAME_LEN-1] = '\0';
+}
+
+void msml_tensor_fmt_name(msml_tensor_t* tensor, const char* fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(tensor->name, sizeof(tensor->name), fmt, args);
+    va_end(args);
 }
 
 const char* msml_tensor_get_name(const msml_tensor_t* tensor) {

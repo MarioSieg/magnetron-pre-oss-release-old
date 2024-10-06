@@ -15,7 +15,7 @@
             msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             \
-            msml_tensor_t* r = msml_tensor_isomorphic_clone(x); \
+            msml_tensor_t* r = msml_tensor_isomorphic(x); \
             msml_tensor_set_op(r, MSML_OP_##op); \
             msml_tensor_set_arg(r, 0, x); \
             \
@@ -84,11 +84,11 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
         for (int64_t i2=1; i2 <= 14; ++i2) \
         for (int64_t i3=1; i3 <= 14; ++i3) { \
             msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
-            msml_tensor_t* y = msml_tensor_isomorphic_clone(x); \
+            msml_tensor_t* y = msml_tensor_isomorphic(x); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill_random(y, -5.0f, 5.0f); \
             \
-            msml_tensor_t* r = msml_tensor_isomorphic_clone(x); \
+            msml_tensor_t* r = msml_tensor_isomorphic(x); \
             msml_tensor_set_op(r, MSML_OP_##op); \
             msml_tensor_set_arg(r, 0, x); \
             msml_tensor_set_arg(r, 1, y); \
@@ -120,7 +120,7 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill(y, 2.2f); \
             \
-            msml_tensor_t* r = msml_tensor_isomorphic_clone(x); \
+            msml_tensor_t* r = msml_tensor_isomorphic(x); \
             msml_tensor_set_op(r, MSML_OP_##op); \
             msml_tensor_set_arg(r, 0, x); \
             msml_tensor_set_arg(r, 1, y); \
@@ -149,9 +149,9 @@ TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
     msml_tensor_t* R = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 16384, 16384, 3);
-    msml_tensor_t* X = msml_tensor_isomorphic_clone(R);
+    msml_tensor_t* X = msml_tensor_isomorphic(R);
     msml_tensor_fill(X, 3.0);
-    msml_tensor_t* Y = msml_tensor_isomorphic_clone(R);
+    msml_tensor_t* Y = msml_tensor_isomorphic(R);
     msml_tensor_set_op(Y, MSML_OP_MUL);
     msml_tensor_set_arg(Y, 0, R);
     msml_tensor_set_arg(Y, 1, X);

@@ -198,23 +198,25 @@ extern MSML_API uint8_t msml_op_get_argcount(msml_op_t op);
 typedef struct msml_tensor_t msml_tensor_t; /* Opaque type representing a tensor */
 
 extern MSML_API msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor); /* Get the context of the tensor */
-extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* slice, size_t slice_offset); /* Create a tensor with specified dimensions */
+extern MSML_API msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs); /* Create a tensor with specified dimensions */
 extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1); /* Create 1D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4); /* Create 4D tensor */
+extern MSML_API msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor); /* Create new empty tensor with same shape as input, but without cloning data. */
+extern MSML_API msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input (deep clone). */
+extern MSML_API msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input, but data is referenced only and not copied. (shallow clone). */
 extern MSML_API msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot); /* Return arg at index or NULL if not set. */
 extern MSML_API void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg); /* Return arg at index or NULL if not set. */
 extern MSML_API msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor); /* Get opcode for tensor. */
 extern MSML_API void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op); /* Set opcode for tensor. */
-extern MSML_API msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor); /* Create new empty tensor with same shape as input, but without cloning data. */
-extern MSML_API msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input. */
 extern MSML_API void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size); /* Copy data into tensor buffer */
 extern MSML_API void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
 extern MSML_API void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max); /* Fill tensor with random values within [min, max] */
 extern MSML_API size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor); /* Return memory used by this tensor in bytes. */
 extern MSML_API void msml_tensor_print(const msml_tensor_t* tensor, bool with_data); /* Print tensor info (with or without data) */
 extern MSML_API void msml_tensor_set_name(msml_tensor_t* tensor, const char* name); /* Set the name of the tensor */
+extern MSML_API void msml_tensor_fmt_name(msml_tensor_t* tensor, const char* fmt, ...); /* Format the name of the tensor */
 extern MSML_API const char* msml_tensor_get_name(const msml_tensor_t* tensor); /* Get the name of the tensor */
 extern MSML_API int64_t msml_tensor_rank(const msml_tensor_t* tensor); /* Get the rank (number of dimensions) of the tensor */
 extern MSML_API const int64_t* msml_tensor_shape(const msml_tensor_t* tensor); /* Get the dimensions of the tensor */

@@ -8,7 +8,7 @@ ctx = Context()
 # Generate a random tensor as image and plot it (width x height x channels)
 R = Tensor.random(ctx, [16384, 16384, 3], interval=(0, 1), name='Random Noise')
 
-X = Tensor.isomorphic_clone(R)
+X = Tensor.isomorphic(R)
 X.name = 'Coefficient'
 X.fill(3)
 

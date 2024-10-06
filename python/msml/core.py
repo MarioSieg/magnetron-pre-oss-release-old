@@ -83,12 +83,13 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+    msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor);
+    msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor);
+    msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot);
     void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg);
     msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor);
     void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op);
-    msml_tensor_t* msml_tensor_isomorphic_clone(msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_deep_clone(msml_tensor_t* tensor);
     void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
     void msml_tensor_fill(msml_tensor_t* tensor, float x);
     void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max);
@@ -536,14 +537,19 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def isomorphic_clone(tensor) -> 'Tensor':
-        """Create new empty tensor with same shape as input, but without cloning data."""
-        return Tensor(C.msml_tensor_isomorphic_clone(tensor.tensor))
+    def isomorphic(tensor: 'Tensor') -> 'Tensor':
+        """Create new empty tensor with same shape as input, but without cloning any data, data is unitialized."""
+        return Tensor(C.msml_tensor_isomorphic(tensor.tensor))
 
     @staticmethod
-    def deep_clone(tensor) -> 'Tensor':
-        """Create new tensor with same shape and data as input."""
-        return Tensor(C.msml_tensor_deep_clone(tensor.tensor))
+    def clone(tensor: 'Tensor') -> 'Tensor':
+        """Create new tensor with same shape and data as input. (deep clone)"""
+        return Tensor(C.msml_tensor_clone(tensor.tensor))
+
+    @staticmethod
+    def view(tensor: 'Tensor') -> 'Tensor':
+        """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
+        return Tensor(C.msml_tensor_view(tensor.tensor))
 
     @staticmethod
     def full(ctx: Context, shape: list[int], fill_value: float, dtype: DType = DType.F32,
@@ -590,32 +596,32 @@ class Tensor:
         return tensor
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.SOFTMAX_DV if derivative else Operation.SOFTMAX, self)
         return result
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
         return result
 
     def silu(self, derivative: bool = False) -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.SILU_DV if derivative else Operation.SILU, self)
         return result
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.TANH_DV if derivative else Operation.TANH, self)
         return result
 
     def relu(self, derivative: bool = False) -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.RELU_DV if derivative else Operation.RELU, self)
         return result
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.GELU_DV if derivative else Operation.GELU, self)
         return result
 
@@ -624,27 +630,27 @@ class Tensor:
         return fmt
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.ADD, self, other)
         return result
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.SUB, self, other)
         return result
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.MUL, self, other)
         return result
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.DIV, self, other)
         return result
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
-        result = self.isomorphic_clone(self)
+        result = self.isomorphic(self)
         result.set_op_with_args(Operation.MATMUL, self, other)
         return result
 
