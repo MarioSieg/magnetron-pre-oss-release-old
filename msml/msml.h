@@ -206,6 +206,7 @@ extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor); /* Create new empty tensor with same shape as input, but without cloning data. */
 extern MSML_API msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input (deep clone). */
 extern MSML_API msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input, but data is referenced only and not copied. (shallow clone). */
+extern MSML_API msml_tensor_t* msml_tensor_transpose(msml_tensor_t* tensor); /* Create new tensor with transposed shape and data as input. */
 extern MSML_API msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot); /* Return arg at index or NULL if not set. */
 extern MSML_API void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg); /* Return arg at index or NULL if not set. */
 extern MSML_API msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor); /* Get opcode for tensor. */

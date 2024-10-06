@@ -1347,6 +1347,16 @@ msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor) {
     return view;
 }
 
+msml_tensor_t* msml_tensor_transpose(msml_tensor_t* tensor) {
+    msml_tensor_t* transposed = msml_tensor_view(tensor);
+    msml_tensor_fmt_name(transposed, "%s (transposed)", tensor->name);
+    transposed->shape[0] = tensor->shape[1];
+    transposed->shape[1] = tensor->shape[0];
+    transposed->strides[0] = tensor->strides[1];
+    transposed->strides[1] = tensor->strides[0];
+    return transposed;
+}
+
 msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
     msml_assert(slot < MSML_MAX_ARG_TENSORS, "Slot must be within [0, %d)", MSML_MAX_ARG_TENSORS);
     return tensor->inputs[slot];
