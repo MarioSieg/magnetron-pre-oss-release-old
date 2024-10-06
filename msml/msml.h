@@ -46,8 +46,8 @@ extern "C" {
 #define msml_static_assert(expr) extern void msml_assert_name(__LINE__)(bool STATIC_ASSERTION_FAILED[((expr)?1:-1)])
 
 extern MSML_API void* msml_default_allocator_impl(void* blk, size_t size); /* Default memory allocator */
-#ifndef msml_allocator /* Default allocator, can be overridden by defining it before.  */
-#define msml_allocator msml_default_allocator_impl
+#ifndef msml_alloc /* Default allocator, can be overridden by defining it before.  */
+#define msml_alloc msml_default_allocator_impl
 #endif
 
 typedef enum msml_prng_algorithm_t {

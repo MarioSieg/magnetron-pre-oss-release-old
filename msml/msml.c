@@ -37,15 +37,15 @@ msml_static_assert(sizeof(0u) == 4);
 msml_static_assert(sizeof(0ull) == 8);
 
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
-#   define STBI_MALLOC(sz) msml_allocator(NULL, (sz))
-#   define STBI_FREE(ptr) msml_allocator((ptr), 0)
-#   define STBI_REALLOC(ptr, sz) msml_allocator((ptr), (sz))
-#   define STBIR_MALLOC(sz, usr) msml_allocator(NULL, (sz))
-#   define STBIR_FREE(ptr, usr) msml_allocator((ptr), 0)
-#   define STBIR_REALLOC(ptr, sz, usr) msml_allocator((ptr), (sz))
-#   define STBIW_MALLOC(sz) msml_allocator(NULL, (sz))
-#   define STBIW_FREE(ptr) msml_allocator((ptr), 0)
-#   define STBIW_REALLOC(ptr, sz) msml_allocator((ptr), (sz))
+#   define STBI_MALLOC(sz) msml_alloc(NULL, (sz))
+#   define STBI_FREE(ptr) msml_alloc((ptr), 0)
+#   define STBI_REALLOC(ptr, sz) msml_alloc((ptr), (sz))
+#   define STBIR_MALLOC(sz, usr) msml_alloc(NULL, (sz))
+#   define STBIR_FREE(ptr, usr) msml_alloc((ptr), 0)
+#   define STBIR_REALLOC(ptr, sz, usr) msml_alloc((ptr), (sz))
+#   define STBIW_MALLOC(sz) msml_alloc(NULL, (sz))
+#   define STBIW_FREE(ptr) msml_alloc((ptr), 0)
+#   define STBIW_REALLOC(ptr, sz) msml_alloc((ptr), (sz))
 #   define STB_IMAGE_IMPLEMENTATION
 #   include <stb_image.h>
 #   define STB_IMAGE_RESIZE_IMPLEMENTATION
@@ -538,7 +538,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     /* Initialize context with default values or from context info. */
     msml_ctx_info_t ctx_info = {0};
     if (info) ctx_info = *info;
-    ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_allocator; /* Use default allocator if not provided. */
+    ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_alloc; /* Use default allocator if not provided. */
     msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx)); /* Allocate context. */
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
@@ -2354,9 +2354,9 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
         *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
         FILE* cpuinfo = msml__fopen("/proc/cpuinfo", "r");
         if (msml_unlikely(!cpuinfo)) return;
-        uint32_t* physical_ids = msml_allocator(NULL, MAX_CPUS*sizeof(*physical_ids));
-        uint32_t* core_ids = msml_allocator(NULL, MAX_CPUS*sizeof(*core_ids));
-        uint32_t* package_ids = msml_allocator(NULL, MAX_CPUS*sizeof(*package_ids));
+        uint32_t* physical_ids = msml_alloc(NULL, MAX_CPUS*sizeof(*physical_ids));
+        uint32_t* core_ids = msml_alloc(NULL, MAX_CPUS*sizeof(*core_ids));
+        uint32_t* package_ids = msml_alloc(NULL, MAX_CPUS*sizeof(*package_ids));
         uint32_t cpu_count = 0;
         uint32_t package_count = 0;
         uint32_t current_physical_id = 0;
@@ -2402,9 +2402,9 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
             }
         }
         fclose(cpuinfo);
-        msml_allocator(physical_ids, 0);
-        msml_allocator(core_ids, 0);
-        msml_allocator(package_ids, 0);
+        msml_alloc(physical_ids, 0);
+        msml_alloc(core_ids, 0);
+        msml_alloc(package_ids, 0);
         *out_physical = cpu_count;
         *out_sockets = package_count;
         #undef MAX_CPUS
