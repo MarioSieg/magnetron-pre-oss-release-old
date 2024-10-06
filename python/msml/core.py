@@ -12,7 +12,7 @@ from ctypes.util import find_library
 
 # Load shared library
 
-BUILD_DIR = 'release'
+BUILD_DIR = 'debug'
 
 msml_lib_locations: list[str] = []
 
@@ -537,22 +537,6 @@ class Tensor:
         tensor._create_internal(ctx, shape, dtype, name)
         return tensor
 
-    def isomorphic(self) -> 'Tensor':
-        """Create new empty tensor with same shape as input, but without cloning any data, data is unitialized."""
-        return Tensor(C.msml_tensor_isomorphic(self.tensor))
-
-    def clone(self) -> 'Tensor':
-        """Create new tensor with same shape and data as input. (deep clone)"""
-        return Tensor(C.msml_tensor_clone(self.tensor))
-
-    def view(self) -> 'Tensor':
-        """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
-        return Tensor(C.msml_tensor_view(self.tensor))
-
-    def transpose(self) -> 'Tensor':
-        """Transposes the tensor."""
-        return Tensor(C.msml_tensor_transpose(self.tensor))
-
     @staticmethod
     def full(ctx: Context, shape: list[int], fill_value: float, dtype: DType = DType.F32,
              name: str | None = None) -> 'Tensor':
@@ -560,6 +544,16 @@ class Tensor:
         tensor = Tensor(None)
         tensor._create_internal(ctx, shape, dtype, name)
         tensor.fill(fill_value)
+        return tensor
+
+    @staticmethod
+    def with_data(ctx: Context, shape: list[int], data: list[float], dtype: DType = DType.F32,
+                  name: str | None = None) -> 'Tensor':
+        """Creates a tensor with the given data."""
+        tensor = Tensor(None)
+        tensor._create_internal(ctx, shape, dtype, name)
+        size: int = len(data) * ffi.sizeof('float')
+        C.msml_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(data)}]', data), size)
         return tensor
 
     @staticmethod
@@ -596,6 +590,22 @@ class Tensor:
         if name is not None:
             tensor.name = name
         return tensor
+
+    def isomorphic(self) -> 'Tensor':
+        """Create new empty tensor with same shape as input, but without cloning any data, data is unitialized."""
+        return Tensor(C.msml_tensor_isomorphic(self.tensor))
+
+    def clone(self) -> 'Tensor':
+        """Create new tensor with same shape and data as input. (deep clone)"""
+        return Tensor(C.msml_tensor_clone(self.tensor))
+
+    def view(self) -> 'Tensor':
+        """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
+        return Tensor(C.msml_tensor_view(self.tensor))
+
+    def transpose(self) -> 'Tensor':
+        """Transposes the tensor."""
+        return Tensor(C.msml_tensor_transpose(self.tensor))
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         result = self.isomorphic()
