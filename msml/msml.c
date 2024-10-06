@@ -17,13 +17,21 @@
 #   include <intrin.h>
 #endif
 
-#ifdef __APPLE__
+#ifdef _WIN32
+#   error "MSML does not support Windows yet."
+#elif defined(__APPLE__)
 #   include <mach/mach.h>
 #   include <mach/vm_statistics.h>
 #   include <sys/sysctl.h>
 #   include <sys/types.h>
 #   include <unistd.h>
+#else
+#   include <unistd.h>
 #endif
+
+#include <ctype.h>
+#include <time.h>
+#include <errno.h>
 
 msml_static_assert(sizeof(0u) == 4);
 msml_static_assert(sizeof(0ull) == 8);
@@ -308,12 +316,12 @@ static inline uintptr_t msml__thread_id(void) {
 }
 
 static int64_t msml_hpc_clock_us(void) { /* High precision clock in microseconds. */
-    #if defined(__APPLE__) || defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+    #ifdef _WIN32
+    #error "MSML does not support Windows yet."
+    #else
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
         return (int64_t)ts.tv_sec*1000000 + (int64_t)ts.tv_nsec/1000;
-    #else
-    #error "Unsupported platform"
     #endif
 }
 static int64_t msml_hpc_clock_elapsed_us(int64_t start) { /* High precision clock elapsed time in microseconds. */
@@ -2227,35 +2235,27 @@ msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name) {
 
 #undef msml__save_fwrite
 
-#if defined(__APPLE__) || defined(__linux__)
+#ifdef __APPLE__
     static bool msml__sysctl_mib01(uint8_t (*out)[256], size_t* o_len, int mib0, int mib1) { /* Get sysctl data */
         memset(out, 0, sizeof(*out));
         *o_len = 0;
-        #ifdef __APPLE__
-            int name[2] = {mib0, mib1};
-            size_t len = 0;
-            if (msml_unlikely(sysctl(name, sizeof(name) / sizeof(*name), NULL, &len, NULL, 0))) return false; /* Get length */
-            if (msml_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
-            if (msml_unlikely(sysctl(name, sizeof(name) / sizeof(*name), *out, &len, NULL, 0))) return false; /* Get data */
-            *o_len = len;
-            return true;
-        #else
-        #error "Unsupported platform"
-        #endif
+        int name[2] = {mib0, mib1};
+        size_t len = 0;
+        if (msml_unlikely(sysctl(name, sizeof(name) / sizeof(*name), NULL, &len, NULL, 0))) return false; /* Get length */
+        if (msml_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
+        if (msml_unlikely(sysctl(name, sizeof(name) / sizeof(*name), *out, &len, NULL, 0))) return false; /* Get data */
+        *o_len = len;
+        return true;
     }
     static bool msml__sysctl_key(uint8_t (*out)[256], size_t* o_len, const char* key) { /* Get sysctl data */
         memset(out, 0, sizeof(*out));
         *o_len = 0;
-        #ifdef __APPLE__
-            size_t len = 0;
-            if (msml_unlikely(sysctlbyname(key, NULL, &len, NULL, 0))) return false; /* Get length */
-            if (msml_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
-            if (msml_unlikely(sysctlbyname(key, *out, &len, NULL, 0))) return false; /* Get data */
-            *o_len = len;
-            return true;
-        #else
-        #error "Unsupported platform"
-        #endif
+        size_t len = 0;
+        if (msml_unlikely(sysctlbyname(key, NULL, &len, NULL, 0))) return false; /* Get length */
+        if (msml_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
+        if (msml_unlikely(sysctlbyname(key, *out, &len, NULL, 0))) return false; /* Get data */
+        *o_len = len;
+        return true;
     }
     static uint64_t msml__sysctl_unpack_int(const uint8_t (*in)[256], size_t len) { /* Unpack sysctl data */
         switch (len) {
@@ -2265,32 +2265,81 @@ msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name) {
             default: return 0;
         }
     }
+#else
+    static bool msml__cpuinfo_parse_value(const char* key, char (*out)[128]) {
+        FILE* cpuinfo = msml__fopen("/proc/cpuinfo", "rt");
+        if (msml_unlikely(!cpuinfo)) return false;
+        size_t key_len = strlen(key);
+        char line[128];
+        while (fgets(line, sizeof(line), cpuinfo)) {
+            size_t line_len = strlen(line);
+            if (line_len > 0 && line[line_len-1] == '\n') line[line_len-1] = '\0';
+            if (strncmp(line, key, key_len) == 0 && (isspace((unsigned char)line[key_len]) || line[key_len] == ':')) {
+                char* colon = strchr(line, ':');
+                if (!colon) continue;
+                char* value = colon+1;
+                while (isspace((unsigned char)*value)) ++value;
+                char* end = value + strlen(value);
+                for (; end > value && isspace((unsigned char)*(end-1)); --end);
+                *end = '\0';
+                size_t value_len = llabs(end-value);
+                if (msml_unlikely(!value_len || value_len >= sizeof(*out))) {
+                    fclose(cpuinfo);
+                    return false;
+                }
+                snprintf(*out, sizeof(*out), "%s", value);
+                fclose(cpuinfo);
+                return true;
+            }
+        }
+        fclose(cpuinfo);
+        return false;
+    }
+    static uint64_t msml__parse_meminfo_value(const char* line) {
+        const char *p = strchr(line, ':');
+        if (msml_unlikely(!p)) return 0;
+        ++p;
+        p += strspn(p, " \t");
+        errno = 0;
+        char* end;
+        uint64_t value = strtoull(p, &end, 10);
+        if (msml_unlikely(errno != 0 || p == end)) return 0;
+        return value<<10;
+    }
 #endif
 
 static void msml_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get OS name */
-    #ifdef __APPLE__
+    #ifdef _WIN32
+    #error "Unsupported platform"
+    #elif defined(__APPLE__)
         size_t len;
         uint8_t tmp[256];
         if (msml_likely(msml__sysctl_mib01(&tmp, &len, CTL_KERN, KERN_VERSION) && len && *tmp))
             snprintf(*out_os_name, sizeof(*out_os_name), "%s", (const char*)tmp);
     #else
-    #error "Unsupported platform"
+        // TODO: Linux
     #endif
 }
 
 static void msml_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* Get CPU name */
-    #ifdef __APPLE__
+    #ifdef _WIN32
+    #error "Unsupported platform"
+    #elif defined(__APPLE__)
         size_t len;
         uint8_t tmp[256];
         if (msml_likely(msml__sysctl_key(&tmp, &len, "machdep.cpu.brand_string") && len && *tmp))
             snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", (const char*)tmp);
     #else
-    #error "Unsupported platform"
+        char cpu_name[128];
+        if (msml_likely(msml__cpuinfo_parse_value("model name", &cpu_name) && *cpu_name))
+            snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", cpu_name);
     #endif
 }
 
 static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t* out_physical, uint32_t* out_sockets) { /* Get CPU virtual (logical) cores. */
-    #ifdef __APPLE__
+    #ifdef _WIN32
+    #error "Unsupported platform"
+    #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
         if (msml_likely(msml__sysctl_key(&tmp, &len, "machdep.cpu.thread_count") && len))
@@ -2300,12 +2349,69 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
         if (msml_likely(msml__sysctl_key(&tmp, &len, "hw.packages") && len))
             *out_sockets = msml__sysctl_unpack_int(&tmp, len);
     #else
-    #error "Unsupported platform"
+        #define MAX_CPUS 0x1000
+        long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
+        *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
+        FILE* cpuinfo = msml__fopen("/proc/cpuinfo", "r");
+        if (msml_unlikely(!cpuinfo)) return;
+        uint32_t physical_ids[MAX_CPUS];
+        uint32_t core_ids[MAX_CPUS];
+        uint32_t cpu_count = 0;
+        uint32_t package_ids[MAX_CPUS];
+        uint32_t package_count = 0;
+        uint32_t current_physical_id = 0;
+        uint32_t current_core_id = 0;
+        bool got_physical_id = false;
+        bool got_core_id = false;
+        char line[256];
+        while (fgets(line, sizeof(line), cpuinfo) != NULL) {
+            if (strncmp(line, "physical id", sizeof("physical id")-1) == 0) {
+                char* ptr = strchr(line, ':');
+                if (ptr) {
+                    ++ptr;
+                    for (; *ptr && !isdigit((unsigned char)*ptr); ++ptr);
+                    if (*ptr) { current_physical_id = (uint32_t)strtoul(ptr, NULL, 10); got_physical_id = true; }
+                }
+            } else if (strncmp(line, "core id", sizeof("core id")-1) == 0) {
+                char* ptr = strchr(line, ':');
+                if (ptr) {
+                    ++ptr;
+                    for (; *ptr && !isdigit((unsigned char)*ptr); ++ptr);
+                    if (*ptr) { current_core_id = (uint32_t)strtoul(ptr, NULL, 10); got_core_id = true; }
+                }
+            } else if (line[0] == '\n') {
+                if (got_physical_id && got_core_id) {
+                    bool is_unique = true;
+                    for (int32_t i = 0; i < cpu_count; ++i) if (physical_ids[i] == current_physical_id && core_ids[i] == current_core_id) { is_unique = false; break; }
+                    if (is_unique) {
+                        if (cpu_count < MAX_CPUS) {
+                            physical_ids[cpu_count] = current_physical_id;
+                            core_ids[cpu_count] = current_core_id;
+                            cpu_count++;
+                        } else break;
+                    }
+                    is_unique = true;
+                    for (int32_t i = 0; i < package_count; ++i) if (package_ids[i] == current_physical_id) { is_unique = false; break; }
+                    if (is_unique) {
+                        if (package_count < MAX_CPUS) package_ids[package_count++] = current_physical_id;
+                        else break;
+                    }
+                }
+                got_physical_id = false;
+                got_core_id = false;
+            }
+        }
+        fclose(cpuinfo);
+        *out_physical = cpu_count;
+        *out_sockets = package_count;
+        #undef MAX_CPUS
     #endif
 }
 
 static void msml__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint64_t* out_phys_mem_free) { /* Get physical memory */
-    #ifdef __APPLE__
+    #ifdef _WIN32
+    #error "Unsupported platform"
+    #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
         if (msml_likely(msml__sysctl_mib01(&tmp, &len, CTL_HW, HW_MEMSIZE) && len))
@@ -2315,7 +2421,16 @@ static void msml__system_host_info_query_memory(uint64_t* out_phys_mem_total, ui
         if (msml_likely(host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)(&stats), &count) == KERN_SUCCESS))
             *out_phys_mem_free = stats.free_count * getpagesize();
     #else
-    #error "Unsupported platform"
+        FILE* meminfo = msml__fopen("/proc/meminfo", "r");
+        if (msml_unlikely(!meminfo)) return;
+        char line[256];
+        while (fgets(line, sizeof(line), meminfo)) {
+            if (strncmp(line, "MemTotal:", sizeof("MemTotal:")-1) == 0)
+                *out_phys_mem_total = msml__parse_meminfo_value(line);
+            else if (strncmp(line, "MemAvailable:", sizeof("MemAvailable:")-1) == 0)
+                *out_phys_mem_free = msml__parse_meminfo_value(line);
+        }
+        fclose(meminfo);
     #endif
 }
 

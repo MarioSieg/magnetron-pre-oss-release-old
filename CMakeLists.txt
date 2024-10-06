@@ -16,7 +16,7 @@ endif()
 add_library(msml SHARED msml/msml.h msml/msml.c)
 target_include_directories(msml PRIVATE msml/optional)
 if (NOT WIN32)
-    target_link_libraries(msml m)
+    target_link_libraries(msml m) # link math library
     target_compile_options(msml PRIVATE
         -Wall
         -Werror
@@ -24,6 +24,7 @@ if (NOT WIN32)
         -Wno-gnu-zero-variadic-macro-arguments
         -Wno-error=overflow
         -fvisibility=hidden
+        -std=gnu99
     )
     # Enable optimizations only for release builds
     if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
