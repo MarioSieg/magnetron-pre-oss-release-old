@@ -2349,15 +2349,15 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
         if (msml_likely(msml__sysctl_key(&tmp, &len, "hw.packages") && len))
             *out_sockets = msml__sysctl_unpack_int(&tmp, len);
     #else
-        #define MAX_CPUS 0x1000
+        #define MAX_CPUS 8192
         long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
         *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
         FILE* cpuinfo = msml__fopen("/proc/cpuinfo", "r");
         if (msml_unlikely(!cpuinfo)) return;
-        uint32_t physical_ids[MAX_CPUS];
-        uint32_t core_ids[MAX_CPUS];
+        uint32_t* physical_ids = msml_allocator(NULL, MAX_CPUS*sizeof(*physical_ids));
+        uint32_t* core_ids = msml_allocator(NULL, MAX_CPUS*sizeof(*core_ids));
+        uint32_t* package_ids = msml_allocator(NULL, MAX_CPUS*sizeof(*package_ids));
         uint32_t cpu_count = 0;
-        uint32_t package_ids[MAX_CPUS];
         uint32_t package_count = 0;
         uint32_t current_physical_id = 0;
         uint32_t current_core_id = 0;
@@ -2379,7 +2379,7 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
                     for (; *ptr && !isdigit((unsigned char)*ptr); ++ptr);
                     if (*ptr) { current_core_id = (uint32_t)strtoul(ptr, NULL, 10); got_core_id = true; }
                 }
-            } else if (line[0] == '\n') {
+            } else if (*line == '\n') {
                 if (got_physical_id && got_core_id) {
                     bool is_unique = true;
                     for (int32_t i = 0; i < cpu_count; ++i) if (physical_ids[i] == current_physical_id && core_ids[i] == current_core_id) { is_unique = false; break; }
@@ -2387,7 +2387,7 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
                         if (cpu_count < MAX_CPUS) {
                             physical_ids[cpu_count] = current_physical_id;
                             core_ids[cpu_count] = current_core_id;
-                            cpu_count++;
+                            ++cpu_count;
                         } else break;
                     }
                     is_unique = true;
@@ -2402,6 +2402,9 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
             }
         }
         fclose(cpuinfo);
+        msml_allocator(physical_ids, 0);
+        msml_allocator(core_ids, 0);
+        msml_allocator(package_ids, 0);
         *out_physical = cpu_count;
         *out_sockets = package_count;
         #undef MAX_CPUS
