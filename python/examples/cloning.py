@@ -2,7 +2,7 @@ from msml.core import *
 
 ctx = Context()
 
-original = Tensor.full(ctx, [4, 4], fill_value=2.0)
+original = Tensor.full(ctx, [4, 4], fill_value=2.0, name='original')
 original.print(True)
 
 # Create tensor with same shape and strides but don't copy any data, so data is uninitialized.

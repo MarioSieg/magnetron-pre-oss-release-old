@@ -36,6 +36,9 @@
 msml_static_assert(sizeof(0u) == 4);
 msml_static_assert(sizeof(0ull) == 8);
 
+#define MSML_MAX_CPUS 8192
+#define MSML_MAX_NUMA_NODES 64
+
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
 #   define STBI_MALLOC(sz) msml_alloc(NULL, (sz))
 #   define STBI_FREE(ptr) msml_alloc((ptr), 0)
@@ -123,22 +126,26 @@ typedef struct msml__blas_compute_info_t msml__blas_compute_info_t; /* Forward d
 
 struct msml_ctx_t {
     void* (*alloc_fn)(void* blk, size_t size); /* Memory allocator. */
-    char sys_os_name[128]; /* OS name. */
-    char sys_cpu_name[128]; /* CPU name. */
-    uint32_t sys_cpu_virtual_cores; /* Virtual CPUs. */
-    uint32_t sys_cpu_physical_cores; /* Physical CPU cores. */
-    uint32_t sys_cpu_sockets; /* CPU sockets. */
-    uint64_t sys_phys_mem_total; /* Total physical memory in bytes. */
-    uint64_t sys_phys_mem_free; /* Free physical memory in bytes. */
-    size_t chunk_size;
-    size_t chunk_len;
-    size_t chunk_cap;
-    uint8_t** chunks;
-    uint8_t* delta;
-    bool warmup_chunks;
-    size_t alloc_acc;
-    size_t mapped_total;
-    size_t alloc_total;
+    struct {
+        char os_name[128]; /* OS name. */
+        char cpu_name[128]; /* CPU name. */
+        uint32_t cpu_virtual_cores; /* Virtual CPUs. */
+        uint32_t cpu_physical_cores; /* Physical CPU cores. */
+        uint32_t cpu_sockets; /* CPU sockets. */
+        uint64_t phys_mem_total; /* Total physical memory in bytes. */
+        uint64_t phys_mem_free; /* Free physical memory in bytes. */
+    } sys;
+    struct {
+        size_t chunk_size;
+        size_t chunk_len;
+        size_t chunk_cap;
+        uint8_t** chunks;
+        uint8_t* delta;
+        bool warmup_chunks;
+        size_t alloc_acc;
+        size_t mapped_total;
+        size_t alloc_total;
+    } pool;
     union {
         struct {
             uint64_t state;
@@ -487,13 +494,13 @@ static void msml__prng_init(msml_ctx_t* ctx, uint64_t seed) {
 }
 
 static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
-    uint8_t* chunk = (*ctx->alloc_fn)(NULL, ctx->chunk_size);
-    if (ctx->warmup_chunks) memset(chunk, 0, ctx->chunk_size);
-    ctx->mapped_total += ctx->chunk_size;
-    ctx->delta = chunk + ctx->chunk_size;
-    if (ctx->chunk_len == ctx->chunk_cap)
-        ctx->chunks = (*ctx->alloc_fn)(ctx->chunks, (ctx->chunk_cap<<=1) * sizeof(*ctx->chunks));
-    ctx->chunks[ctx->chunk_len++] = chunk;
+    uint8_t* chunk = (*ctx->alloc_fn)(NULL, ctx->pool.chunk_size);
+    if (ctx->pool.warmup_chunks) memset(chunk, 0, ctx->pool.chunk_size);
+    ctx->pool.mapped_total += ctx->pool.chunk_size;
+    ctx->pool.delta = chunk + ctx->pool.chunk_size;
+    if (ctx->pool.chunk_len == ctx->pool.chunk_cap)
+        ctx->pool.chunks = (*ctx->alloc_fn)(ctx->pool.chunks, (ctx->pool.chunk_cap<<=1) * sizeof(*ctx->pool.chunks));
+    ctx->pool.chunks[ctx->pool.chunk_len++] = chunk;
 }
 
 static void msml__system_host_info_query(msml_ctx_t* ctx); /* Query host system information. */
@@ -543,24 +550,24 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
     ctx->user_data = ctx_info.user_data;
-    ctx->chunk_size = ctx_info.pool_chunk_size ? msml_max(ctx_info.pool_chunk_size, 8) : MSML_DEFAULT_CHUNK_SIZE;
-    ctx->chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
-    ctx->warmup_chunks = ctx_info.warmup_chunks;
+    ctx->pool.chunk_size = ctx_info.pool_chunk_size ? msml_max(ctx_info.pool_chunk_size, 8) : MSML_DEFAULT_CHUNK_SIZE;
+    ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
+    ctx->pool.warmup_chunks = ctx_info.warmup_chunks;
 
     /* Query and print host system information. */
     msml__system_host_info_query(ctx);
-    printf("OS/Kernel: %s\n", ctx->sys_os_name);
-    printf("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u\n", ctx->sys_cpu_name, ctx->sys_cpu_virtual_cores, ctx->sys_cpu_physical_cores, ctx->sys_cpu_sockets);
+    printf("OS/Kernel: %s\n", ctx->sys.os_name);
+    printf("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u\n", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
     double mem_total, mem_free, mem_used;
     const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
-    msml__humanize_memory_size(ctx->sys_phys_mem_total, &mem_total, &mem_unit_total);
-    msml__humanize_memory_size(ctx->sys_phys_mem_free, &mem_free, &mem_unit_free);
-    msml__humanize_memory_size((size_t)llabs((int64_t)ctx->sys_phys_mem_total-(int64_t)ctx->sys_phys_mem_free), &mem_used, &mem_unit_used);
-    double mem_used_percent = fabs((double)(ctx->sys_phys_mem_total-ctx->sys_phys_mem_free))/(double)ctx->sys_phys_mem_total*100.0;
+    msml__humanize_memory_size(ctx->sys.phys_mem_total, &mem_total, &mem_unit_total);
+    msml__humanize_memory_size(ctx->sys.phys_mem_free, &mem_free, &mem_unit_free);
+    msml__humanize_memory_size((size_t)llabs((int64_t)ctx->sys.phys_mem_total-(int64_t)ctx->sys.phys_mem_free), &mem_used, &mem_unit_used);
+    double mem_used_percent = fabs((double)(ctx->sys.phys_mem_total-ctx->sys.phys_mem_free))/(double)ctx->sys.phys_mem_total*100.0;
     printf("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)\n", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 
     /* Prepare memory pool. */
-    ctx->chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->chunk_cap * sizeof(*ctx->chunks)); /* Allocate chunk pointers. */
+    ctx->pool.chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
     msml__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
     /* Initialize PRNG state. */
@@ -585,19 +592,19 @@ msml_ctx_t* msml_ctx_create2(size_t pool_chunk_size) {
 
 void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
     msml_assert(size > 0 && size < (size_t)PTRDIFF_MAX, "Allocation size must be within (0, %zu), but is: %zu", PTRDIFF_MAX, size);
-    if (ctx->delta - ctx->chunks[ctx->chunk_len-1] < (ptrdiff_t)size) {
-        if (ctx->chunk_size < size) { /* Increase the chunk size if it's too small to accommodate the requested length */
+    if (ctx->pool.delta - ctx->pool.chunks[ctx->pool.chunk_len-1] < (ptrdiff_t)size) {
+        if (ctx->pool.chunk_size < size) { /* Increase the chunk size if it's too small to accommodate the requested length */
             size_t lim = (size_t)PTRDIFF_MAX >> 1;
-            do ctx->chunk_size <<= 1;
-            while (ctx->chunk_size < size && (ctx->chunk_size <= lim));
+            do ctx->pool.chunk_size <<= 1;
+            while (ctx->pool.chunk_size < size && (ctx->pool.chunk_size <= lim));
         }
         msml__ctx_push_chunk(ctx);
-        msml_log_info("Allocated pool chunk: %.03f MiB", (double)ctx->chunk_size/(double)(1<<20));
+        msml_log_info("Allocated pool chunk: %.03f MiB", (double)ctx->pool.chunk_size/(double)(1<<20));
     }
-    ctx->delta -= size;
-    ++ctx->alloc_acc;
-    ctx->alloc_total += size;
-    return ctx->delta;
+    ctx->pool.delta -= size;
+    ++ctx->pool.alloc_acc;
+    ctx->pool.alloc_total += size;
+    return ctx->pool.delta;
 }
 
 void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
@@ -607,8 +614,8 @@ void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
 
 size_t msml_ctx_total_allocated_pool_memory(const msml_ctx_t* ctx) {
     size_t mem = sizeof(*ctx);
-    mem += sizeof(*ctx->chunks) * ctx->chunk_cap;
-    mem += ctx->alloc_total;
+    mem += sizeof(*ctx->pool.chunks) * ctx->pool.chunk_cap;
+    mem += ctx->pool.alloc_total;
     return mem;
 }
 
@@ -619,21 +626,21 @@ void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorith
     msml__prng_init(ctx, seed);
 }
 
-const char* msml_ctx_get_os_name(const msml_ctx_t* ctx) { return ctx->sys_os_name; }
-const char* msml_ctx_get_cpu_name(const msml_ctx_t* ctx) { return ctx->sys_cpu_name; }
-uint32_t msml_ctx_get_cpu_virtual_cores(const msml_ctx_t* ctx) { return ctx->sys_cpu_virtual_cores; }
-uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx) { return ctx->sys_cpu_physical_cores; }
-uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx) { return ctx->sys_cpu_sockets; }
-uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx) { return ctx->sys_phys_mem_total; }
-uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx) { return ctx->sys_phys_mem_free; }
+const char* msml_ctx_get_os_name(const msml_ctx_t* ctx) { return ctx->sys.os_name; }
+const char* msml_ctx_get_cpu_name(const msml_ctx_t* ctx) { return ctx->sys.cpu_name; }
+uint32_t msml_ctx_get_cpu_virtual_cores(const msml_ctx_t* ctx) { return ctx->sys.cpu_virtual_cores; }
+uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx) { return ctx->sys.cpu_physical_cores; }
+uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx) { return ctx->sys.cpu_sockets; }
+uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx) { return ctx->sys.phys_mem_total; }
+uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 
 void msml_ctx_destroy(msml_ctx_t* ctx) {
     size_t mem_total = msml_ctx_total_allocated_pool_memory(ctx);
-    size_t mem_mapped = ctx->mapped_total;
+    size_t mem_mapped = ctx->pool.mapped_total;
     void* (*alloc)(void* blk, size_t size) = ctx->alloc_fn;
-    for (size_t i=0; i < ctx->chunk_len; ++i) /* Free individual chunks */
-        (*alloc)(ctx->chunks[i], 0);
-    (*alloc)(ctx->chunks, 0);
+    for (size_t i=0; i < ctx->pool.chunk_len; ++i) /* Free individual chunks */
+        (*alloc)(ctx->pool.chunks[i], 0);
+    (*alloc)(ctx->pool.chunks, 0);
     memset(ctx, (uintptr_t)ctx & 0xff, sizeof(*ctx));
     (*alloc)(ctx, 0);
     ctx = NULL;
@@ -822,33 +829,33 @@ static char* msml__wint(char* p, int32_t k) {
 ** doubles have an exact representation, and all non-integral doubles have
 ** enough digits to make both %.99e and %.99f do the right thing.
 */
-#define ND_MUL2K_MAX_SHIFT 29
-#define ND_MUL2K_DIV1E9(val) ((uint32_t)((val) / 1000000000))
+#define MSML__ND_MUL2K_MAX_SHIFT 29
+#define MSML__ND_MUL2K_DIV1E9(val) ((uint32_t)((val) / 1000000000))
 
 /* Multiply nd by 2^k and add carry_in (ndlo is assumed to be zero). */
 static uint32_t nd_mul2k(uint32_t* nd, uint32_t ndhi, uint32_t k, uint32_t carry_in, msml_format_flags sf) {
     uint32_t i, ndlo = 0, start = 1;
     /* Performance hacks. */
-    if (k > ND_MUL2K_MAX_SHIFT*2 && MSML_FMT_FP(sf) != MSML_FMT_FP(MSML_FMT_T_FP_F)) {
+    if (k > MSML__ND_MUL2K_MAX_SHIFT*2 && MSML_FMT_FP(sf) != MSML_FMT_FP(MSML_FMT_T_FP_F)) {
         start = ndhi - (MSML_FMT_PREC(sf) + 17) / 8;
     }
     /* Real logic. */
-    while (k >= ND_MUL2K_MAX_SHIFT) {
+    while (k >= MSML__ND_MUL2K_MAX_SHIFT) {
         for (i = ndlo; i <= ndhi; i++) {
-            uint64_t val = ((uint64_t)nd[i] << ND_MUL2K_MAX_SHIFT) | carry_in;
-            carry_in = ND_MUL2K_DIV1E9(val);
+            uint64_t val = ((uint64_t)nd[i] << MSML__ND_MUL2K_MAX_SHIFT) | carry_in;
+            carry_in = MSML__ND_MUL2K_DIV1E9(val);
             nd[i] = (uint32_t)val - carry_in * 1000000000;
         }
         if (carry_in) {
             nd[++ndhi] = carry_in; carry_in = 0;
             if (start++ == ndlo) ++ndlo;
         }
-        k -= ND_MUL2K_MAX_SHIFT;
+        k -= MSML__ND_MUL2K_MAX_SHIFT;
     }
     if (k) {
         for (i = ndlo; i <= ndhi; i++) {
             uint64_t val = ((uint64_t)nd[i] << k) | carry_in;
-            carry_in = ND_MUL2K_DIV1E9(val);
+            carry_in = MSML__ND_MUL2K_DIV1E9(val);
             nd[i] = (uint32_t)val - carry_in * 1000000000;
         }
         if (carry_in) nd[++ndhi] = carry_in;
@@ -1064,7 +1071,7 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
                 if (msml_unlikely(!e)) t.n *= 1e10, ndebias -= 10;
                 t.u64 -= 2; /* Convert 2ulp below (later we convert 2ulp above). */
                 nd[0] = 0x100000 | (t.u32.hi & 0xfffff);
-                e = ((int32_t)(t.u32.hi >> 20) & 0x7ff) - 1075 - (ND_MUL2K_MAX_SHIFT < 29);
+                e = ((int32_t)(t.u32.hi >> 20) & 0x7ff) - 1075 - (MSML__ND_MUL2K_MAX_SHIFT < 29);
                 goto load_t_lo; rescale_failed:
                 t.n = n;
                 e = (int32_t)(t.u32.hi >> 20) & 0x7ff;
@@ -1076,16 +1083,16 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
         if (e == 0) e++; else nd[0] |= 0x100000;
         e -= 1043;
         if (t.u32.lo) {
-            e -= 32 + (ND_MUL2K_MAX_SHIFT < 29); load_t_lo:
-            #if ND_MUL2K_MAX_SHIFT >= 29
+            e -= 32 + (MSML__ND_MUL2K_MAX_SHIFT < 29); load_t_lo:
+            #if MSML__ND_MUL2K_MAX_SHIFT >= 29
                 nd[0] = (nd[0] << 3) | (t.u32.lo >> 29);
                 ndhi = nd_mul2k(nd, ndhi, 29, t.u32.lo & 0x1fffffff, sf);
-            #elif ND_MUL2K_MAX_SHIFT >= 11
+            #elif MSML__ND_MUL2K_MAX_SHIFT >= 11
                 ndhi = nd_mul2k(nd, ndhi, 11, t.u32.lo >> 21, sf);
                 ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo >> 10) & 0x7ff, sf);
                 ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo <<  1) & 0x7ff, sf);
             #else
-            #   error "ND_MUL2K_MAX_SHIFT not big enough"
+            #   error "MSML__ND_MUL2K_MAX_SHIFT not big enough"
             #endif
         }
         if (e >= 0) {
@@ -1116,7 +1123,7 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
                 ** crossed. Having already converted the -2ulp case, we save off its
                 ** most significant digits, convert the +2ulp case, and compare them.
                 */
-                int32_t eidx = e + 70 + (ND_MUL2K_MAX_SHIFT < 29)
+                int32_t eidx = e + 70 + (MSML__ND_MUL2K_MAX_SHIFT < 29)
                                + (t.u32.lo >= 0xfffffffe && !(~t.u32.hi << 12));
                 const int8_t *m_e = msml__four_ulp_m_e + eidx * 2;
                 msml_assert(0 <= eidx && eidx < 128, "bad eidx %d", eidx);
@@ -1942,6 +1949,12 @@ msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
 
 #undef msml__blas_impl_binary_op
 
+/* Matrix multiplication
+** Tradition matmul is defined by R = A x B, where A is a MxK matrix and B is a KxN matrix and multiplies row by column.
+** For better cache and SIMD performance, we transpose B (Bᵀ), which results in transposed result Rᵀ perform the operation as:
+** Rᵀ = A x Bᵀ.
+** Dims 3 and 4 are scaling factors only.
+*/
 static void msml__blas_matmul_f32(
     const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const r,
@@ -2366,7 +2379,6 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
         if (msml_likely(msml__sysctl_key(&tmp, &len, "hw.packages") && len))
             *out_sockets = msml__sysctl_unpack_int(&tmp, len);
     #else
-        #define MAX_CPUS 8192
         long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
         *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
         FILE* cpuinfo = msml__fopen("/proc/cpuinfo", "r");
@@ -2424,7 +2436,6 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
         msml_alloc(package_ids, 0);
         *out_physical = cpu_count;
         *out_sockets = package_count;
-        #undef MAX_CPUS
     #endif
 }
 
@@ -2455,13 +2466,13 @@ static void msml__system_host_info_query_memory(uint64_t* out_phys_mem_total, ui
 }
 
 static void msml__system_host_info_query(msml_ctx_t* ctx) {
-    msml_system_host_info_query_os_name(&ctx->sys_os_name);
-    msml_system_host_info_query_cpu_name(&ctx->sys_cpu_name);
-    msml_system_host_info_query_cpu_cores(&ctx->sys_cpu_virtual_cores, &ctx->sys_cpu_physical_cores, &ctx->sys_cpu_sockets);
-    msml__system_host_info_query_memory(&ctx->sys_phys_mem_total, &ctx->sys_phys_mem_free);
+    msml_system_host_info_query_os_name(&ctx->sys.os_name);
+    msml_system_host_info_query_cpu_name(&ctx->sys.cpu_name);
+    msml_system_host_info_query_cpu_cores(&ctx->sys.cpu_virtual_cores, &ctx->sys.cpu_physical_cores, &ctx->sys.cpu_sockets);
+    msml__system_host_info_query_memory(&ctx->sys.phys_mem_total, &ctx->sys.phys_mem_free);
 
-    if (msml_unlikely(!*ctx->sys_os_name)) snprintf(ctx->sys_os_name, sizeof(ctx->sys_os_name), "Unknown");
-    if (msml_unlikely(!*ctx->sys_cpu_name)) snprintf(ctx->sys_cpu_name, sizeof(ctx->sys_cpu_name), "Unknown");
+    if (msml_unlikely(!*ctx->sys.os_name)) snprintf(ctx->sys.os_name, sizeof(ctx->sys.os_name), "Unknown");
+    if (msml_unlikely(!*ctx->sys.cpu_name)) snprintf(ctx->sys.cpu_name, sizeof(ctx->sys.cpu_name), "Unknown");
 }
 
 msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {
