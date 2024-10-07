@@ -2310,7 +2310,7 @@ msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
 ** +---------------------------+
 */
 
-static void msml__blas_matmul_f32(
+static void MSML_HOTPROC msml__blas_matmul_f32(
     const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const r,
     const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
