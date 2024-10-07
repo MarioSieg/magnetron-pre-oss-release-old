@@ -2,7 +2,7 @@ from msml.core import *
 
 ctx = Context()
 
-# Define the perceptron function
+# Define the perceptron function (McCulloch–Pitts neuron)
 def perceptron(x: Tensor, w: Tensor, b: Tensor) -> Tensor:
     return (w @ x + b).step()()
 
