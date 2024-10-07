@@ -145,6 +145,50 @@ impl_test_binary_op(div_f32, DIV, /)
 
 #undef impl_test_binary_op
 
+TEST(compute_cpu, matmul_f32_same_shape_2x2) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    static constexpr float A_values[2][2] = {
+        {1.0f, 2.0f},
+        {3.0f, 4.0f}
+    };
+    static constexpr float B_values[2][2] = {
+        {5.0f, 6.0f},
+        {7.0f, 8.0f}
+    };
+
+    // Manually set known values for A and B
+    msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 2, 2);
+    msml_tensor_copy_buffer_from(A, A_values, sizeof(A_values));
+
+    msml_tensor_t* B = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 2, 2);
+    msml_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
+
+    // Create result tensor R for matrix multiplication
+    msml_tensor_t* R = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 2, 2);
+    msml_tensor_set_op(R, MSML_OP_MATMUL);
+    msml_tensor_set_arg(R, 0, A);
+    msml_tensor_set_arg(R, 1, B); // MSML automatically transposes B
+
+    msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
+
+    auto* buf = msml_tensor_buf_f32(R);
+
+    // Manually compute the expected result of Rᵀ = A x Bᵀ
+    static constexpr float expected[2][2] = {
+        {17.0f,  23.0f},
+        {39.0f,  53.0f}
+    };
+
+    for (int i = 0; i < 2; ++i) {
+        for (int j = 0; j < 2; ++j) {
+            ASSERT_FLOAT_EQ(buf[i*2 + j], expected[j][i]); /* We need to transpose the expected matrix Rᵀ = A x Bᵀ as Rᵀ is transposed too */
+        }
+    }
+
+    msml_ctx_destroy(ctx);
+}
+
 TEST(compute_cpu, matmul_f32) {
     static constexpr std::size_t M = 4, N = 16, K = 36;
     static constexpr float A_mtx[M * K] = {

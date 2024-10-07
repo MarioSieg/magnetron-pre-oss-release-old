@@ -1726,7 +1726,7 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
 ) {
     double r = 0.0;
     for (int64_t i=0; i < n; ++i) {
-        r += x[i] + y[i];
+        r += x[i] * y[i];
     }
     return (float)r;
 }
@@ -2115,201 +2115,10 @@ msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
 #define MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE 1 /* Use temporary storage for matrix multiplication to reduce false sharing. See: https://en.wikipedia.org/wiki/False_sharing */
 
 /*
-** Matrix Multiplication (Optimized with Cache and SIMD Enhancements)
-**
-** Overview:
-** ---------
-** Computes the matrix multiplication Rᵀ = A x Bᵀ, where:
-**   - A is an MxK matrix
-**   - B is a KxN matrix
-**   - Bᵀ is the transposed NxK matrix
-**   - Rᵀ is the resulting NxM transposed matrix
-**   - R is the final MxN matrix (transpose of Rᵀ)
-**
-** Optimization Strategies:
-** ------------------------
-** 1. **Transpose Matrix B**:
-**    - Transposing B to Bᵀ (NxK) transforms the multiplication to Rᵀ = A x Bᵀ.
-**    - Enhances cache locality and SIMD (Single Instruction, Multiple Data) performance by ensuring contiguous memory access patterns.
-**
-** 2. **Blocking for Cache Efficiency**:
-**    - Divides the transposed result matrix Rᵀ into smaller 16x16 blocks.
-**    - Each block fits into the CPU cache, minimizing cache misses and improving memory access speed.
-**
-** 3. **Multi-threading**:
-**    - Distributes blocks of Rᵀ across multiple threads.
-**    - Enables parallel processing, leveraging multi-core CPU architectures for faster computation.
-**
-** 4. **SIMD-Accelerated Dot Products**:
-**    - Utilizes SIMD instructions to perform multiple dot product operations simultaneously.
-**    - Significantly boosts computational throughput.
-**
-** 5. **Temporary Buffers**:
-**    - Stores intermediate results in temporary buffers.
-**    - Prevents false sharing and ensures thread-safe writes to the result matrix.
-**
-** Detailed Workflow:
-** ------------------
-** 1. **Transpose Matrix B**:
-**    ```
-**    Matrix B (KxN)          Matrix Bᵀ (NxK)
-**    +----------+            +----------+
-**    | B_11 B_12 |            | B_11 B_21 ... |
-**    | B_21 B_22 |   -->      | B_12 B_22 ... |
-**    +----------+            +----------+
-**    ```
-**
-** 2. **Divide Rᵀ into 16x16 Blocks**:
-**    ```
-**    Matrix Rᵀ (NxM) divided into blocks:
-**    +----------+----------+
-**    | Block_1  | Block_2  |
-**    +----------+----------+
-**    | Block_3  | Block_4  |
-**    +----------+----------+
-**    ```
-**
-** 3. **Assign Blocks to Threads**:
-**    ```
-**    Thread Distribution:
-**    Thread 1: Block_1, Block_2
-**    Thread 2: Block_3, Block_4
-**    ```
-**
-** 4. **Process Each Block**:
-**    ```
-**    For each 16x16 Block of Rᵀ:
-**    +---------------------------+
-**    | 16x16 Block of A           |
-**    | 16x16 Block of Bᵀ          |
-**    | SIMD-Accelerated Dot Product|
-**    | Store in Temporary Buffer  |
-**    | Write to Rᵀ                |
-**    +---------------------------+
-**    ```
-**
-** 5. **Memory Access Patterns**:
-**    ```
-**    - Matrix A accessed row-wise (contiguous memory)
-**    - Matrix Bᵀ accessed row-wise (originally column-wise in B)
-**    - Ensures cache-friendly access during multiplication
-**    ```
-**
-** Threading and Chunking:
-** -----------------------
-** - **Chunk Division**:
-**   - Rᵀ is divided into chunks based on the number of threads.
-**   - Each chunk consists of multiple 16x16 blocks.
-**
-** - **Synchronization**:
-**   - Threads are synchronized using barriers to ensure all chunks are processed without race conditions.
-**   - Atomic operations manage the assignment of chunks to threads dynamically.
-**
-** Visual Representation:
-** ----------------------
-** 1. **Matrix Layouts**:
-**    ```
-**    Matrix A (MxK)        Matrix B (KxN)       Matrix Bᵀ (NxK)        Matrix Rᵀ (NxM)
-**    +----------+          +----------+        +----------+          +----------+
-**    |          |          |          |        |          |          |          |
-**    |          |          |          |        |          |          |          |
-**    |          |          |          |        |          |          |          |
-**    +----------+          +----------+        +----------+          +----------+
-**    ```
-**
-** 2. **Blocking and Thread Assignment**:
-**    ```
-**    Matrix Rᵀ Block Division:
-**    +-------------------+  +-------------------+
-**    | 16x16 Block Rᵀ   |  | 16x16 Block Rᵀ   |
-**    +-------------------+  +-------------------+
-**    | 16x16 Block Rᵀ   |  | 16x16 Block Rᵀ   |
-**    +-------------------+  +-------------------+
-**
-**    Thread 1 handles:
-**    +-------------------+
-**    | 16x16 Block Rᵀ   |
-**    | 16x16 Block A     |
-**    | 16x16 Block Bᵀ    |
-**    +-------------------+
-**
-**    Thread 2 handles:
-**    +-------------------+
-**    | 16x16 Block Rᵀ   |
-**    | 16x16 Block A     |
-**    | 16x16 Block Bᵀ    |
-**    +-------------------+
-**    ```
-**
-** 3. **Cache-Friendly Access**:
-**    ```
-**    Access Patterns:
-**    - A: Row-wise (left to right)
-**    - Bᵀ: Row-wise (originally column-wise in B)
-**
-**    Ensures that sequential memory accesses are cache-efficient,
-**    reducing cache misses and improving performance.
-**    ```
-**
-** Key Assertions and Validations:
-** --------------------------------
-** - **Dimension Compatibility**:
-**   - Ensures that the inner dimensions of A and B match for multiplication.
-**     - A is MxK
-**     - B is KxN
-**   - Validates that the resulting matrix Rᵀ has dimensions NxM.
-**
-** - **Memory Alignment**:
-**   - Confirms that the strides align with the size of `float` (4 bytes).
-**   - Ensures that memory accesses are correctly aligned for SIMD operations.
-**
-** - **Contiguity Checks**:
-**   - Verifies if the input matrices are stored contiguously in memory.
-**   - Optimizes access patterns based on memory layout.
-**
-** Summary:
-** --------
-** The `msml__blas_matmul_f32` function employs a combination of matrix transposition, blocking, multi-threading, SIMD acceleration, and cache optimization to perform efficient matrix multiplication. By transposing matrix B and dividing the computation into manageable blocks, the function ensures that memory access patterns are optimized for modern CPU architectures, leveraging parallelism and vectorization to achieve high performance.
-**
-** Visual Aid:
-** ------------
-** Here's a consolidated visualization of the entire process:
-**
-** ```
-** Step 1: Transpose Matrix B
-** ---------------------------
-** Original Matrix B (KxN)       Transposed Matrix Bᵀ (NxK)
-** +----------+                  +----------+
-** | B_11 B_12 |                  | B_11 B_21 ... |
-** | B_21 B_22 |      -->         | B_12 B_22 ... |
-** +----------+                  +----------+
-**
-** Step 2: Divide Rᵀ into 16x16 Blocks
-** --------------------------------------
-** Matrix Rᵀ (NxM)
-** +----------+----------+
-** | Block_1  | Block_2  |
-** +----------+----------+
-** | Block_3  | Block_4  |
-** +----------+----------+
-**
-** Step 3: Assign Blocks to Threads
-** ----------------------------------
-** Thread 1: Block_1, Block_2
-** Thread 2: Block_3, Block_4
-**
-** Step 4: Process Each Block
-** ---------------------------
-** For each Block_i:
-** +---------------------------+
-** | Load 16x16 Block of A      |
-** | Load 16x16 Block of Bᵀ     |
-** | SIMD Dot Product            |
-** | Store in Temporary Buffer  |
-** | Write to Rᵀ                |
-** +---------------------------+
+** Matrix multiplication.
+** Mathematically, matmul is defined as R = A x B
+** For performance reasons, we compute: Rᵀ = A x Bᵀ.
 */
-
 static void MSML_HOTPROC msml__blas_matmul_f32(
     const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const r,
@@ -2336,13 +2145,13 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
     msml_assert2(r_s0 <= r_s1);
     msml_assert2(r_s1 <= r_s2);
     msml_assert2(r_s2 <= r_s3);
-    msml_assert2(x_d2 % x_d2 == 0);
+    msml_assert2(y_d2 % x_d2 == 0);
     msml_assert2(y_d3 % x_d3 == 0);
     const int64_t ti = bci->thread_idx;
     const int64_t tc = bci->n_threads;
-    const bool src1_cont = msml_tensor_is_contiguous(y);
+    const bool y_cont = msml_tensor_is_contiguous(y);
     int64_t chunk = 0; /* TODO: Atomic sync */
-    if (ti == 0) chunk = tc;
+    //if (ti == 0) chunk = tc;
     /* TODO: barrier */
     const int64_t nr0 = r_d0;
     const int64_t nr1 = r_d1*r_d2*r_d3;
@@ -2367,7 +2176,7 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
         const int64_t r2 = y_d2 / x_d2;
         const int64_t r3 = y_d3 / x_d3;
         if (msml_unlikely(r0s >= r0e || r1s >= r1e)) return; /* No work in this chunk */
-        const int64_t row_size = y_s0;
+        const int64_t row_size = y_d0*sizeof(float);
         #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE
             float tmp[32];
         #endif
@@ -2384,7 +2193,7 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                     const int64_t r_i1 = y_i1;
                     const uint8_t* const x_row = b_x + x_i2*x_s2 + x_i3*x_s3;
                     const float* const y_col =
-                        (const float*)(b_y + (src1_cont
+                        (const float*)(b_y + (y_cont
                         ? (y_i1 + y_i2*y_d1 + y_i3*y_d2*y_d1) * row_size
                         : (y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3)));
                     float* r_col = (float*)(b_r + r_i1*r_s1 + r_i2*r_s2 + r_i3*r_s3);
@@ -2393,13 +2202,15 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                             tmp[i-i0] = msml__vdot_f32(x_d0, (const float*)(x_row + i*x_s1), y_col);
                         memcpy(&r_col[i0], tmp, (msml_min(i0 + MSML_MATMUL_BLK_X, r0e) - i0)*sizeof(float)); /* Store to result buffer. */
                     #else /* Store directly to result buffer. */
-                        for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i)
-                            r_col[i] = msml__vdot_f32(x_d0, (const float*)(x_row + i*x_s1), y_col);
+                        for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i) {
+                            r_col[i] = msml__vdot_f32(x_d0, (const float*) (x_row + i * x_s1), y_col);
+                        }
                     #endif
                 }
             }
         }
-        if (tc >= nchunks) break;
+        bool f = tc >= nchunks;
+        if (f) break;
         current_chunk = ++chunk;
     }
 }
