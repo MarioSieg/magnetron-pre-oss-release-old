@@ -284,6 +284,24 @@ TEST(msml_tensor_t, view) {
     msml_ctx_destroy(ctx);
 }
 
+TEST(msml_tensor_t, transpose) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    msml_tensor_t* origin = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 4, 1);
+    msml_tensor_fill_random(origin, -1.0f, 1.0f);
+    msml_tensor_t* transposed = msml_tensor_transpose(origin);
+    ASSERT_FALSE(msml_tensor_is_transposed(origin));
+    ASSERT_TRUE(msml_tensor_is_transposed(transposed));
+    ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(transposed)[1]);
+    ASSERT_EQ(msml_tensor_shape(origin)[1], msml_tensor_shape(transposed)[0]);
+    ASSERT_EQ(msml_tensor_buf_size(origin), msml_tensor_buf_size(transposed));
+    ASSERT_EQ(msml_tensor_buf_len(origin), msml_tensor_buf_len(transposed));
+    ASSERT_EQ(msml_tensor_num_cols(origin), msml_tensor_num_rows(transposed));
+    ASSERT_EQ(msml_tensor_num_rows(origin), msml_tensor_num_cols(transposed));
+    ASSERT_TRUE(msml_tensor_is_contiguous(origin));
+    ASSERT_FALSE(msml_tensor_is_contiguous(transposed));
+}
+
 TEST(msml_tensor_t, isclose) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 

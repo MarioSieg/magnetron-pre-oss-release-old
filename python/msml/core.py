@@ -119,6 +119,7 @@ ffi.cdef(f'''
     bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_t* b);
     bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b);
     bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b);
+    bool msml_tensor_is_transposed(const msml_tensor_t* tensor);
     void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[{MAX_DIMS}]);
     int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[{MAX_DIMS}]);
     bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
@@ -453,6 +454,11 @@ class Tensor:
     def is_higher_order_3d(self) -> bool:
         """Checks if the tensor is a higher-order 3D tensor."""
         return C.msml_tensor_is_higher_order_3d(self.tensor)
+
+    @property
+    def is_transposed(self) -> bool:
+        """Checks if the tensor is transposed."""
+        return C.msml_tensor_is_transposed(self.tensor)
 
     def is_shape_eq(self, other: 'Tensor') -> bool:
         """Checks if the shape is equal to another tensor."""

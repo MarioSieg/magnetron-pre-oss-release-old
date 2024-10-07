@@ -103,6 +103,7 @@ msml_static_assert(sizeof(0ull) == 8);
     }
 #endif
 
+#define msml_swap(T, a, b) do { T tmp = a; a = b; b = tmp; } while (0)
 #define msml_max(x, y) (((x) > (y)) ? (x) : (y))
 #define msml_min(x, y) (((x) < (y)) ? (x) : (y))
 #define MSML_CCRED "\x1b[31m"
@@ -1350,10 +1351,8 @@ msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor) {
 msml_tensor_t* msml_tensor_transpose(msml_tensor_t* tensor) {
     msml_tensor_t* transposed = msml_tensor_view(tensor);
     msml_tensor_fmt_name(transposed, "%s (transposed)", tensor->name);
-    transposed->shape[0] = tensor->shape[1];
-    transposed->shape[1] = tensor->shape[0];
-    transposed->strides[0] = tensor->strides[1];
-    transposed->strides[1] = tensor->strides[0];
+    msml_swap(int64_t, transposed->shape[0], transposed->shape[1]);
+    msml_swap(int64_t, transposed->strides[0], transposed->strides[1]);
     return transposed;
 }
 
@@ -1554,6 +1553,10 @@ bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b) {
         if ((b->shape[i] % a->shape[i]) != 0)
             return false;
     return true;
+}
+
+bool msml_tensor_is_transposed(const msml_tensor_t* tensor) {
+    return tensor->strides[0] > tensor->strides[1];
 }
 
 void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
