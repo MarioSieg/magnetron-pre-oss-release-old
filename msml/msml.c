@@ -2388,7 +2388,7 @@ static void msml__blas_matmul_f32(
                         ? (y_i1 + y_i2*y_d1 + y_i3*y_d2*y_d1) * row_size
                         : (y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3)));
                     float* r_col = (float*)(b_r + r_i1*r_s1 + r_i2*r_s2 + r_i3*r_s3);
-                    #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE /* Use temporary storage to reduce false sharing- */
+                    #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE /* Use temporary storage to reduce false sharing. */
                         for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i)
                             tmp[i-i0] = msml__vdot_f32(x_d0, (const float*)(x_row + i*x_s1), y_col);
                         memcpy(&r_col[i0], tmp, (msml_min(i0 + MSML_MATMUL_BLK_X, r0e) - i0)*sizeof(float)); /* Store to result buffer. */
