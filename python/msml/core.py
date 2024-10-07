@@ -7,7 +7,7 @@ import random
 import faulthandler
 
 from cffi import FFI
-from enum import Enum
+from enum import Enum, auto
 from os.path import isfile
 from ctypes.util import find_library
 
@@ -16,7 +16,7 @@ faulthandler.enable()
 
 # Load shared library
 
-BUILD_DIR = 'debug'
+BUILD_DIR = 'release'
 
 msml_lib_locations: list[str] = []
 
@@ -151,7 +151,7 @@ def humanize_memory_size(size: int) -> str:
 
 class PRNGAlgorithm(Enum):
     MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
-    PCG = 1  # Permuted Congruential Generator
+    PCG = auto()  # Permuted Congruential Generator
 
     def __str__(self) -> str:
         match self:
@@ -174,10 +174,10 @@ class DType(Enum):
 class DesiredColorChannels(Enum):
     """Enumerates the desired color channels when loading images."""
     AUTO = 0  # Automatically determine the number of color channels
-    GRAY = 1  # Grayscale F32
-    GRAY_A = 2  # Grayscale F32 with alpha F32
-    RGB = 3  # R32G32B32
-    RGBA = 4  # R32G32B32A32
+    GRAY = auto()  # Grayscale F32
+    GRAY_A = auto()  # Grayscale F32 with alpha F32
+    RGB = auto()  # R32G32B32
+    RGBA = auto()  # R32G32B32A32
 
     def __str__(self) -> str:
         match self:
@@ -196,25 +196,27 @@ class DesiredColorChannels(Enum):
 class Operation(Enum):
     """A"""
     NOP = 0
-    SOFTMAX = 1
-    SOFTMAX_DV = 2
-    SIGMOID = 3
-    SIGMOID_DV = 4
-    SILU = 5
-    SILU_DV = 6
-    TANH = 7
-    TANH_DV = 8
-    RELU = 9
-    RELU_DV = 10
-    GELU = 11
-    GELU_DV = 12
-    ADD = 13
-    SUB = 14
-    MUL = 15
-    DIV = 16
-    MATMUL = 17
+    TRANSPOSE = auto()
+    CLONE = auto()
+    SOFTMAX = auto()
+    SOFTMAX_DV = auto()
+    SIGMOID = auto()
+    SIGMOID_DV = auto()
+    SILU = auto()
+    SILU_DV = auto()
+    TANH = auto()
+    TANH_DV = auto()
+    RELU = auto()
+    RELU_DV = auto()
+    GELU = auto()
+    GELU_DV = auto()
+    ADD = auto()
+    SUB = auto()
+    MUL = auto()
+    DIV = auto()
+    MATMUL = auto()
 
-    _COUNT = MATMUL + 1
+    _COUNT = auto()
 
     @property
     def name(self) -> str:
@@ -363,10 +365,6 @@ class Tensor:
             self.set_arg(i, args[i])
         self.set_op(op)
 
-    def eval(self, order: GraphEvalOrder = GraphEvalOrder.FORWARD) -> 'Tensor':
-        C.msml_tensor_evaluate(self.tensor, order.value)
-        return self
-
     def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""
         C.msml_tensor_fill(self.tensor, x)
@@ -398,7 +396,6 @@ class Tensor:
     @property
     def shape(self) -> list[int]:
         """Returns the dimensions of the tensor."""
-        ptr = C.msml_tensor_shape(self.tensor)
         return ffi.unpack(C.msml_tensor_shape(self.tensor), self.rank)
 
     @property
@@ -619,63 +616,80 @@ class Tensor:
         return Tensor(C.msml_tensor_transpose(self.tensor))
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
+        """Applies the softmax function to the tensor."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.SOFTMAX_DV if derivative else Operation.SOFTMAX, self)
         return result
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
+        """Applies the sigmoid function to the tensor."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
         return result
 
     def silu(self, derivative: bool = False) -> 'Tensor':
+        """Applies the SiLU function to the tensor."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.SILU_DV if derivative else Operation.SILU, self)
         return result
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
+        """Applies the hyperbolic tangent function to the tensor."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.TANH_DV if derivative else Operation.TANH, self)
         return result
 
     def relu(self, derivative: bool = False) -> 'Tensor':
+        """Applies the ReLU function to the tensor."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.RELU_DV if derivative else Operation.RELU, self)
         return result
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
+        """Applies the GELU function to the tensor."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.GELU_DV if derivative else Operation.GELU, self)
         return result
 
-    def __str__(self) -> str:
-        fmt: str = f'Tensor {"?" if self.name == "" else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
-        return fmt
-
     def __add__(self, other: 'Tensor') -> 'Tensor':
+        """Adds two tensors element-wise."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.ADD, self, other)
         return result
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
+        """Subtracts two tensors element-wise."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.SUB, self, other)
         return result
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
+        """Multiplies two tensors element-wise. (Hadamard product)"""
         result = self.isomorphic()
         result.set_op_with_args(Operation.MUL, self, other)
         return result
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
+        """Divides two tensors element-wise."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.DIV, self, other)
         return result
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
+        """Multiplies two tensors using transposed matrix multiplication. Computes Rᵀ = A x Bᵀ instead of 'normal' R = A x B."""
         result = self.isomorphic()
         result.set_op_with_args(Operation.MATMUL, self, other)
         return result
 
     def __eq__(self, other: 'Tensor') -> bool:
+        """Checks if two tensors are equal."""
         return C.msml_tensor_eq(self.tensor, other.tensor)
+
+    def __call__(self, *args, **kwargs)-> 'Tensor':
+        order: GraphEvalOrder = kwargs['order'] if 'order' in kwargs else GraphEvalOrder.FORWARD
+        C.msml_tensor_evaluate(self.tensor, order.value)
+        return self
+
+    def __str__(self) -> str:
+        fmt: str = f'Tensor {"?" if self.name == "" else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
+        return fmt

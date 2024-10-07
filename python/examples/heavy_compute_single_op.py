@@ -13,10 +13,13 @@ X.name = 'Coefficient'
 X.fill(3)
 
 img = R * X
-print(img.num_elements)
-now: int = time.time_ns()
-img.eval()
-time_took: float = (time.time_ns() - now) / 1_000_000_000
-R.print(False)
 
+now: int = time.time_ns()
+
+img() # Evaluate the tensor
+
+time_took: float = (time.time_ns() - now) / 1_000_000_000
+
+print(f'Elements: {img.num_elements}')
+R.print(False)
 print(f'Evaluated in {time_took:.6f} S')

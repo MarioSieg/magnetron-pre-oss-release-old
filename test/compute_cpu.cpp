@@ -229,7 +229,7 @@ TEST(compute_cpu, matmul_f32) {
     msml_tensor_t* R = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, N, M);
     msml_tensor_set_op(R, MSML_OP_MATMUL);
     msml_tensor_set_arg(R, 0, A);
-    msml_tensor_set_arg(R, 1, msml_tensor_clone(B));
+    msml_tensor_set_arg(R, 1, B);
     msml_tensor_t* RR = msml_tensor_clone(msml_tensor_transpose(R));
     msml_tensor_evaluate(RR, MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_tensor_print(RR, true);
