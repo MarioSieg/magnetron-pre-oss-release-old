@@ -2393,9 +2393,9 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
         *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
         FILE* cpuinfo = msml__fopen("/proc/cpuinfo", "r");
         if (msml_unlikely(!cpuinfo)) return;
-        uint32_t* physical_ids = msml_alloc(NULL, MAX_CPUS*sizeof(*physical_ids));
-        uint32_t* core_ids = msml_alloc(NULL, MAX_CPUS*sizeof(*core_ids));
-        uint32_t* package_ids = msml_alloc(NULL, MAX_CPUS*sizeof(*package_ids));
+        uint32_t physical_ids[MSML_MAX_CPUS];
+        uint32_t core_ids[MSML_MAX_CPUS];
+        uint32_t package_ids[MSML_MAX_CPUS];
         uint32_t cpu_count = 0;
         uint32_t package_count = 0;
         uint32_t current_physical_id = 0;
@@ -2423,7 +2423,7 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
                     bool is_unique = true;
                     for (int32_t i = 0; i < cpu_count; ++i) if (physical_ids[i] == current_physical_id && core_ids[i] == current_core_id) { is_unique = false; break; }
                     if (is_unique) {
-                        if (cpu_count < MAX_CPUS) {
+                        if (cpu_count < MSML_MAX_CPUS) {
                             physical_ids[cpu_count] = current_physical_id;
                             core_ids[cpu_count] = current_core_id;
                             ++cpu_count;
@@ -2432,7 +2432,7 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
                     is_unique = true;
                     for (int32_t i = 0; i < package_count; ++i) if (package_ids[i] == current_physical_id) { is_unique = false; break; }
                     if (is_unique) {
-                        if (package_count < MAX_CPUS) package_ids[package_count++] = current_physical_id;
+                        if (package_count < MSML_MAX_CPUS) package_ids[package_count++] = current_physical_id;
                         else break;
                     }
                 }
@@ -2441,9 +2441,6 @@ static void msml_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_
             }
         }
         fclose(cpuinfo);
-        msml_alloc(physical_ids, 0);
-        msml_alloc(core_ids, 0);
-        msml_alloc(package_ids, 0);
         *out_physical = cpu_count;
         *out_sockets = package_count;
     #endif

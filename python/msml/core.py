@@ -4,11 +4,15 @@
 import platform
 import weakref
 import random
+import faulthandler
 
 from cffi import FFI
 from enum import Enum
 from os.path import isfile
 from ctypes.util import find_library
+
+# Enable faulthandler for debugging
+faulthandler.enable()
 
 # Load shared library
 
@@ -78,7 +82,7 @@ ffi.cdef(f'''
     uint8_t msml_op_get_argcount(msml_op_t op);
 
     msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* shape, int64_t rank);
+    msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs);
     msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
@@ -335,7 +339,7 @@ class Tensor:
         assert 0 < len(shape) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
         for dim in shape:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
-        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, shape, len(shape))
+        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, shape, len(shape), ffi.NULL, 0)
         if name is not None:
             self.name = name
 
