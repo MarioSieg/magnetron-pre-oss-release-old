@@ -28,7 +28,7 @@ if (NOT WIN32)
     )
     # Enable optimizations only for release builds
     if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-        target_compile_options(msml PRIVATE -Ofast -flto -march=native)
+        target_compile_options(msml PRIVATE -O3 -flto)
         target_link_options(msml PRIVATE -flto)
     endif()
 endif()
