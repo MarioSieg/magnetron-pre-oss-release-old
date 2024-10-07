@@ -159,7 +159,7 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
     _(NOP,          "nop",          0)/* No Operation. */__\
     _(TRANSPOSE,    "transpose",    1)/* R = Xᵀ. */__\
     _(CLONE,        "clone",        1)/* R = X. */__\
-    _(STEP,         "step",         1)/* R = X >= 0 ? 1 : 0. Heaviside step function */__\
+    _(STEP,         "step",         1)/* R = 1 if x >= 0 else 0. Heaviside step function */__\
     _(SOFTMAX,      "softmax'",     1)/* R = softmax(X) */__\
     _(SOFTMAX_DV,   "softmax'",     1)/* R = softmax'(X) */__\
     _(SIGMOID,      "sigmoid",      1)/* R = sigmoid(X) */__\
