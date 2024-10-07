@@ -129,7 +129,7 @@ ffi.cdef(f'''
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
     bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
     bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
-    void msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
+    msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
     
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
     msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
@@ -363,8 +363,9 @@ class Tensor:
             self.set_arg(i, args[i])
         self.set_op(op)
 
-    def eval(self, order: GraphEvalOrder = GraphEvalOrder.FORWARD) -> None:
+    def eval(self, order: GraphEvalOrder = GraphEvalOrder.FORWARD) -> 'Tensor':
         C.msml_tensor_evaluate(self.tensor, order.value)
+        return self
 
     def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""

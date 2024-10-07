@@ -186,7 +186,7 @@ TEST(msml_tensor_t, deep_clone) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_clone(origin);
+    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_clone(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
     ASSERT_NE(origin, clone);
     ASSERT_EQ(msml_tensor_rank(origin), msml_tensor_rank(clone));
     ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(clone)[0]);
@@ -217,7 +217,7 @@ TEST(msml_tensor_t, isomorphic_clone) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_isomorphic(origin);
+    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_isomorphic(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
     ASSERT_NE(origin, clone);
     ASSERT_EQ(msml_tensor_rank(origin), msml_tensor_rank(clone));
     ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(clone)[0]);
@@ -248,7 +248,7 @@ TEST(msml_tensor_t, equals) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_clone(origin);
+    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_clone(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_tensor_t* clone2 = msml_tensor_isomorphic(origin);
     msml_tensor_fill_random(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(msml_tensor_eq(origin, clone));
@@ -289,7 +289,7 @@ TEST(msml_tensor_t, transpose) {
 
     msml_tensor_t* origin = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 4, 1);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* transposed = msml_tensor_transpose(origin);
+    msml_tensor_t* transposed = msml_tensor_evaluate(msml_tensor_transpose(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
     ASSERT_FALSE(msml_tensor_is_transposed(origin));
     ASSERT_TRUE(msml_tensor_is_transposed(transposed));
     ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(transposed)[1]);

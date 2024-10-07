@@ -82,6 +82,7 @@ extern MSML_API uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx);
 extern MSML_API uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx); /* Get the number of CPU sockets */
 extern MSML_API uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx); /* Get the total physical memory in bytes */
 extern MSML_API uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx); /* Get the free physical memory in bytes */
+extern MSML_API bool msml_ctx_is_numa_system(const msml_ctx_t* ctx); /* Check if the system is NUMA */
 extern MSML_API void msml_ctx_destroy(msml_ctx_t* ctx); /* Destroy context and free memory */
 
 typedef enum msml_dtype_t {
@@ -156,6 +157,8 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
     _(NOP,          "nop",      0)/* No Operation. */__\
+    _(TRANSPOSE,    "transpose",1)/* R = Xᵀ. */__\
+    _(CLONE,        "clone",    1)/* R = X. */__\
     _(SOFTMAX,      "softmax",  1)/* R = softmax(X) */__\
     _(SOFTMAX_DV,   "softmax'", 1)/* R = softmax'(X) */__\
     _(SIGMOID,      "sigmoid",  1)/* R = sigmoid(X) */__\
@@ -172,7 +175,7 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
     _(SUB,          "-",        2)/* R = X-Y */__\
     _(MUL,          "*",        2)/* R = X*Y (Hadamard prod) */__\
     _(DIV,          "/",        2)/* R = X/Y. */__\
-    _(MATMUL,       "@",        2)/* R = XY. (Matmul) */__
+    _(MATMUL,       "@",        2)/* Rᵀ = A x Bᵀ. (Matmul with transposed B and R) */__
 
 #define _(enumerator, mnemonic, argcount) MSML_OP_##enumerator
 typedef enum msml_op_t {
@@ -246,7 +249,7 @@ extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* 
 extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_API bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern MSML_API bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
-extern MSML_API void msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order); /* Evaluate computation graph from root tensor. */
+extern MSML_API msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order); /* Evaluate computation graph from root tensor. */
 
 extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */
 extern MSML_API msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */

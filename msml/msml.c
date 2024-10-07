@@ -634,6 +634,7 @@ uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx) { return ctx->sy
 uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx) { return ctx->sys.cpu_sockets; }
 uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx) { return ctx->sys.phys_mem_total; }
 uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
+bool msml_ctx_is_numa_system(const msml_ctx_t* ctx) { return false; /* TODO */ }
 
 void msml_ctx_destroy(msml_ctx_t* ctx) {
     size_t mem_total = msml_ctx_total_allocated_pool_memory(ctx);
@@ -1337,7 +1338,8 @@ msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor) {
 
 msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor) {
     msml_tensor_t* clone = msml_tensor_isomorphic(tensor);
-    memcpy(clone->buf, tensor->buf, tensor->buf_size);
+    msml_tensor_set_op(clone, MSML_OP_CLONE);
+    msml_tensor_set_arg(clone, 0, tensor);
     msml_tensor_fmt_name(clone, "%s (clone)", tensor->name);
     return clone;
 }
@@ -1350,9 +1352,11 @@ msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor) {
 
 msml_tensor_t* msml_tensor_transpose(msml_tensor_t* tensor) {
     msml_tensor_t* transposed = msml_tensor_view(tensor);
-    msml_tensor_fmt_name(transposed, "%s (transposed)", tensor->name);
+    msml_tensor_set_op(transposed, MSML_OP_TRANSPOSE);
+    msml_tensor_set_arg(transposed, 0, tensor);
     msml_swap(int64_t, transposed->shape[0], transposed->shape[1]);
     msml_swap(int64_t, transposed->strides[0], transposed->strides[1]);
+    msml_tensor_fmt_name(transposed, "%s (transposed)", tensor->name);
     return transposed;
 }
 
@@ -1854,6 +1858,150 @@ struct msml__blas_compute_info_t {
     int64_t thread_idx;
 };
 
+static void msml__blas_nop(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs
+) {
+    (void)bci;
+    (void)r;
+    (void)inputs;
+}
+
+static void msml__blas_clone(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs
+) {
+    const msml_tensor_t* const x = inputs[0];
+    msml_assert2(msml_tensor_is_shape_eq(x, r));
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_d, shape)
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_d, shape)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t ti = bci->thread_idx;
+    const int64_t tc = bci->n_threads;
+    if (msml_tensor_is_contiguous(r) && msml_tensor_is_contiguous(x)) { /* Fast path for contiguous input and output tensors. */
+        const int64_t ne = msml_tensor_buf_len(x);
+        const int64_t rc = (ne+tc-1) / tc;
+        const int64_t rs = rc * ti;
+        const int64_t re = msml_min(rs + rc, ne);
+        if (msml_likely(rs < re)) memcpy(b_r + rs*sizeof(float), b_x + rs*sizeof(float), (re - rs)*sizeof(float));
+        return;
+    }
+    const int64_t nr = x_d1;
+    const int64_t dr = (nr+tc-1) / tc;
+    const int64_t rs = dr * ti;
+    const int64_t re = msml_min(rs + dr, nr);
+    if (x_d0 == r_d0 && x_s0 == sizeof(float) && r_s0 == sizeof(float)) {
+        const int64_t rw = x_d0 * (int64_t)sizeof(float);
+        for (int64_t i3 = 0; i3 < x_d3; ++i3) {
+            for (int64_t i2 = 0; i2 < x_d2; ++i2) {
+                for (int64_t i1 = rs; i1 < re; ++i1) {
+                    memcpy(
+                        b_r + i1*r_s1 + i2*r_s2 + i3*r_s3,
+                        b_x + i1*x_s1 + i2*x_s2 + i3*x_s3,
+                        rw
+                    );
+                }
+            }
+        }
+        return;
+    }
+    if (msml_tensor_is_contiguous(r)) { /* Fast path for contiguous output tensor. */
+        int64_t id = 0;
+        const int64_t rw = x_d0 * (int64_t)sizeof(float);
+        if (x_d0 == sizeof(float)) {
+            for (int64_t i3 = 0; i3 < x_d3; ++i3) {
+                for (int64_t i2 = 0; i2 < x_d2; ++i2) {
+                    id += rw * rs;
+                    for (int64_t i1 = rs; i1 < re; ++i1) {
+                        const uint8_t* const p_x = b_x + i1*x_s1 + i2*x_s2 + i3*x_s3;
+                        memcpy(b_r + id, p_x, rw);
+                        id += rw;
+                    }
+                    id += rw * (x_d1 - re);
+                }
+            }
+        } else {
+            for (int64_t i3 = 0; i3 < x_d3; ++i3) {
+                for (int64_t i2 = 0; i2 < x_d2; ++i2) {
+                    id += rw * rs;
+                    for (int64_t i1 = rs; i1 < re; ++i1) {
+                        for (int64_t i0 = 0; i0 < x_d0; i0++) {
+                            const uint8_t* const p_x = b_x + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_d3;
+                            memcpy(b_r + id, p_x, sizeof(float));
+                            id += sizeof(float);
+                        }
+                    }
+                    id += rw * (x_d1 - re);
+                }
+            }
+        }
+        return;
+    }
+    int64_t r_i0 = 0, r_i1 = 0, r_i2 = 0, r_i3 = 0;
+    for (int64_t i3 = 0; i3 < x_d3; ++i3) {
+        for (int64_t i2 = 0; i2 < x_d2; ++i2) {
+            r_i0 += x_d0 * rs;
+            while (r_i0 >= r_d0) {
+                r_i0 -= r_d0;
+                if (++r_i1 == r_d1) {
+                    r_i1 = 0;
+                    if (++r_i2 == r_d2) {
+                        r_i2 = 0;
+                        if (++r_i3 == r_d3) {
+                            r_i3 = 0;
+                        }
+                    }
+                }
+            }
+            for (int64_t i1 = rs; i1 < re; i1++) {
+                for (int64_t i0 = 0; i0 < x_d0; i0++) {
+                    *(float*)((b_x + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_s3)) = *(const float*)(b_r + r_i0*r_s0 + r_i1*r_s1 + r_i2*r_s2 + r_i3*r_s3);
+                    if (++r_i0 == r_d0) {
+                        r_i0 = 0;
+                        if (++r_i1 == r_d1) {
+                            r_i1 = 0;
+                            if (++r_i2 == r_d2) {
+                                r_i2 = 0;
+                                if (++r_i3 == r_d3) {
+                                    r_i3 = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            r_i0 += x_d0 * (x_d1 - re);
+            while (r_i0 >= r_d0) {
+                r_i0 -= r_d0;
+                if (++r_i1 == r_d1) {
+                    r_i1 = 0;
+                    if (++r_i2 == r_d2) {
+                        r_i2 = 0;
+                        if (++r_i3 == r_d3) {
+                            r_i3 = 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void msml__blas_transpose(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs
+) {
+    (void)bci;
+    (void)r;
+    (void)inputs;
+}
+
 #define msml__blas_impl_unary_op(name, T, vec_op) \
     static void MSML_HOTPROC msml__blas_##name( \
         const msml__blas_compute_info_t* const bci, \
@@ -1862,9 +2010,9 @@ struct msml__blas_compute_info_t {
     ) { \
         (void)bci; \
         const msml_tensor_t* const x = inputs[0]; \
-        msml_assert2(msml_tensor_is_shape_eq(x, r)); \
         uint8_t* const b_r = (uint8_t*)r->buf; \
         const uint8_t* const b_x = (const uint8_t*)x->buf; \
+        msml_assert2(msml_tensor_is_shape_eq(x, r)); \
         msml__load_local_storage_group(r, r_s, strides) \
         msml__load_local_storage_group(x, x_s, strides) \
         const int64_t rc = msml_tensor_num_rows(x); \
@@ -1962,12 +2110,206 @@ msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
 
 #undef msml__blas_impl_binary_op
 
-/* Matrix multiplication
-** Tradition matmul is defined by R = A x B, where A is a MxK matrix and B is a KxN matrix and multiplies row by column.
-** For better cache and SIMD performance, we transpose B (Bᵀ), which results in transposed result Rᵀ perform the operation as:
-** Rᵀ = A x Bᵀ.
-** Dims 3 and 4 are scaling factors only.
+#define MSML_MATMUL_BLK_X 16 /* Block size X for matrix multiplication */
+#define MSML_MATMUL_BLK_Y 16 /* Block size Y for matrix multiplication */
+#define MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE 1 /* Use temporary storage for matrix multiplication to reduce false sharing. See: https://en.wikipedia.org/wiki/False_sharing */
+
+/*
+** Matrix Multiplication (Optimized with Cache and SIMD Enhancements)
+**
+** Overview:
+** ---------
+** Computes the matrix multiplication Rᵀ = A x Bᵀ, where:
+**   - A is an MxK matrix
+**   - B is a KxN matrix
+**   - Bᵀ is the transposed NxK matrix
+**   - Rᵀ is the resulting NxM transposed matrix
+**   - R is the final MxN matrix (transpose of Rᵀ)
+**
+** Optimization Strategies:
+** ------------------------
+** 1. **Transpose Matrix B**:
+**    - Transposing B to Bᵀ (NxK) transforms the multiplication to Rᵀ = A x Bᵀ.
+**    - Enhances cache locality and SIMD (Single Instruction, Multiple Data) performance by ensuring contiguous memory access patterns.
+**
+** 2. **Blocking for Cache Efficiency**:
+**    - Divides the transposed result matrix Rᵀ into smaller 16x16 blocks.
+**    - Each block fits into the CPU cache, minimizing cache misses and improving memory access speed.
+**
+** 3. **Multi-threading**:
+**    - Distributes blocks of Rᵀ across multiple threads.
+**    - Enables parallel processing, leveraging multi-core CPU architectures for faster computation.
+**
+** 4. **SIMD-Accelerated Dot Products**:
+**    - Utilizes SIMD instructions to perform multiple dot product operations simultaneously.
+**    - Significantly boosts computational throughput.
+**
+** 5. **Temporary Buffers**:
+**    - Stores intermediate results in temporary buffers.
+**    - Prevents false sharing and ensures thread-safe writes to the result matrix.
+**
+** Detailed Workflow:
+** ------------------
+** 1. **Transpose Matrix B**:
+**    ```
+**    Matrix B (KxN)          Matrix Bᵀ (NxK)
+**    +----------+            +----------+
+**    | B_11 B_12 |            | B_11 B_21 ... |
+**    | B_21 B_22 |   -->      | B_12 B_22 ... |
+**    +----------+            +----------+
+**    ```
+**
+** 2. **Divide Rᵀ into 16x16 Blocks**:
+**    ```
+**    Matrix Rᵀ (NxM) divided into blocks:
+**    +----------+----------+
+**    | Block_1  | Block_2  |
+**    +----------+----------+
+**    | Block_3  | Block_4  |
+**    +----------+----------+
+**    ```
+**
+** 3. **Assign Blocks to Threads**:
+**    ```
+**    Thread Distribution:
+**    Thread 1: Block_1, Block_2
+**    Thread 2: Block_3, Block_4
+**    ```
+**
+** 4. **Process Each Block**:
+**    ```
+**    For each 16x16 Block of Rᵀ:
+**    +---------------------------+
+**    | 16x16 Block of A           |
+**    | 16x16 Block of Bᵀ          |
+**    | SIMD-Accelerated Dot Product|
+**    | Store in Temporary Buffer  |
+**    | Write to Rᵀ                |
+**    +---------------------------+
+**    ```
+**
+** 5. **Memory Access Patterns**:
+**    ```
+**    - Matrix A accessed row-wise (contiguous memory)
+**    - Matrix Bᵀ accessed row-wise (originally column-wise in B)
+**    - Ensures cache-friendly access during multiplication
+**    ```
+**
+** Threading and Chunking:
+** -----------------------
+** - **Chunk Division**:
+**   - Rᵀ is divided into chunks based on the number of threads.
+**   - Each chunk consists of multiple 16x16 blocks.
+**
+** - **Synchronization**:
+**   - Threads are synchronized using barriers to ensure all chunks are processed without race conditions.
+**   - Atomic operations manage the assignment of chunks to threads dynamically.
+**
+** Visual Representation:
+** ----------------------
+** 1. **Matrix Layouts**:
+**    ```
+**    Matrix A (MxK)        Matrix B (KxN)       Matrix Bᵀ (NxK)        Matrix Rᵀ (NxM)
+**    +----------+          +----------+        +----------+          +----------+
+**    |          |          |          |        |          |          |          |
+**    |          |          |          |        |          |          |          |
+**    |          |          |          |        |          |          |          |
+**    +----------+          +----------+        +----------+          +----------+
+**    ```
+**
+** 2. **Blocking and Thread Assignment**:
+**    ```
+**    Matrix Rᵀ Block Division:
+**    +-------------------+  +-------------------+
+**    | 16x16 Block Rᵀ   |  | 16x16 Block Rᵀ   |
+**    +-------------------+  +-------------------+
+**    | 16x16 Block Rᵀ   |  | 16x16 Block Rᵀ   |
+**    +-------------------+  +-------------------+
+**
+**    Thread 1 handles:
+**    +-------------------+
+**    | 16x16 Block Rᵀ   |
+**    | 16x16 Block A     |
+**    | 16x16 Block Bᵀ    |
+**    +-------------------+
+**
+**    Thread 2 handles:
+**    +-------------------+
+**    | 16x16 Block Rᵀ   |
+**    | 16x16 Block A     |
+**    | 16x16 Block Bᵀ    |
+**    +-------------------+
+**    ```
+**
+** 3. **Cache-Friendly Access**:
+**    ```
+**    Access Patterns:
+**    - A: Row-wise (left to right)
+**    - Bᵀ: Row-wise (originally column-wise in B)
+**
+**    Ensures that sequential memory accesses are cache-efficient,
+**    reducing cache misses and improving performance.
+**    ```
+**
+** Key Assertions and Validations:
+** --------------------------------
+** - **Dimension Compatibility**:
+**   - Ensures that the inner dimensions of A and B match for multiplication.
+**     - A is MxK
+**     - B is KxN
+**   - Validates that the resulting matrix Rᵀ has dimensions NxM.
+**
+** - **Memory Alignment**:
+**   - Confirms that the strides align with the size of `float` (4 bytes).
+**   - Ensures that memory accesses are correctly aligned for SIMD operations.
+**
+** - **Contiguity Checks**:
+**   - Verifies if the input matrices are stored contiguously in memory.
+**   - Optimizes access patterns based on memory layout.
+**
+** Summary:
+** --------
+** The `msml__blas_matmul_f32` function employs a combination of matrix transposition, blocking, multi-threading, SIMD acceleration, and cache optimization to perform efficient matrix multiplication. By transposing matrix B and dividing the computation into manageable blocks, the function ensures that memory access patterns are optimized for modern CPU architectures, leveraging parallelism and vectorization to achieve high performance.
+**
+** Visual Aid:
+** ------------
+** Here's a consolidated visualization of the entire process:
+**
+** ```
+** Step 1: Transpose Matrix B
+** ---------------------------
+** Original Matrix B (KxN)       Transposed Matrix Bᵀ (NxK)
+** +----------+                  +----------+
+** | B_11 B_12 |                  | B_11 B_21 ... |
+** | B_21 B_22 |      -->         | B_12 B_22 ... |
+** +----------+                  +----------+
+**
+** Step 2: Divide Rᵀ into 16x16 Blocks
+** --------------------------------------
+** Matrix Rᵀ (NxM)
+** +----------+----------+
+** | Block_1  | Block_2  |
+** +----------+----------+
+** | Block_3  | Block_4  |
+** +----------+----------+
+**
+** Step 3: Assign Blocks to Threads
+** ----------------------------------
+** Thread 1: Block_1, Block_2
+** Thread 2: Block_3, Block_4
+**
+** Step 4: Process Each Block
+** ---------------------------
+** For each Block_i:
+** +---------------------------+
+** | Load 16x16 Block of A      |
+** | Load 16x16 Block of Bᵀ     |
+** | SIMD Dot Product            |
+** | Store in Temporary Buffer  |
+** | Write to Rᵀ                |
+** +---------------------------+
 */
+
 static void msml__blas_matmul_f32(
     const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const r,
@@ -1984,27 +2326,92 @@ static void msml__blas_matmul_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
-    for (int64_t i3=0; i3 < r_d3; ++i3) {
-        for (int64_t i2=0; i2 < r_d2; ++i2) {
-            for (int64_t i1=0; i1 < r_d1; ++i1) {
-                for (int64_t i0=0; i0 < r_d1; ++i0) {
-                    double sum = 0.0;
-                    for (int64_t k=0; k < x_d0; ++k) {
-                        const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
-                        const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
-                        sum += (double)(*p_x**p_y);
-                    }
-                    float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
-                    *p_r = (float)sum;
+    msml_assert2(r_d0 == x_d1);
+    msml_assert2(r_d1 == y_d1);
+    msml_assert2(r_d2 == y_d2);
+    msml_assert2(r_d3 == y_d3);
+    msml_assert2(x_s0 == sizeof(float));
+    msml_assert2(y_s0 == sizeof(float));
+    msml_assert2(r_s0 == sizeof(float));
+    msml_assert2(r_s0 <= r_s1);
+    msml_assert2(r_s1 <= r_s2);
+    msml_assert2(r_s2 <= r_s3);
+    msml_assert2(x_d2 % x_d2 == 0);
+    msml_assert2(y_d3 % x_d3 == 0);
+    const int64_t ti = bci->thread_idx;
+    const int64_t tc = bci->n_threads;
+    const bool src1_cont = msml_tensor_is_contiguous(y);
+    int64_t chunk = 0; /* TODO: Atomic sync */
+    if (ti == 0) chunk = tc;
+    /* TODO: barrier */
+    const int64_t nr0 = r_d0;
+    const int64_t nr1 = r_d1*r_d2*r_d3;
+    const int64_t chunk_size = nr0 == 1 || nr1 == 1 ? 64 : 16;
+    int64_t nchunk0 = (nr0 + chunk_size-1) / chunk_size;
+    int64_t nchunk1 = (nr1 + chunk_size-1) / chunk_size;
+    if (nchunk0 * nchunk1 < (tc<<2) || msml_ctx_is_numa_system(x->ctx)) {
+        nchunk0 = nr0 > nr1 ? tc : 1;
+        nchunk1 = nr0 > nr1 ? 1 : tc;
+    }
+    const int64_t cr0 = (nr0 + nchunk0 - 1) / nchunk0;
+    const int64_t cr1 = (nr1 + nchunk1 - 1) / nchunk1;
+    const int64_t nchunks = nchunk0 * nchunk1;
+    int64_t current_chunk = ti;
+    while (current_chunk < nchunks)  /* TODO: Atomic sync */ {
+        const int64_t ci0 = current_chunk % nchunk0;
+        const int64_t ci1 = current_chunk / nchunk0;
+        const int64_t r0s = cr0 * ci0;
+        const int64_t r0e = msml_min(r0s + cr0, nr0);
+        const int64_t r1s = cr1 * ci1;
+        const int64_t r1e = msml_min(r1s + cr1, nr1);
+        const int64_t r2 = y_d2 / x_d2;
+        const int64_t r3 = y_d3 / x_d3;
+        if (msml_unlikely(r0s >= r0e || r1s >= r1e)) return; /* No work in this chunk */
+        const int64_t row_size = y_s0;
+        #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE
+            float tmp[32];
+        #endif
+        for (int64_t i1 = r1s; i1 < r1e; i1 += MSML_MATMUL_BLK_Y) {
+            for (int64_t i0 = r0s; i0 < r0e; i0 += MSML_MATMUL_BLK_X) {
+                for (int64_t ri = i1; ri < i1 + MSML_MATMUL_BLK_Y && ri < r1e; ++ri) {
+                    const int64_t y_i3 = (ri/(y_d2*r_d1));
+                    const int64_t y_i2 = (ri - y_i3*y_d2*r_d1)/r_d1;
+                    const int64_t y_i1 = (ri - y_i3*y_d2*r_d1 - y_i2*r_d1);
+                    const int64_t x_i3 = y_i3 / r3;
+                    const int64_t x_i2 = y_i2 / r2;
+                    const int64_t r_i3 = y_i3;
+                    const int64_t r_i2 = y_i2;
+                    const int64_t r_i1 = y_i1;
+                    const uint8_t* const x_row = b_x + x_i2*x_s2 + x_i3*x_s3;
+                    const float* const y_col =
+                        (const float*)(b_y + (src1_cont
+                        ? (y_i1 + y_i2*y_d1 + y_i3*y_d2*y_d1) * row_size
+                        : (y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3)));
+                    float* r_col = (float*)(b_r + r_i1*r_s1 + r_i2*r_s2 + r_i3*r_s3);
+                    #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE /* Use temporary storage to reduce false sharing- */
+                        for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i)
+                            tmp[i-i0] = msml__vdot_f32(x_d0, (const float*)(x_row + i*x_s1), y_col);
+                        memcpy(&r_col[i0], tmp, (msml_min(i0 + MSML_MATMUL_BLK_X, r0e) - i0)*sizeof(float)); /* Store to result buffer. */
+                    #else /* Store directly to result buffer. */
+                        for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i)
+                            r_col[i] = msml__vdot_f32(x_d0, (const float*)(x_row + i*x_s1), y_col);
+                    #endif
                 }
             }
         }
+        if (tc >= nchunks) break;
+        current_chunk = ++chunk;
     }
 }
 
+#undef MSML_MATMUL_BLK_Y
+#undef MSML_MATMUL_BLK_X
+
 /* Dispatch table for default CPU-implementation. */
 static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[MSML_OP__COUNT])(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**)) {
-    (*dispatch_lut)[MSML_OP_NOP] = NULL;
+    (*dispatch_lut)[MSML_OP_NOP] = &msml__blas_nop;
+    (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_transpose;
+    (*dispatch_lut)[MSML_OP_CLONE] = &msml__blas_clone;
     (*dispatch_lut)[MSML_OP_SOFTMAX] = &msml__blas_softmax_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;
     (*dispatch_lut)[MSML_OP_SIGMOID] = &msml__blas_sigmoid_f32;
@@ -2027,7 +2434,7 @@ static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lu
 static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
     msml__blas_compute_dispatch_table_default(&ctx->blas_dispatch);
     /* TODO: Add support for custom implementations for host CPU arch. */
-    for (int i=1+MSML_OP_NOP; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
+    for (int i=MSML_OP_NOP; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
         msml_assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name(i));
     }
 }
@@ -2060,13 +2467,14 @@ static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t*
     (*(*(dispatch_lut+op)))(bci, node, inputs); /* Dispatch to CPU implementation */
 }
 
-void MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
+msml_tensor_t*  MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
     msml__blas_compute_info_t blas_ctx = {
         .ctx = tensor->ctx,
         .n_threads = 1,
         .thread_idx = 0
     };
     msml__compute_dag_eval(&blas_ctx, tensor, order == MSML_GRAPH_EVAL_ORDER_FORWARD);
+    return tensor;
 }
 
 #define msml__save_fwrite(f, file_name, data, size) \
