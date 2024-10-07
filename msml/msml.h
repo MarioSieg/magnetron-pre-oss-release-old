@@ -153,29 +153,30 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 #define MSML_FMT_X (MSML_FMT_UINT|MSML_FMT_T_HEX) /* 'x' format */
 #define MSML_FMT_G14 (MSML_FMT_G | ((14+1) << MSML_FMT_SH_PREC)) /* 'g' format with precision 14 */
 
-#define MSML_MAX_ARG_TENSORS 2
+#define MSML_MAX_INPUT_TENSORS 2
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
-    _(NOP,          "nop",      0)/* No Operation. */__\
-    _(TRANSPOSE,    "transpose",1)/* R = Xᵀ. */__\
-    _(CLONE,        "clone",    1)/* R = X. */__\
-    _(SOFTMAX,      "softmax",  1)/* R = softmax(X) */__\
-    _(SOFTMAX_DV,   "softmax'", 1)/* R = softmax'(X) */__\
-    _(SIGMOID,      "sigmoid",  1)/* R = sigmoid(X) */__\
-    _(SIGMOID_DV,   "sigmoid'", 1)/* R = sigmoid'(X) */__\
-    _(SILU,         "SiLU",     1)/* R = silu(X) */__\
-    _(SILU_DV,      "SiLU'",    1)/* R = silu'(X) */__\
-    _(TANH,         "tanh",     1)/* R = tanh(X) */__\
-    _(TANH_DV,      "tanh'",    1)/* R = tanh'(X) */__\
-    _(RELU,         "ReLU",     1)/* R = relu(X) */__\
-    _(RELU_DV,      "ReLU'",    1)/* R = relu'(X) */__\
-    _(GELU,         "GeLU",     1)/* R = gelu(X) */__\
-    _(GELU_DV,      "GeLU'",    1)/* R = gelu'(X) */__\
-    _(ADD,          "+",        2)/* R = relu(X) */__\
-    _(SUB,          "-",        2)/* R = X-Y */__\
-    _(MUL,          "*",        2)/* R = X*Y (Hadamard prod) */__\
-    _(DIV,          "/",        2)/* R = X/Y. */__\
-    _(MATMUL,       "@",        2)/* Rᵀ = A x Bᵀ. (Matmul with transposed B and R) */__
+    _(NOP,          "nop",          0)/* No Operation. */__\
+    _(TRANSPOSE,    "transpose",    1)/* R = Xᵀ. */__\
+    _(CLONE,        "clone",        1)/* R = X. */__\
+    _(STEP,         "step",         1)/* R = X >= 0 ? 1 : 0. Heaviside step function */__\
+    _(SOFTMAX,      "softmax'",     1)/* R = softmax(X) */__\
+    _(SOFTMAX_DV,   "softmax'",     1)/* R = softmax'(X) */__\
+    _(SIGMOID,      "sigmoid",      1)/* R = sigmoid(X) */__\
+    _(SIGMOID_DV,   "sigmoid''",    1)/* R = sigmoid'(X) */__\
+    _(SILU,         "SiLU",         1)/* R = silu(X) */__\
+    _(SILU_DV,      "SiLU'",        1)/* R = silu'(X) */__\
+    _(TANH,         "tanh",         1)/* R = tanh(X) */__\
+    _(TANH_DV,      "tanh'",        1)/* R = tanh'(X) */__\
+    _(RELU,         "ReLU",         1)/* R = relu(X) */__\
+    _(RELU_DV,      "ReLU'",        1)/* R = relu'(X) */__\
+    _(GELU,         "GeLU",         1)/* R = gelu(X) */__\
+    _(GELU_DV,      "GeLU'",        1)/* R = gelu'(X) */__\
+    _(ADD,          "+",            2)/* R = relu(X) */__\
+    _(SUB,          "-",            2)/* R = X-Y */__\
+    _(MUL,          "*",            2)/* R = X*Y (Hadamard prod) */__\
+    _(DIV,          "/",            2)/* R = X/Y. */__\
+    _(MATMUL,       "@",            2)/* Rᵀ = A x Bᵀ. (Matmul with transposed B and R) */__
 
 #define _(enumerator, mnemonic, argcount) MSML_OP_##enumerator
 typedef enum msml_op_t {
@@ -206,6 +207,7 @@ extern MSML_API msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype
 extern MSML_API msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */
 extern MSML_API msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4); /* Create 4D tensor */
+extern MSML_API msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs); /* Set opcode and arguments for tensor, and return result computation node. */
 extern MSML_API msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor); /* Create new empty tensor with same shape as input, but without cloning data. */
 extern MSML_API msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input (deep clone). */
 extern MSML_API msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor); /* Create new tensor with same shape and data as input, but data is referenced only and not copied. (shallow clone). */
@@ -249,6 +251,7 @@ extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* 
 extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_API bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern MSML_API bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
+extern MSML_API bool msml_tensor_is_op_possible(const msml_tensor_t* tensor, bool print_error); /* Check if the tensor operation is possible and all arguments and parameters are valid. */
 extern MSML_API msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order); /* Evaluate computation graph from root tensor. */
 
 extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */

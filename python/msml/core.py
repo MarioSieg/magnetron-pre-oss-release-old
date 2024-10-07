@@ -2,7 +2,6 @@
 # Implements the core functionality of the MSML Python bindings. Requires the MSML shared library.
 
 import platform
-import weakref
 import random
 import faulthandler
 
@@ -87,6 +86,7 @@ ffi.cdef(f'''
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+    msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs);
     msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor);
@@ -129,6 +129,7 @@ ffi.cdef(f'''
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
     bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
     bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
+    bool msml_tensor_is_op_possible(const msml_tensor_t* tensor, bool print_error);
     msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
     
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
@@ -198,6 +199,7 @@ class Operation(Enum):
     NOP = 0
     TRANSPOSE = auto()
     CLONE = auto()
+    STEP = auto()
     SOFTMAX = auto()
     SOFTMAX_DV = auto()
     SIGMOID = auto()
@@ -255,13 +257,11 @@ class GraphEvalOrder(Enum):
                 return 'Reverse'
 
 
-class Context:
+class Context: # TODO: Weakly reference tensors
     """Manages the MSML context and tensor lifecycles."""
 
     def __init__(self, pool_chunk_size: int = 2 * (1 << 30)):  # Pool chunk size. Default: 2GiB
         self.ctx = C.msml_ctx_create2(pool_chunk_size)
-        # Use weak references to manage the lifecycle of tensors, as they are owned by the context
-        self.allocated_tensors = weakref.WeakSet()
 
     @property
     def total_allocated_pool_memory(self) -> int:
@@ -319,9 +319,6 @@ class Context:
         return abs(self.physical_memory_total - self.physical_memory_free)
 
     def __del__(self):
-        """Ensure tensors are cleaned up when the context is destroyed."""
-        for tensor in list(self.allocated_tensors):
-            tensor.__del__()
         C.msml_ctx_destroy(self.ctx)
 
 
@@ -358,12 +355,8 @@ class Tensor:
     def set_op(self, op: Operation) -> None:
         C.msml_tensor_set_op(self.tensor, op.value)
 
-    def set_op_with_args(self, op: Operation, *args) -> None:
-        assert len(args) == op.argument_count, 'Argument count does not match required argument count for operation'
-        for i in range(0, len(args)):
-            assert isinstance(args[i], Tensor)
-            self.set_arg(i, args[i])
-        self.set_op(op)
+    def _is_op_possible(self, print_error: bool) -> bool:
+        return C.msml_tensor_is_op_possible(self.tensor, print_error)
 
     def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""
@@ -401,7 +394,6 @@ class Tensor:
     @property
     def strides(self) -> list[int]:
         """Returns the strides of the tensor."""
-        ptr = C.msml_tensor_strides(self.tensor)
         return ffi.unpack(C.msml_tensor_strides(self.tensor), self.rank)
 
     @property
@@ -599,6 +591,17 @@ class Tensor:
             tensor.name = name
         return tensor
 
+    @staticmethod
+    def _emit_op_tensor(op: Operation, *args) -> 'Tensor':
+        tensors = ffi.new(f'msml_tensor_t*[{len(args)}]')
+        for i, arg in enumerate(args):
+            assert isinstance(arg, Tensor), 'Argument must be a tensor'
+            tensors[i] = arg.tensor
+        instance = C.msml_tensor_emit_op(op.value, tensors, len(args))
+        if instance == ffi.NULL:
+            raise RuntimeError('Operation not possible')
+        return Tensor(instance)
+
     def isomorphic(self) -> 'Tensor':
         """Create new empty tensor with same shape as input, but without cloning any data, data is unitialized."""
         return Tensor(C.msml_tensor_isomorphic(self.tensor))
@@ -615,71 +618,53 @@ class Tensor:
         """Transposes the tensor."""
         return Tensor(C.msml_tensor_transpose(self.tensor))
 
+    def step(self) -> 'Tensor':
+        """Applies the heaviside step function to the tensor."""
+        return self._emit_op_tensor(Operation.STEP, self)
+
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """Applies the softmax function to the tensor."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.SOFTMAX_DV if derivative else Operation.SOFTMAX, self)
-        return result
+        return self._emit_op_tensor(Operation.SOFTMAX_DV if derivative else Operation.SOFTMAX, self)
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """Applies the sigmoid function to the tensor."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
-        return result
+        return self._emit_op_tensor(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
 
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.SILU_DV if derivative else Operation.SILU, self)
-        return result
+        return self._emit_op_tensor(Operation.SILU_DV if derivative else Operation.SILU, self)
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """Applies the hyperbolic tangent function to the tensor."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.TANH_DV if derivative else Operation.TANH, self)
-        return result
+        return self._emit_op_tensor(Operation.TANH_DV if derivative else Operation.TANH, self)
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.RELU_DV if derivative else Operation.RELU, self)
-        return result
+        return self._emit_op_tensor(Operation.RELU_DV if derivative else Operation, self)
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.GELU_DV if derivative else Operation.GELU, self)
-        return result
+        return self._emit_op_tensor(Operation.GELU_DV if derivative else Operation.GELU, self)
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
         """Adds two tensors element-wise."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.ADD, self, other)
-        return result
+        return self._emit_op_tensor(Operation.ADD, self, other)
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
         """Subtracts two tensors element-wise."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.SUB, self, other)
-        return result
+        return self._emit_op_tensor(Operation.SUB, self, other)
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors element-wise. (Hadamard product)"""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.MUL, self, other)
-        return result
+        return self._emit_op_tensor(Operation.MUL, self, other)
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
         """Divides two tensors element-wise."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.DIV, self, other)
-        return result
+        return self._emit_op_tensor(Operation.DIV, self, other)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors using transposed matrix multiplication. Computes Rᵀ = A x Bᵀ instead of 'normal' R = A x B."""
-        result = self.isomorphic()
-        result.set_op_with_args(Operation.MATMUL, self, other)
-        return result
+        return self._emit_op_tensor(Operation.MATMUL, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:
         """Checks if two tensors are equal."""
@@ -691,5 +676,7 @@ class Tensor:
         return self
 
     def __str__(self) -> str:
-        fmt: str = f'Tensor {"?" if self.name == "" else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
-        return fmt
+        #fmt: str = f'Tensor {"?" if self.name == "" else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
+        #return fmt
+        self.print(True)
+        return ''
