@@ -2425,7 +2425,7 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                     #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE /* Use temporary storage to reduce false sharing. */
                         for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i)
                             tmp[i-i0] = msml__vdot_f32(x_d0, (const float*)(x_row + i*x_s1), y_col);
-                        memcpy(&r_col[i0], tmp, (msml_min(i0 + MSML_MATMUL_BLK_X, r0e) - i0)*sizeof(float)); /* Store to result buffer. */
+                        memcpy(r_col+i0, tmp, (msml_min(i0 + MSML_MATMUL_BLK_X, r0e) - i0)*sizeof(float)); /* Store to result buffer. */
                     #else /* Store directly to result buffer. */
                         for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i) {
                             r_col[i] = msml__vdot_f32(x_d0, (const float*) (x_row + i * x_s1), y_col);
@@ -2434,8 +2434,7 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                 }
             }
         }
-        bool f = tc >= nchunks;
-        if (f) break;
+        if (tc >= nchunks) break;
         current_chunk = ++chunk;
     }
 }
