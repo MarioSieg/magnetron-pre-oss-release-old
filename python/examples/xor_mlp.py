@@ -1,4 +1,5 @@
 from msml.core import *
+from mlp import MultilayerPerceptron
 
 # Initialize MSML context
 ctx = Context()
@@ -18,5 +19,9 @@ targets = [
     [0.0]
 ]
 
-input_tensor = Tensor.with_data(ctx, [4, 2], [elem for sublist in inputs for elem in sublist], name='Input')
-target_tensor = Tensor.with_data(ctx, [4, 1], [elem for sublist in targets for elem in sublist], name='Target')
+mlp = MultilayerPerceptron(ctx, input_size=2, hidden_size=2, output_size=1)
+
+# Predict (inference) the output for each input pair
+for pair in inputs:
+    output = mlp.forward(Tensor.with_data(ctx, [2], data=pair))
+    print(f'Input: {pair} Output: {output().f32_data()[0]}')
