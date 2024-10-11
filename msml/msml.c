@@ -162,7 +162,7 @@ struct msml_ctx_t {
     msml_prng_algorithm_t prng_algorithm;
     uintptr_t host_thread_id;
     void (*blas_dispatch[MSML_OP__COUNT])(const msml__blas_compute_info_t* bci, msml_tensor_t* r, const msml_tensor_t** inputs); /* BLAS dispatch table. Specialized for host CPU architecture. */
-    void* user_data;
+    void* ud; /* User data. */
 };
 
 struct msml_tensor_t {
@@ -178,7 +178,7 @@ struct msml_tensor_t {
     msml_tensor_t* view;
     size_t view_offs;
     char name[MSML_MAX_TENSOR_NAME_LEN];
-    void* user_data;
+    void* ud; /* User data. */
 };
 
 static MSML_NORET void msml_panic(const char* msg, ...) {
@@ -340,6 +340,16 @@ static double msml_hpc_clock_elapsed_ms(int64_t start) { /* High precision clock
     return (double)msml_hpc_clock_elapsed_us(start) * 1.0e-3;
 }
 
+typedef uint32_t msml_bitset_t;
+msml_static_assert(sizeof(msml_bitset_t) == 4);
+#define MSML_BITSET_SIZE (sizeof(msml_bitset_t)*8)
+#define MSML_BITSET_MASK (MSML_BITSET_SIZE-1)
+#define msml_bitset_size(n) (((n)+MSML_BITSET_MASK)>>5)
+#define msml_bitset_get(sets, i) (!!(sets[(i)>>5]&(1u<<((i)&MSML_BITSET_MASK))))
+#define msml_bitset_set(sets, i) (sets[(i)>>5]|=(1u<<((i)&MSML_BITSET_MASK)))
+#define msml_bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&MSML_BITSET_MASK)))
+#define msml_bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&MSML_BITSET_MASK)))
+
 static void MSML_AINLINE msml__bswap32(uint32_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     (void)p_x;
 #if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -408,6 +418,39 @@ static uint32_t msml__crc32(const void* buf, size_t size) { /* Compute CRC32 che
     for (size_t i=0; i < size; ++i)
         crc = (crc >> 8) ^ crc_lut[buffer[i] ^ (crc & 0xff)];
     return ~crc;
+}
+
+typedef struct msml_hashset_t {
+    void* ud;
+    size_t len;
+    msml_bitset_t* used;
+    const msml_tensor_t** keys;
+} msml_hashset_t;
+#define MSML_HASHSET_FULL ((size_t)-1)
+#define MSML_HASHSET_DUPLICATE ((size_t)-2)
+#define MSML_HASHSET_MAX ((size_t)-3) /* Must be last. */
+#define msml_hashset_hash_fn(ptr) ((size_t)(uintptr_t)(ptr)>>3) 
+
+static msml_hashset_t msml_hashset_create(size_t cap) {
+
+}
+static size_t msml_hashset_compute_hash_size(size_t sz) {
+
+}
+static bool msml_hashset_contains_key(msml_hashset_t* set, const msml_tensor_t* key) {
+
+}
+static size_t msml_hashset_lookup(msml_hashset_t* set, const msml_tensor_t* key) {
+
+}
+static size_t msml_hashset_insert(msml_hashset_t* set, const msml_tensor_t* key) {
+
+}
+static void msml_hashset_reset(msml_hashset_t* set) {
+
+}
+static void msml_hashset_destroy(msml_hashset_t* set) {
+
 }
 
 static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
@@ -551,7 +594,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx)); /* Allocate context. */
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
-    ctx->user_data = ctx_info.user_data;
+    ctx->ud = ctx_info.user_data;
     ctx->pool.chunk_size = ctx_info.pool_chunk_size ? msml_max(ctx_info.pool_chunk_size, 8) : MSML_DEFAULT_CHUNK_SIZE;
     ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? msml_max(ctx_info.pool_chunks_cap, 1) : MSML_DEFAULT_CHUNK_CAP;
     ctx->pool.warmup_chunks = ctx_info.warmup_chunks;
@@ -3003,3 +3046,13 @@ void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_pat
     msml_panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
 #endif
 }
+
+struct msml_compute_graph_t {
+    msml_ctx_t* ctx;
+    msml_tensor_t** nodes;
+    msml_tensor_t** leafs;
+    size_t num_nodes;
+    size_t num_leafs;
+    size_t size_total;
+    msml_graph_eval_order_t order;
+};

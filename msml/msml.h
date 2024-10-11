@@ -262,6 +262,10 @@ extern MSML_API void msml_tensor_save_to_image(const msml_tensor_t* tensor, cons
 #define msml_tensor_image_height(tensor) (msml_tensor_shape(tensor)[1]) /* Get image height from tensor */
 #define msml_tensor_image_channels(tensor) (msml_tensor_shape(tensor)[2]) /* Get image channels from tensor */
 
+typedef struct msml_compute_graph_t msml_compute_graph_t; /* Opaque type representing a compute graph */
+extern MSML_API msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order); /* Compile computation graph from root tensor. */
+extern MSML_API void msml_compute_graph_execute(msml_compute_graph_t* graph); /* Execute computation graph. */
+
 #ifdef __cplusplus
 }
 #endif
