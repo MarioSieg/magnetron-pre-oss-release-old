@@ -2,6 +2,7 @@ from msml.core import *
 
 
 class MultilayerPerceptron:
+    """A simple multilayer perceptron (feedforward network)."""
     def __init__(self, ctx: Context):
         self.ctx = ctx
         self.weights = []
@@ -20,6 +21,7 @@ class MultilayerPerceptron:
         ]))
 
     def forward(self, inputs: Tensor) -> Tensor:
+        """Forward propagate the input through the network."""
         assert len(self.weights) == len(self.biases)
         prev: Tensor = inputs
         for i in range(0, len(self.weights)):
