@@ -429,13 +429,36 @@ typedef struct msml_hashset_t {
 #define MSML_HASHSET_FULL ((size_t)-1)
 #define MSML_HASHSET_DUPLICATE ((size_t)-2)
 #define MSML_HASHSET_MAX ((size_t)-3) /* Must be last. */
-#define msml_hashset_hash_fn(ptr) ((size_t)(uintptr_t)(ptr)>>3) 
+#define msml_hashset_hash_fn(ptr) ((size_t)(uintptr_t)(ptr)>>3)
 
-static msml_hashset_t msml_hashset_create(size_t cap) {
-
-}
 static size_t msml_hashset_compute_hash_size(size_t sz) {
-
+    msml_assert2(sz > 0 && sz < MSML_HASHSET_MAX);
+    static const size_t prime_lut[] = {
+        2, 3, 5, 11, 17, 37, 67, 131, 257, 521, 1031,
+        2053, 4099, 8209, 16411, 32771, 65537, 131101,
+        262147, 524309, 1048583, 2097169, 4194319, 8388617,
+        16777259, 33554467, 67108879, 134217757, 268435459,
+        536870923, 1073741827, 2147483659
+    };
+    size_t l = 0;
+    size_t r = sizeof(prime_lut)/sizeof(*prime_lut);
+    while (l < r) { /* Binary search for the smallest prime > sz. */
+        size_t mid = (l+r)>>1;
+        if (prime_lut[mid] < sz) l = mid+1;
+        else r = mid;
+    }
+    return l < sizeof(prime_lut)/sizeof(*prime_lut) ? prime_lut[l] : sz|1;
+}
+static msml_hashset_t msml_hashset_create(size_t size) {
+    size = msml_hashset_compute_hash_size(size);
+    msml_hashset_t set = {
+        .ud = NULL,
+        .len = size,
+        .used = msml_alloc(NULL, msml_bitset_size(size)*sizeof(*set.used)),
+        .keys = msml_alloc(NULL, size*sizeof(*set.keys)),
+    };
+    memset(set.used, 0, msml_bitset_size(size)*sizeof(*set.used));
+    return set;
 }
 static bool msml_hashset_contains_key(msml_hashset_t* set, const msml_tensor_t* key) {
 
@@ -447,10 +470,11 @@ static size_t msml_hashset_insert(msml_hashset_t* set, const msml_tensor_t* key)
 
 }
 static void msml_hashset_reset(msml_hashset_t* set) {
-
+    memset(set->used, 0, msml_bitset_size(set->len)*sizeof(*set->used));
 }
 static void msml_hashset_destroy(msml_hashset_t* set) {
-
+    msml_alloc(set->used, 0);
+    msml_alloc(set->keys, 0);
 }
 
 static bool MSML_AINLINE msml__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
