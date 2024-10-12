@@ -20,6 +20,9 @@
 #ifdef __aarch64__
 #   include <arm_neon.h>
 #   include <arm_acle.h>
+#elif defined(__x86_64__) || defined(_M_X64)
+#   include <nmmintrin.h>
+#   include <wmmintrin.h>
 #endif
 
 #ifdef _WIN32
@@ -386,7 +389,7 @@ static void* msml_advance_ptr(void** p, size_t sz, size_t align) {
 }
 
 #ifdef __aarch64__
-    MSML_AINLINE uint64x2_t msml__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+    static uint64x2_t MSML_AINLINE msml__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
         uint64x2_t r;
         __asm__ __volatile__(
             "pmull %0.1q, %2.1d, %3.1d\n"
@@ -395,7 +398,7 @@ static void* msml_advance_ptr(void** p, size_t sz, size_t align) {
         );
         return r;
     }
-    MSML_AINLINE uint64x2_t msml__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+    static uint64x2_t MSML_AINLINE msml__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
         uint64x2_t r;
         __asm__ __volatile__(
             "pmull2 %0.1q, %2.2d, %3.2d\n"
@@ -403,6 +406,27 @@ static void* msml_advance_ptr(void** p, size_t sz, size_t align) {
             : "=w"(r), "+w"(c) : "w"(a), "w"(b)
         );
         return r;
+    }
+#elif defined(__x86_64__) || defined(_M_X64)
+    static uint32_t msml__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
+        uint64_t stack = ~(uint64_t)1;
+        uint32_t acc, low;
+        for (; n > 191; n = (n>>1) - 16)stack = (stack<<1) + (n & 1);
+        stack = ~stack;
+        acc = ((uint32_t)0x80000000) >> (n & 31);
+        for (n >>= 5; n; --n) acc = _mm_crc32_u32(acc, 0);
+        while ((low = stack & 1), stack >>= 1) {
+            __m128i x = _mm_cvtsi32_si128(acc);
+            uint64_t y = _mm_cvtsi128_si64(_mm_clmulepi64_si128(x, x, 0));
+            acc = _mm_crc32_u64(0, y << low);
+        }
+        return acc;
+    }
+    static __m128i MSML_AINLINE msml__clmul_scalar(uint32_t a, uint32_t b) {
+        return _mm_clmulepi64_si128(_mm_cvtsi32_si128(a), _mm_cvtsi32_si128(b), 0);
+    }
+    static __m128i MSML_AINLINE msml__crc_shift(uint32_t crc, size_t sz) {
+        return msml__clmul_scalar(crc, msml__xnmodp((sz<<3) - 33));
     }
 #endif
 
@@ -473,6 +497,36 @@ static uint32_t msml__crc32c(const void* buffer, size_t size) { /* Compute CRC32
         }
         for (; size >= 8; buf += 8, size -= 8) crc = __crc32cd(crc, *(const uint64_t*)buf);
         for (; size; --size) crc = __crc32cb(crc, *buf++);
+        return ~crc;
+    #elif defined(__x86_64__) || defined(_M_X64)
+        uint32_t crc = ~0;
+        for (; size && ((uintptr_t)buf & 7); --size) crc = _mm_crc32_u8(crc, *buf++);
+        if (size >= 32) {
+            size_t klen = ((size - 8) / 24)<<3;
+            uint32_t crc1 = 0;
+            uint32_t crc2 = 0;
+            __m128i vc0;
+            __m128i vc1;
+            uint64_t vc;
+            /* Main loop. */
+            do {
+                crc = _mm_crc32_u64(crc, *(const uint64_t*)buf);
+                crc1 = _mm_crc32_u64(crc1, *(const uint64_t*)(buf + klen));
+                crc2 = _mm_crc32_u64(crc2, *(const uint64_t*)(buf + (klen<<1)));
+                buf += 8;
+                size -= 24;
+            } while (size >= 32);
+            vc0 = msml__crc_shift(crc, (klen<<1) + 8);
+            vc1 = msml__crc_shift(crc1, klen + 8);
+            vc = _mm_extract_epi64(_mm_xor_si128(vc0, vc1), 0);
+            /* Final 8 bytes. */
+            buf += klen<<1;
+            crc = crc2;
+            crc = _mm_crc32_u64(crc, *(const uint64_t*)buf ^ vc), buf += 8;
+            size -= 8;
+        }
+        for (; size >= 8; buf += 8, size -= 8) crc = _mm_crc32_u64(crc, *(const uint64_t*)buf);
+        for (; size; --size) crc = _mm_crc32_u8(crc, *buf++);
         return ~crc;
     #else
         static const uint32_t crc_lut[256] = {
