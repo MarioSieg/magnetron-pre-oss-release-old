@@ -22,5 +22,5 @@ targets = [
 mlp = MultilayerPerceptron(ctx)
 for input in inputs:
     input_tensor = Tensor.with_data(ctx, [2], input)
-    output = mlp.forward(input_tensor)().f32_data()[0]
+    output: float = mlp.forward(input_tensor)().f32_data()[0]
     print(f'Input: {input}, Output: {output}')
