@@ -2268,7 +2268,7 @@ static void MSML_HOTPROC msml__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> -(
     }
 }
 
-static void MSML_HOTPROC msml__vhard_sigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
+static void MSML_HOTPROC msml__vhard_sigmoid_f32( /* σ^ : ℝ -> (0, 1), x |-> min(1, max(0, (x + 3)/6)) */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2278,7 +2278,7 @@ static void MSML_HOTPROC msml__vhard_sigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1
     }
 }
 
-static void MSML_HOTPROC msml__vhard_sigmoid_dv_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
+static void MSML_HOTPROC msml__vhard_sigmoid_dv_f32( /* σ^ : ℝ -> (0, 1), x |-> min(1, max(0, (x + 3)/6)) */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2288,7 +2288,7 @@ static void MSML_HOTPROC msml__vhard_sigmoid_dv_f32( /* σ : ℝ -> (0, 1), x |-
     }
 }
 
-static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> x |-> x/(1 + e^(-x)) */
+static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)) */
     const int64_t n,
     float* const o,
     const float* const x
