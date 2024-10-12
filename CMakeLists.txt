@@ -23,6 +23,7 @@ if (NOT WIN32)
         -std=c99
         -Wno-gnu-zero-variadic-macro-arguments
         -Wno-error=overflow
+        -Wno-error=unused-function
         -fvisibility=hidden
         -std=gnu99
     )

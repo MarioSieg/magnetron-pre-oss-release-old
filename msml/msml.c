@@ -17,6 +17,11 @@
 #   include <intrin.h>
 #endif
 
+#ifdef __aarch64__
+#   include <arm_neon.h>
+#   include <arm_acle.h>
+#endif
+
 #ifdef _WIN32
 #   error "MSML does not support Windows yet."
 #elif defined(__APPLE__)
@@ -350,22 +355,18 @@ msml_static_assert(sizeof(msml_bitset_t) == 4);
 #define msml_bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&MSML_BITSET_MASK)))
 #define msml_bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&MSML_BITSET_MASK)))
 
-static void MSML_AINLINE msml__bswap32(uint32_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
-    (void)p_x;
-#if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    uint32_t x = *p_x;
-    x = (x & 0xff000000) >> 24 |
-    (x & 0xff0000) >> 8 |
-    (x & 0xff00) << 8 |
-    (x & 0xff) << 24;
-    *p_x = x;
-#endif
+static uint32_t MSML_AINLINE msml__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
+    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+        x = (x & 0xff000000) >> 24 |
+        (x & 0xff0000) >> 8 |
+        (x & 0xff00) << 8 |
+        (x & 0xff) << 24;
+    #endif
+    return x;
 }
 
-static void MSML_AINLINE msml__bswap64(uint64_t* p_x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
-    (void)p_x;
-    #if defined(__AARCH64EB__) || __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        uint64_t x = *p_x;
+static uint64_t MSML_AINLINE msml__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
+    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
         x = (x & 0xff00000000000000) >> 56 |
         (x & 0xff000000000000) >> 40 |
         (x & 0xff0000000000) >> 24 |
@@ -374,50 +375,156 @@ static void MSML_AINLINE msml__bswap64(uint64_t* p_x) { /* Swap bytes for endian
         (x & 0xff0000) << 24 |
         (x & 0xff00) << 40 |
         (x & 0xff) << 56;
-        *p_x = x;
     #endif
+    return x;
 }
 
-static uint32_t msml__crc32(const void* buf, size_t size) { /* Compute CRC32 checksum. */
-    const uint8_t* buffer = buf;
-    static const uint32_t crc_lut[256] = {
-        0x00000000, 0x77073096, 0xee0e612c, 0x990951ba, 0x076dc419, 0x706af48f, 0xe963a535, 0x9e6495a3,
-        0x0edb8832, 0x79dcb8a4, 0xe0d5e91e, 0x97d2d988, 0x09b64c2b, 0x7eb17cbd, 0xe7b82d07, 0x90bf1d91,
-        0x1db71064, 0x6ab020f2, 0xf3b97148, 0x84be41de, 0x1adad47d, 0x6ddde4eb, 0xf4d4b551, 0x83d385c7,
-        0x136c9856, 0x646ba8c0, 0xfd62f97a, 0x8a65c9ec, 0x14015c4f, 0x63066cd9, 0xfa0f3d63, 0x8d080df5,
-        0x3b6e20c8, 0x4c69105e, 0xd56041e4, 0xa2677172, 0x3c03e4d1, 0x4b04d447, 0xd20d85fd, 0xa50ab56b,
-        0x35b5a8fa, 0x42b2986c, 0xdbbbc9d6, 0xacbcf940, 0x32d86ce3, 0x45df5c75, 0xdcd60dcf, 0xabd13d59,
-        0x26d930ac, 0x51de003a, 0xc8d75180, 0xbfd06116, 0x21b4f4b5, 0x56b3c423, 0xcfba9599, 0xb8bda50f,
-        0x2802b89e, 0x5f058808, 0xc60cd9b2, 0xb10be924, 0x2f6f7c87, 0x58684c11, 0xc1611dab, 0xb6662d3d,
-        0x76dc4190, 0x01db7106, 0x98d220bc, 0xefd5102a, 0x71b18589, 0x06b6b51f, 0x9fbfe4a5, 0xe8b8d433,
-        0x7807c9a2, 0x0f00f934, 0x9609a88e, 0xe10e9818, 0x7f6a0dbb, 0x086d3d2d, 0x91646c97, 0xe6635c01,
-        0x6b6b51f4, 0x1c6c6162, 0x856530d8, 0xf262004e, 0x6c0695ed, 0x1b01a57b, 0x8208f4c1, 0xf50fc457,
-        0x65b0d9c6, 0x12b7e950, 0x8bbeb8ea, 0xfcb9887c, 0x62dd1ddf, 0x15da2d49, 0x8cd37cf3, 0xfbd44c65,
-        0x4db26158, 0x3ab551ce, 0xa3bc0074, 0xd4bb30e2, 0x4adfa541, 0x3dd895d7, 0xa4d1c46d, 0xd3d6f4fb,
-        0x4369e96a, 0x346ed9fc, 0xad678846, 0xda60b8d0, 0x44042d73, 0x33031de5, 0xaa0a4c5f, 0xdd0d7cc9,
-        0x5005713c, 0x270241aa, 0xbe0b1010, 0xc90c2086, 0x5768b525, 0x206f85b3, 0xb966d409, 0xce61e49f,
-        0x5edef90e, 0x29d9c998, 0xb0d09822, 0xc7d7a8b4, 0x59b33d17, 0x2eb40d81, 0xb7bd5c3b, 0xc0ba6cad,
-        0xedb88320, 0x9abfb3b6, 0x03b6e20c, 0x74b1d29a, 0xead54739, 0x9dd277af, 0x04db2615, 0x73dc1683,
-        0xe3630b12, 0x94643b84, 0x0d6d6a3e, 0x7a6a5aa8, 0xe40ecf0b, 0x9309ff9d, 0x0a00ae27, 0x7d079eb1,
-        0xf00f9344, 0x8708a3d2, 0x1e01f268, 0x6906c2fe, 0xf762575d, 0x806567cb, 0x196c3671, 0x6e6b06e7,
-        0xfed41b76, 0x89d32be0, 0x10da7a5a, 0x67dd4acc, 0xf9b9df6f, 0x8ebeeff9, 0x17b7be43, 0x60b08ed5,
-        0xd6d6a3e8, 0xa1d1937e, 0x38d8c2c4, 0x4fdff252, 0xd1bb67f1, 0xa6bc5767, 0x3fb506dd, 0x48b2364b,
-        0xd80d2bda, 0xaf0a1b4c, 0x36034af6, 0x41047a60, 0xdf60efc3, 0xa867df55, 0x316e8eef, 0x4669be79,
-        0xcb61b38c, 0xbc66831a, 0x256fd2a0, 0x5268e236, 0xcc0c7795, 0xbb0b4703, 0x220216b9, 0x5505262f,
-        0xc5ba3bbe, 0xb2bd0b28, 0x2bb45a92, 0x5cb36a04, 0xc2d7ffa7, 0xb5d0cf31, 0x2cd99e8b, 0x5bdeae1d,
-        0x9b64c2b0, 0xec63f226, 0x756aa39c, 0x026d930a, 0x9c0906a9, 0xeb0e363f, 0x72076785, 0x05005713,
-        0x95bf4a82, 0xe2b87a14, 0x7bb12bae, 0x0cb61b38, 0x92d28e9b, 0xe5d5be0d, 0x7cdcefb7, 0x0bdbdf21,
-        0x86d3d2d4, 0xf1d4e242, 0x68ddb3f8, 0x1fda836e, 0x81be16cd, 0xf6b9265b, 0x6fb077e1, 0x18b74777,
-        0x88085ae6, 0xff0f6a70, 0x66063bca, 0x11010b5c, 0x8f659eff, 0xf862ae69, 0x616bffd3, 0x166ccf45,
-        0xa00ae278, 0xd70dd2ee, 0x4e048354, 0x3903b3c2, 0xa7672661, 0xd06016f7, 0x4969474d, 0x3e6e77db,
-        0xaed16a4a, 0xd9d65adc, 0x40df0b66, 0x37d83bf0, 0xa9bcae53, 0xdebb9ec5, 0x47b2cf7f, 0x30b5ffe9,
-        0xbdbdf21c, 0xcabac28a, 0x53b39330, 0x24b4a3a6, 0xbad03605, 0xcdd70693, 0x54de5729, 0x23d967bf,
-        0xb3667a2e, 0xc4614ab8, 0x5d681b02, 0x2a6f2b94, 0xb40bbe37, 0xc30c8ea1, 0x5a05df1b, 0x2d02ef8d
-    };
-    uint32_t crc = ~0u;
-    for (size_t i=0; i < size; ++i)
-        crc = (crc >> 8) ^ crc_lut[buffer[i] ^ (crc & 0xff)];
-    return ~crc;
+static void* msml_advance_ptr(void** p, size_t sz, size_t align) {
+    void* pp = (void*)((((uintptr_t)*p + align) - 1) & ~((align) - 1));
+    *p = (void*)((uint8_t*)pp + sz);
+    return pp;
+}
+
+#ifdef __aarch64__
+    MSML_AINLINE uint64x2_t msml__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+        uint64x2_t r;
+        __asm__ __volatile__(
+            "pmull %0.1q, %2.1d, %3.1d\n"
+            "eor %0.16b, %0.16b, %1.16b\n"
+            : "=w"(r), "+w"(c) : "w"(a), "w"(b)
+        );
+        return r;
+    }
+    MSML_AINLINE uint64x2_t msml__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+        uint64x2_t r;
+        __asm__ __volatile__(
+            "pmull2 %0.1q, %2.2d, %3.2d\n"
+            "eor %0.16b, %0.16b, %1.16b\n"
+            : "=w"(r), "+w"(c) : "w"(a), "w"(b)
+        );
+        return r;
+    }
+#endif
+
+static uint32_t msml__crc32c(const void* buffer, size_t size) { /* Compute CRC32 checksum with CRC32c polynomial. */
+    if (msml_unlikely(!buffer || !size)) return 0;
+    const uint8_t* buf = (const uint8_t*)buffer;
+    #ifdef __aarch64__
+        uint32_t crc = ~0;
+        for (; size && ((uintptr_t)buf & 7); --size) crc = __crc32cb(crc, *buf++);
+        if (((uintptr_t)buf & 8) && size >= 8) {
+            crc = __crc32cd(crc, *(const uint64_t*)buf);
+            buf += 8;
+            size -= 8;
+        }
+        if (size >= 192) { /* First vector chunk. */
+            uint64x2_t x0 = vld1q_u64((const uint64_t*)buf), y0;
+            uint64x2_t x1 = vld1q_u64((const uint64_t*)(buf + 16)), y1;
+            uint64x2_t x2 = vld1q_u64((const uint64_t*)(buf + 32)), y2;
+            uint64x2_t x3 = vld1q_u64((const uint64_t*)(buf + 48)), y3;
+            uint64x2_t x4 = vld1q_u64((const uint64_t*)(buf + 64)), y4;
+            uint64x2_t x5 = vld1q_u64((const uint64_t*)(buf + 80)), y5;
+            uint64x2_t x6 = vld1q_u64((const uint64_t*)(buf + 96)), y6;
+            uint64x2_t x7 = vld1q_u64((const uint64_t*)(buf + 112)), y7;
+            uint64x2_t x8 = vld1q_u64((const uint64_t*)(buf + 128)), y8;
+            uint64x2_t x9 = vld1q_u64((const uint64_t*)(buf + 144)), y9;
+            uint64x2_t x10 = vld1q_u64((const uint64_t*)(buf + 160)), y10;
+            uint64x2_t x11 = vld1q_u64((const uint64_t*)(buf + 176)), y11;
+            uint64x2_t k;
+            { static const uint64_t MSML_ALIGN(16) k_[] = {0xa87ab8a8, 0xab7aff2a}; k = vld1q_u64(k_); }
+            x0 = veorq_u64((uint64x2_t){crc, 0}, x0);
+            buf += 192;
+            size -= 192;
+            while (size >= 192) { /* Work loop. */
+                y0 = msml__clmul_lo_e(x0, k, vld1q_u64((const uint64_t*) buf)), x0 = msml__clmul_hi_e(x0, k, y0);
+                y1 = msml__clmul_lo_e(x1, k, vld1q_u64((const uint64_t*) (buf + 16))), x1 = msml__clmul_hi_e(x1, k, y1);
+                y2 = msml__clmul_lo_e(x2, k, vld1q_u64((const uint64_t*) (buf + 32))), x2 = msml__clmul_hi_e(x2, k, y2);
+                y3 = msml__clmul_lo_e(x3, k, vld1q_u64((const uint64_t*) (buf + 48))), x3 = msml__clmul_hi_e(x3, k, y3);
+                y4 = msml__clmul_lo_e(x4, k, vld1q_u64((const uint64_t*) (buf + 64))), x4 = msml__clmul_hi_e(x4, k, y4);
+                y5 = msml__clmul_lo_e(x5, k, vld1q_u64((const uint64_t*) (buf + 80))), x5 = msml__clmul_hi_e(x5, k, y5);
+                y6 = msml__clmul_lo_e(x6, k, vld1q_u64((const uint64_t*) (buf + 96))), x6 = msml__clmul_hi_e(x6, k, y6);
+                y7 = msml__clmul_lo_e(x7, k, vld1q_u64((const uint64_t*) (buf + 112))), x7 = msml__clmul_hi_e(x7, k, y7);
+                y8 = msml__clmul_lo_e(x8, k, vld1q_u64((const uint64_t*) (buf + 128))), x8 = msml__clmul_hi_e(x8, k, y8);
+                y9 = msml__clmul_lo_e(x9, k, vld1q_u64((const uint64_t*) (buf + 144))), x9 = msml__clmul_hi_e(x9, k, y9);
+                y10 = msml__clmul_lo_e(x10, k, vld1q_u64((const uint64_t*) (buf + 160))), x10 = msml__clmul_hi_e(x10, k, y10);
+                y11 = msml__clmul_lo_e(x11, k, vld1q_u64((const uint64_t*) (buf + 176))), x11 = msml__clmul_hi_e(x11, k, y11);
+                buf += 192;
+                size -= 192;
+            }
+            /* Reduce x0 ... x11 to just x0. */
+            { static const uint64_t MSML_ALIGN(16) k_[] = {0xf20c0dfe, 0x493c7d27}; k = vld1q_u64(k_); }
+            y0 = msml__clmul_lo_e(x0, k, x1), x0 = msml__clmul_hi_e(x0, k, y0);
+            y2 = msml__clmul_lo_e(x2, k, x3), x2 = msml__clmul_hi_e(x2, k, y2);
+            y4 = msml__clmul_lo_e(x4, k, x5), x4 = msml__clmul_hi_e(x4, k, y4);
+            y6 = msml__clmul_lo_e(x6, k, x7), x6 = msml__clmul_hi_e(x6, k, y6);
+            y8 = msml__clmul_lo_e(x8, k, x9), x8 = msml__clmul_hi_e(x8, k, y8);
+            y10 = msml__clmul_lo_e(x10, k, x11), x10 = msml__clmul_hi_e(x10, k, y10);
+            { static const uint64_t MSML_ALIGN(16) k_[] = {0x3da6d0cb, 0xba4fc28e}; k = vld1q_u64(k_); }
+            y0 = msml__clmul_lo_e(x0, k, x2), x0 = msml__clmul_hi_e(x0, k, y0);
+            y4 = msml__clmul_lo_e(x4, k, x6), x4 = msml__clmul_hi_e(x4, k, y4);
+            y8 = msml__clmul_lo_e(x8, k, x10), x8 = msml__clmul_hi_e(x8, k, y8);
+            { static const uint64_t MSML_ALIGN(16) k_[] = {0x740eef02, 0x9e4addf8}; k = vld1q_u64(k_); }
+            y0 = msml__clmul_lo_e(x0, k, x4), x0 = msml__clmul_hi_e(x0, k, y0);
+            x4 = x8;
+            y0 = msml__clmul_lo_e(x0, k, x4), x0 = msml__clmul_hi_e(x0, k, y0);
+            /* Reduce 128 bits to 32 bits, and multiply by x^32. */
+            crc = __crc32cd(0, vgetq_lane_u64(x0, 0));
+            crc = __crc32cd(crc, vgetq_lane_u64(x0, 1));
+        }
+        for (; size >= 8; buf += 8, size -= 8) crc = __crc32cd(crc, *(const uint64_t*)buf);
+        for (; size; --size) crc = __crc32cb(crc, *buf++);
+        return ~crc;
+    #else
+        static const uint32_t crc_lut[256] = {
+            0x00000000, 0xf26b8303, 0xe13b70f7, 0x1350f3f4, 0xc79a971f, 0x35f1141c,
+            0x26a1e7e8, 0xd4ca64eb, 0x8ad958cf, 0x78b2dbcc, 0x6be22838, 0x9989ab3b,
+            0x4d43cfd0, 0xbf284cd3, 0xac78bf27, 0x5e133c24, 0x105ec76f, 0xe235446c,
+            0xf165b798, 0x030e349b, 0xd7c45070, 0x25afd373, 0x36ff2087, 0xc494a384,
+            0x9a879fa0, 0x68ec1ca3, 0x7bbcef57, 0x89d76c54, 0x5d1d08bf, 0xaf768bbc,
+            0xbc267848, 0x4e4dfb4b, 0x20bd8ede, 0xd2d60ddd, 0xc186fe29, 0x33ed7d2a,
+            0xe72719c1, 0x154c9ac2, 0x061c6936, 0xf477ea35, 0xaa64d611, 0x580f5512,
+            0x4b5fa6e6, 0xb93425e5, 0x6dfe410e, 0x9f95c20d, 0x8cc531f9, 0x7eaeb2fa,
+            0x30e349b1, 0xc288cab2, 0xd1d83946, 0x23b3ba45, 0xf779deae, 0x05125dad,
+            0x1642ae59, 0xe4292d5a, 0xba3a117e, 0x4851927d, 0x5b016189, 0xa96ae28a,
+            0x7da08661, 0x8fcb0562, 0x9c9bf696, 0x6ef07595, 0x417b1dbc, 0xb3109ebf,
+            0xa0406d4b, 0x522bee48, 0x86e18aa3, 0x748a09a0, 0x67dafa54, 0x95b17957,
+            0xcba24573, 0x39c9c670, 0x2a993584, 0xd8f2b687, 0x0c38d26c, 0xfe53516f,
+            0xed03a29b, 0x1f682198, 0x5125dad3, 0xa34e59d0, 0xb01eaa24, 0x42752927,
+            0x96bf4dcc, 0x64d4cecf, 0x77843d3b, 0x85efbe38, 0xdbfc821c, 0x2997011f,
+            0x3ac7f2eb, 0xc8ac71e8, 0x1c661503, 0xee0d9600, 0xfd5d65f4, 0x0f36e6f7,
+            0x61c69362, 0x93ad1061, 0x80fde395, 0x72966096, 0xa65c047d, 0x5437877e,
+            0x4767748a, 0xb50cf789, 0xeb1fcbad, 0x197448ae, 0x0a24bb5a, 0xf84f3859,
+            0x2c855cb2, 0xdeeedfb1, 0xcdbe2c45, 0x3fd5af46, 0x7198540d, 0x83f3d70e,
+            0x90a324fa, 0x62c8a7f9, 0xb602c312, 0x44694011, 0x5739b3e5, 0xa55230e6,
+            0xfb410cc2, 0x092a8fc1, 0x1a7a7c35, 0xe811ff36, 0x3cdb9bdd, 0xceb018de,
+            0xdde0eb2a, 0x2f8b6829, 0x82f63b78, 0x709db87b, 0x63cd4b8f, 0x91a6c88c,
+            0x456cac67, 0xb7072f64, 0xa457dc90, 0x563c5f93, 0x082f63b7, 0xfa44e0b4,
+            0xe9141340, 0x1b7f9043, 0xcfb5f4a8, 0x3dde77ab, 0x2e8e845f, 0xdce5075c,
+            0x92a8fc17, 0x60c37f14, 0x73938ce0, 0x81f80fe3, 0x55326b08, 0xa759e80b,
+            0xb4091bff, 0x466298fc, 0x1871a4d8, 0xea1a27db, 0xf94ad42f, 0x0b21572c,
+            0xdfeb33c7, 0x2d80b0c4, 0x3ed04330, 0xccbbc033, 0xa24bb5a6, 0x502036a5,
+            0x4370c551, 0xb11b4652, 0x65d122b9, 0x97baa1ba, 0x84ea524e, 0x7681d14d,
+            0x2892ed69, 0xdaf96e6a, 0xc9a99d9e, 0x3bc21e9d, 0xef087a76, 0x1d63f975,
+            0x0e330a81, 0xfc588982, 0xb21572c9, 0x407ef1ca, 0x532e023e, 0xa145813d,
+            0x758fe5d6, 0x87e466d5, 0x94b49521, 0x66df1622, 0x38cc2a06, 0xcaa7a905,
+            0xd9f75af1, 0x2b9cd9f2, 0xff56bd19, 0x0d3d3e1a, 0x1e6dcdee, 0xec064eed,
+            0xc38d26c4, 0x31e6a5c7, 0x22b65633, 0xd0ddd530, 0x0417b1db, 0xf67c32d8,
+            0xe52cc12c, 0x1747422f, 0x49547e0b, 0xbb3ffd08, 0xa86f0efc, 0x5a048dff,
+            0x8ecee914, 0x7ca56a17, 0x6ff599e3, 0x9d9e1ae0, 0xd3d3e1ab, 0x21b862a8,
+            0x32e8915c, 0xc083125f, 0x144976b4, 0xe622f5b7, 0xf5720643, 0x07198540,
+            0x590ab964, 0xab613a67, 0xb831c993, 0x4a5a4a90, 0x9e902e7b, 0x6cfbad78,
+            0x7fab5e8c, 0x8dc0dd8f, 0xe330a81a, 0x115b2b19, 0x020bd8ed, 0xf0605bee,
+            0x24aa3f05, 0xd6c1bc06, 0xc5914ff2, 0x37faccf1, 0x69e9f0d5, 0x9b8273d6,
+            0x88d28022, 0x7ab90321, 0xae7367ca, 0x5c18e4c9, 0x4f48173d, 0xbd23943e,
+            0xf36e6f75, 0x0105ec76, 0x12551f82, 0xe03e9c81, 0x34f4f86a, 0xc69f7b69,
+            0xd5cf889d, 0x27a40b9e, 0x79b737ba, 0x8bdcb4b9, 0x988c474d, 0x6ae7c44e,
+            0xbe2da0a5, 0x4c4623a6, 0x5f16d052, 0xad7d5351
+        };
+        uint32_t crc = ~0u;
+        for (size_t i=0; i < size; ++i)
+            crc = (crc >> 8) ^ crc_lut[buf[i] ^ (crc & 0xff)];
+        return ~crc;
+    #endif
 }
 
 typedef struct msml_hashset_t {
@@ -454,20 +561,36 @@ static msml_hashset_t msml_hashset_create(size_t size) {
     msml_hashset_t set = {
         .ud = NULL,
         .len = size,
-        .used = msml_alloc(NULL, msml_bitset_size(size)*sizeof(*set.used)),
-        .keys = msml_alloc(NULL, size*sizeof(*set.keys)),
+        .used = (msml_bitset_t*)msml_alloc(NULL, msml_bitset_size(size)*sizeof(*set.used)),
+        .keys = (const msml_tensor_t**)msml_alloc(NULL, size*sizeof(*set.keys)),
     };
     memset(set.used, 0, msml_bitset_size(size)*sizeof(*set.used));
     return set;
 }
-static bool msml_hashset_contains_key(msml_hashset_t* set, const msml_tensor_t* key) {
-
-}
 static size_t msml_hashset_lookup(msml_hashset_t* set, const msml_tensor_t* key) {
-
+    size_t k = msml_hashset_hash_fn(key) % set->len, i = k;
+    while (msml_bitset_get(set->used, i) && set->keys[i] != key) { /* Linear probing. */
+        i = (i+1) % set->len;
+        if (i == k) return MSML_HASHSET_FULL;
+    }
+    return i;
+}
+static bool msml_hashset_contains_key(msml_hashset_t* set, const msml_tensor_t* key) {
+    size_t i = msml_hashset_lookup(set, key);
+    return msml_bitset_get(set->used, i) && i != MSML_HASHSET_FULL;
 }
 static size_t msml_hashset_insert(msml_hashset_t* set, const msml_tensor_t* key) {
-
+    size_t k = msml_hashset_hash_fn(key) % set->len, i = k;
+    do { /* Linear probing. */
+        if (!msml_bitset_get(set->used, i)) { /* Insert key. */
+            msml_bitset_set(set->used, i);
+            set->keys[i] = key;
+            return i;
+        }
+        if (set->keys[i] == key) return MSML_HASHSET_DUPLICATE; /* Key already exists. */
+        i = (i+1) % set->len;
+    } while (i != k);
+    msml_panic("Insertion target not found");
 }
 static void msml_hashset_reset(msml_hashset_t* set) {
     memset(set->used, 0, msml_bitset_size(set->len)*sizeof(*set->used));
@@ -563,12 +686,12 @@ static void msml__prng_init(msml_ctx_t* ctx, uint64_t seed) {
 }
 
 static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
-    uint8_t* chunk = (*ctx->alloc_fn)(NULL, ctx->pool.chunk_size);
+    uint8_t* chunk = (uint8_t*)(*ctx->alloc_fn)(NULL, ctx->pool.chunk_size);
     if (ctx->pool.warmup_chunks) memset(chunk, 0, ctx->pool.chunk_size);
     ctx->pool.mapped_total += ctx->pool.chunk_size;
     ctx->pool.delta = chunk + ctx->pool.chunk_size;
     if (ctx->pool.chunk_len == ctx->pool.chunk_cap)
-        ctx->pool.chunks = (*ctx->alloc_fn)(ctx->pool.chunks, (ctx->pool.chunk_cap<<=1) * sizeof(*ctx->pool.chunks));
+        ctx->pool.chunks = (uint8_t**)(*ctx->alloc_fn)(ctx->pool.chunks, (ctx->pool.chunk_cap<<=1) * sizeof(*ctx->pool.chunks));
     ctx->pool.chunks[ctx->pool.chunk_len++] = chunk;
 }
 
@@ -615,7 +738,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     msml_ctx_info_t ctx_info = {0};
     if (info) ctx_info = *info;
     ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &msml_alloc; /* Use default allocator if not provided. */
-    msml_ctx_t* ctx = (*ctx_info.alloc_fn)(NULL, sizeof(*ctx)); /* Allocate context. */
+    msml_ctx_t* ctx = (msml_ctx_t*)(*ctx_info.alloc_fn)(NULL, sizeof(*ctx)); /* Allocate context. */
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
     ctx->ud = ctx_info.user_data;
@@ -1566,7 +1689,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
         msml_assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
     }
     msml_assert2(!view || !buf_size || buf_size + view_offs <= view->buf_size); /* Slice must be within viewed tensor data range. */
-    msml_tensor_t* tensor = msml_ctx_pool_alloc(ctx, sizeof(*tensor) + (view ? 0 : buf_size)); /* Allocate memory for tensor struct and data */
+    msml_tensor_t* tensor = (msml_tensor_t*)msml_ctx_pool_alloc(ctx, sizeof(*tensor) + (view ? 0 : buf_size)); /* Allocate memory for tensor struct and data */
     memset(tensor, 0, sizeof(*tensor));
     tensor->ctx = ctx;
     tensor->rank = rank;
@@ -2542,7 +2665,7 @@ static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
     msml__blas_compute_dispatch_table_default(&ctx->blas_dispatch);
     /* TODO: Add support for custom implementations for host CPU arch. */
     for (int i=MSML_OP_NOP; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
-        msml_assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name(i));
+        msml_assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name((msml_op_t)i));
     }
 }
 
@@ -2567,7 +2690,7 @@ static unsigned MSML_HOTPROC msml__process_parent_inputs(
 
 static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t* const bci, msml_tensor_t* const node, bool forward) {
     const msml_op_t op = node->op;
-    if (op == MSML_OP_NOP || op >= MSML_OP__COUNT) return; /* NOP */
+    if (op == MSML_OP_NOP || msml_unlikely(op >= MSML_OP__COUNT)) return; /* NOP */
     const msml_tensor_t** inputs;
     msml__process_parent_inputs(&inputs, bci, node, forward); /* Eval parents and verify arguments */
     void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
@@ -2575,223 +2698,13 @@ static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t*
 }
 
 msml_tensor_t*  MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
-    msml__blas_compute_info_t blas_ctx = {
+    msml__compute_dag_eval(&(msml__blas_compute_info_t){
         .ctx = tensor->ctx,
         .n_threads = 1,
         .thread_idx = 0
-    };
-    msml__compute_dag_eval(&blas_ctx, tensor, order == MSML_GRAPH_EVAL_ORDER_FORWARD);
+    }, tensor, order == MSML_GRAPH_EVAL_ORDER_FORWARD);
     return tensor;
 }
-
-#define msml__save_fwrite(f, file_name, data, size) \
-    do { \
-        size_t written = fwrite((data), 1, (size), (f)); \
-        msml_assert(written == (size), "Failed to write data to file: %s, Written: %zu, Should be: %zu", (file_name), written, (size)); \
-    } while (0);
-
-/*
-** MSML tensor storage format
-** +--------------------------+
-** |         Header           | typeof(msml__storage_header)
-** +--------------------------+
-** +--------------------------+
-** |          Tensor 0        | typeof(msml__storage_tensor_header) + DATA
-** +--------------------------+
-** +--------------------------+
-** |          Tensor 1        | typeof(msml__storage_tensor_header) + DATA
-** +--------------------------+
-**              ...
-** +--------------------------+
-** |          Tensor N        | typeof(msml__storage_tensor_header) + DATA, N = header.stored_tensors
-** +--------------------------+
-**
-** WORKFLOW
-** 1. Write file header (msml__storage_header) DONE IN msml__storage_header_serialize
-** 2. Write all tensors (msml__storage_tensor_header + tensor data) DONE IN msml__serialize_tensor_to_buffer WITH msml__storage_tensor_serialize
-** 3. Compute checksum of whole buffer. Except fields in msml__storage_header BEFORE msml__storage_header_checksum_offset. DONE IN msml__storage_header_fixup_checksum.
-**    So checksum is computed from BUFFER_START+msml__storage_header_checksum_offset ... BUFFER_END (BUFFER_START contains the header).
-** 4. Write back full checksum into msml__storage_header.checksum DONE IN msml__storage_header_fixup_checksum.
-** 5. Use your serialized tensor buffer (dump to file, send to network etc.)
-*/
-
-#define MSML__HEADER_KEY 0x68539076fd713daeull /* Key to XOR-encrypt some header fields. */
-
-#define msml__adjust_header_field_u8(x) (*(x)^=(MSML__HEADER_KEY&0xff))
-#define msml__adjust_header_field_u32(x) (*(x)^=(MSML__HEADER_KEY&~0u), msml__bswap32(x))
-#define msml__adjust_header_field_u64(x) (*(x)^=MSML__HEADER_KEY, msml__bswap64(x))
-
-typedef struct msml__storage_header { /* Order & size matter, do NOT reorder!. */
-    uint32_t magic;
-    uint32_t checksum;
-    uint32_t msml_version;
-    uint32_t storage_version;
-    uint32_t stored_tensors;
-} msml__storage_header;
-msml_static_assert(sizeof(msml__storage_header)%4 == 0);
-msml_static_assert(sizeof(msml__storage_header) == 4*5);
-msml_static_assert(offsetof(msml__storage_header, magic) == 0);
-msml_static_assert(offsetof(msml__storage_header, checksum) == 4);
-msml_static_assert(offsetof(msml__storage_header, msml_version) == 4+4);
-#define msml__storage_header_checksum_offset offsetof(msml__storage_header, msml_version) /* Magic + checksum itself are excluded from integrity test. */
-
-static void msml__storage_header_serialize(
-    uint8_t** pp,
-    const uint8_t* end,
-    size_t tensor_count
-) {
-    /* Prepare header */
-    uint32_t msml_magic = 0;
-    msml_static_assert(sizeof(msml_magic) == sizeof("MSML")-1);
-    memcpy(&msml_magic, "MSML", sizeof("MSML")-1);
-    msml__storage_header header = {
-        .magic = msml_magic,
-        .checksum = 0, /* Written later with msml__storage_header_fixup_checksum. */
-        .msml_version = MSML_VERSION,
-        .storage_version = MSML_STORAGE_VERSION,
-        .stored_tensors = (uint32_t)tensor_count
-    };
-
-    /* Fixup header endianess */
-    msml__adjust_header_field_u32(&header.magic);
-    /* msml__adjust_header_field_u32(&header.checksum); ! Checksum is set later with msml__storage_header_fixup_checksum */
-    msml__adjust_header_field_u32(&header.msml_version);
-    msml__adjust_header_field_u32(&header.storage_version);
-    msml__adjust_header_field_u32(&header.stored_tensors);
-
-    /* Write header */
-    msml_assert2(*pp+sizeof(header) < end);
-    memcpy(*pp, &header, sizeof(header));
-    *pp += sizeof(header);
-}
-
-static void msml__storage_header_fixup_checksum(uint8_t* base, size_t total_size) {
-    size_t moff = msml__storage_header_checksum_offset;
-    uint32_t checksum = msml__crc32(base+moff, total_size); /* Compute checksum from [buf_base + offset, end] */
-    msml__adjust_header_field_u32(&checksum);
-    memcpy(base+offsetof(msml__storage_header, checksum), &checksum, sizeof(checksum)); /* Overwrite computed checksum in buffer at correct pos. */
-}
-
-typedef struct msml__storage_tensor_header { /* Order & size matter, do NOT reorder! */
-    int64_t dims[MSML_MAX_DIMS];
-    uint8_t rank;
-    uint8_t dtype; /* Type: msml_dtype_t */
-    uint8_t pad__[2];
-    uint64_t reserved__;
-    char name[MSML_MAX_TENSOR_NAME_LEN];
-} msml__storage_tensor_header;
-msml_static_assert(sizeof(msml__storage_tensor_header)%4 == 0);
-
-static void msml__storage_tensor_serialize_single(
-    uint8_t** pp,
-    const uint8_t* end,
-    const msml_tensor_t* tensor
-) {
-    uint8_t* p = *pp;
-
-    /* Prepare header */
-    msml__storage_tensor_header header = {
-        .dims = {0},
-        .rank = (uint8_t)tensor->rank,
-        .dtype = (uint8_t)tensor->dtype,
-        .name = {0}
-    };
-    memcpy(header.dims, tensor->shape, sizeof(header.dims));
-    memcpy(header.name, tensor->name, sizeof(header.name));
-    /* Fixup header endianness */
-    for (int j=0; j < MSML_MAX_DIMS; ++j)
-        msml__adjust_header_field_u64((uint64_t*)header.dims+j);
-    msml__adjust_header_field_u8(&header.rank);
-    msml__adjust_header_field_u8(&header.dtype);
-    for (size_t i=0; i < MSML_MAX_TENSOR_NAME_LEN; ++i)
-        msml__adjust_header_field_u8(header.name+i);
-
-    /* Write header */
-    msml_assert2(p+sizeof(header) < end);
-    memcpy(p, &header, sizeof(header));
-    p += sizeof(header);
-
-    /* Write data */
-    int64_t n = msml_tensor_buf_len(tensor);
-    msml_assert2(p+n*msml_get_dtype_info(tensor->dtype)->size <= end);
-    switch (tensor->dtype) {
-        case MSML_DTYPE_F32: {
-            const float* t_p = (const float*)tensor->buf;
-            const float* t_end = t_p + n;
-            for (; t_p < t_end; ++t_p) {
-                uint32_t u32;
-                memcpy(&u32, t_p, sizeof(u32));
-                msml__bswap32(&u32);
-                memcpy(p, &u32, sizeof(u32));
-                p += sizeof(u32);
-            }
-            break;
-        }
-        default:
-            msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
-    }
-
-    *pp = p;
-}
-
-static void msml__serialize_tensor_to_buffer(
-    msml_ctx_t* ctx,
-    const msml_tensor_t** tensors,
-    const size_t tensor_count,
-    uint8_t** out_buf,
-    size_t* out_buf_size
-) {
-    msml_assert2(tensor_count != 0);
-    size_t total_size = 0;
-    total_size += sizeof(msml__storage_header);
-    total_size += sizeof(msml__storage_tensor_header) * tensor_count;
-    for (size_t i = 0; i < tensor_count; ++i) {
-        total_size += tensors[i]->buf_size;
-    }
-
-    uint8_t* const base = (*ctx->alloc_fn)(NULL, total_size);
-    uint8_t* const end = base + total_size;
-    uint8_t* p = base; /* Needle */
-
-    msml__storage_header_serialize(&p, end, tensor_count); /* Write header first. */
-
-    /* Write all tensors */
-    for (size_t i=0; i < tensor_count; ++i) {
-        const msml_tensor_t* tensor = tensors[i];
-        msml__storage_tensor_serialize_single(& p, end, tensor);
-    }
-
-    /* Write checksum back into buffer header after it has been computed. */
-    msml__storage_header_fixup_checksum(base, total_size);
-
-    *out_buf = base;
-    *out_buf_size = total_size;
-}
-
-void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name) {
-    FILE* f = msml__fopen(file_name, "wb");
-    msml_assert(f, "Failed to open MSML file for writing: %s", file_name);
-    msml_ctx_t* ctx = tensor->ctx;
-    const msml_tensor_t** tensors = &tensor;
-    const size_t len = 1;
-    uint8_t* buf = NULL;
-    size_t buf_size = 0;
-    msml__serialize_tensor_to_buffer(tensor->ctx, tensors, len, &buf, &buf_size);
-    msml__save_fwrite(f, file_name, buf, buf_size);
-    (*ctx->alloc_fn)(buf, 0); /* Free serialized buffer */
-    fclose(f);
-    msml_log_info("Saved tensor to: '%s', %.03f MiB written.", file_name, (double)buf_size/(double)(1<<20));
-}
-
-msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name) {
-    FILE* f = msml__fopen(file_name, "rb");
-    msml_assert(f, "Failed to open MSML file for writing: %s", file_name);
-    // TODO
-    fclose(f);
-    return NULL;
-}
-
-#undef msml__save_fwrite
 
 #ifdef __APPLE__
     static bool msml__sysctl_mib01(uint8_t (*out)[256], size_t* o_len, int mib0, int mib1) { /* Get sysctl data */
