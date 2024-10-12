@@ -204,6 +204,8 @@ class Operation(Enum):
     SOFTMAX_DV = auto()
     SIGMOID = auto()
     SIGMOID_DV = auto()
+    HARD_SIGMOID = auto()
+    HARD_SIGMOID_DV = auto()
     SILU = auto()
     SILU_DV = auto()
     TANH = auto()
@@ -630,6 +632,10 @@ class Tensor:
         """Applies the sigmoid function to the tensor."""
         return self._emit_op_tensor(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
 
+    def hard_sigmoid(self, derivative: bool = False) -> 'Tensor':
+        """Applies the hard sigmoid function to the tensor."""
+        return self._emit_op_tensor(Operation.HARD_SIGMOID_DV if derivative else Operation.HARD_SIGMOID, self)
+
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
         return self._emit_op_tensor(Operation.SILU_DV if derivative else Operation.SILU, self)
@@ -640,7 +646,7 @@ class Tensor:
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
-        return self._emit_op_tensor(Operation.RELU_DV if derivative else Operation, self)
+        return self._emit_op_tensor(Operation.RELU_DV if derivative else Operation.RELU, self)
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""

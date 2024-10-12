@@ -45,6 +45,13 @@ impl_test_unary_op(sigmoid_dv, SIGMOID_DV, [](float x) -> float {
     return -(std::exp(x) / ((std::exp(x)+1.0f)*(std::exp(x)+1.0f)));
 })
 
+impl_test_unary_op(hard_sigmoid, HARD_SIGMOID, [](float x) -> float {
+    return std::min(1.0f, std::max(0.0f, (x + 3.0f) / 6.0f));
+})
+//impl_test_unary_op(hard_sigmoid_dv, HARD_SIGMOID_DV, [](float x) -> float {
+//    return -(std::exp(x) / ((std::exp(x)+1.0f)*(std::exp(x)+1.0f)));
+//})
+
 impl_test_unary_op(silu, SILU, [](float x) -> float {
     return x / (1.0f + std::exp(-x));
 })

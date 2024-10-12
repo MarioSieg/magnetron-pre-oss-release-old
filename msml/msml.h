@@ -156,27 +156,29 @@ typedef uint32_t msml_format_flags; /* Flags for formatting output */
 #define MSML_MAX_INPUT_TENSORS 2
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
-    _(NOP,          "nop",          0)/* No Operation. */__\
-    _(TRANSPOSE,    "transpose",    1)/* R = Xᵀ. */__\
-    _(CLONE,        "clone",        1)/* R = X. */__\
-    _(STEP,         "step",         1)/* R = 1 if x >= 0 else 0. Heaviside step function */__\
-    _(SOFTMAX,      "softmax'",     1)/* R = softmax(X) */__\
-    _(SOFTMAX_DV,   "softmax'",     1)/* R = softmax'(X) */__\
-    _(SIGMOID,      "sigmoid",      1)/* R = sigmoid(X) */__\
-    _(SIGMOID_DV,   "sigmoid''",    1)/* R = sigmoid'(X) */__\
-    _(SILU,         "SiLU",         1)/* R = silu(X) */__\
-    _(SILU_DV,      "SiLU'",        1)/* R = silu'(X) */__\
-    _(TANH,         "tanh",         1)/* R = tanh(X) */__\
-    _(TANH_DV,      "tanh'",        1)/* R = tanh'(X) */__\
-    _(RELU,         "ReLU",         1)/* R = relu(X) */__\
-    _(RELU_DV,      "ReLU'",        1)/* R = relu'(X) */__\
-    _(GELU,         "GeLU",         1)/* R = gelu(X) */__\
-    _(GELU_DV,      "GeLU'",        1)/* R = gelu'(X) */__\
-    _(ADD,          "+",            2)/* R = relu(X) */__\
-    _(SUB,          "-",            2)/* R = X-Y */__\
-    _(MUL,          "*",            2)/* R = X*Y (Hadamard prod) */__\
-    _(DIV,          "/",            2)/* R = X/Y. */__\
-    _(MATMUL,       "@",            2)/* Rᵀ = A x Bᵀ. (Matmul with transposed B and R) */__
+    _(NOP,              "nop",              0)/* No Operation. */__\
+    _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ. */__\
+    _(CLONE,            "clone",            1)/* R = X. */__\
+    _(STEP,             "step",             1)/* R = 1 if x >= 0 else 0. Heaviside step function */__\
+    _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
+    _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
+    _(SIGMOID,          "sigmoid",          1)/* R = sigmoid(X) */__\
+    _(SIGMOID_DV,       "sigmoid'",         1)/* R = sigmoid'(X) */__\
+    _(HARD_SIGMOID,     "hard_sigmoid",     1)/* R = hard_sigmoid(X) */__\
+    _(HARD_SIGMOID_DV,  "hard_sigmoid'",    1)/* R = hard_sigmoid'(X) */__\
+    _(SILU,             "SiLU",             1)/* R = silu(X) */__\
+    _(SILU_DV,          "SiLU'",            1)/* R = silu'(X) */__\
+    _(TANH,             "tanh",             1)/* R = tanh(X) */__\
+    _(TANH_DV,          "tanh'",            1)/* R = tanh'(X) */__\
+    _(RELU,             "ReLU",             1)/* R = relu(X) */__\
+    _(RELU_DV,          "ReLU'",            1)/* R = relu'(X) */__\
+    _(GELU,             "GeLU",             1)/* R = gelu(X) */__\
+    _(GELU_DV,          "GeLU'",            1)/* R = gelu'(X) */__\
+    _(ADD,              "+",                2)/* R = relu(X) */__\
+    _(SUB,              "-",                2)/* R = X-Y */__\
+    _(MUL,              "*",                2)/* R = X*Y (Hadamard product) */__\
+    _(DIV,              "/",                2)/* R = X/Y. */__\
+    _(MATMUL,           "@",                2)/* Rᵀ = A x Bᵀ. (Matmul with transposed B and R) */__
 
 #define _(enumerator, mnemonic, argcount) MSML_OP_##enumerator
 typedef enum msml_op_t {

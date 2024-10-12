@@ -957,6 +957,16 @@ static bool msml__validate_op_sigmoid_dv(const msml_tensor_t* tensor, bool print
     return true;
 }
 
+static bool msml__validate_op_hard_sigmoid(const msml_tensor_t* tensor, bool print_error) {
+    msml__validate_shape_eq_r_x()
+    return true;
+}
+
+static bool msml__validate_op_hard_sigmoid_dv(const msml_tensor_t* tensor, bool print_error) {
+    msml__validate_shape_eq_r_x()
+    return true;
+}
+
 static bool msml__validate_op_silu(const msml_tensor_t* tensor, bool print_error) {
     msml__validate_shape_eq_r_x()
     return true;
@@ -1086,6 +1096,8 @@ static bool (*msml__op_get_validator_routine(msml_op_t op))(const msml_tensor_t*
         [MSML_OP_SOFTMAX_DV] = &msml__validate_op_softmax_dv,
         [MSML_OP_SIGMOID] = &msml__validate_op_sigmoid,
         [MSML_OP_SIGMOID_DV] = &msml__validate_op_sigmoid_dv,
+        [MSML_OP_HARD_SIGMOID] = &msml__validate_op_hard_sigmoid,
+        [MSML_OP_HARD_SIGMOID_DV] = &msml__validate_op_hard_sigmoid_dv,
         [MSML_OP_SILU] = &msml__validate_op_silu,
         [MSML_OP_SILU_DV] = &msml__validate_op_silu_dv,
         [MSML_OP_TANH] = &msml__validate_op_tanh,
@@ -2202,6 +2214,26 @@ static void MSML_HOTPROC msml__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> -(
     }
 }
 
+static void MSML_HOTPROC msml__vhard_sigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = fminf(1.0f, fmaxf(0.0f, (x[i] + 3.0f) / 6.0f));
+    }
+}
+
+static void MSML_HOTPROC msml__vhard_sigmoid_dv_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i) {
+        msml_panic("NYI!");
+    }
+}
+
 static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> x |-> x/(1 + e^(-x)) */
     const int64_t n,
     float* const o,
@@ -2457,6 +2489,8 @@ msml__blas_impl_unary_op(softmax_f32, float, msml__vsoftmax_f32)
 msml__blas_impl_unary_op(softmax_dv_f32, float, msml__vsoftmax_dv_f32)
 msml__blas_impl_unary_op(sigmoid_f32, float, msml__vsigmoid_f32)
 msml__blas_impl_unary_op(sigmoid_dv_f32, float, msml__vsigmoid_dv_f32)
+msml__blas_impl_unary_op(hard_sigmoid_f32, float, msml__vhard_sigmoid_f32)
+msml__blas_impl_unary_op(hard_sigmoid_dv_f32, float, msml__vhard_sigmoid_dv_f32)
 msml__blas_impl_unary_op(silu_f32, float, msml__vsilu_f32)
 msml__blas_impl_unary_op(silu_dv_f32, float, msml__vsilu_dv_f32)
 msml__blas_impl_unary_op(tanh_f32, float, msml__vtanh_f32)
@@ -2646,6 +2680,8 @@ static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lu
     (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;
     (*dispatch_lut)[MSML_OP_SIGMOID] = &msml__blas_sigmoid_f32;
     (*dispatch_lut)[MSML_OP_SIGMOID_DV] = &msml__blas_sigmoid_dv_f32;
+    (*dispatch_lut)[MSML_OP_HARD_SIGMOID] = &msml__blas_hard_sigmoid_f32;
+    (*dispatch_lut)[MSML_OP_HARD_SIGMOID_DV] = &msml__blas_hard_sigmoid_dv_f32;
     (*dispatch_lut)[MSML_OP_SILU] = &msml__blas_silu_f32;
     (*dispatch_lut)[MSML_OP_SILU_DV] = &msml__blas_silu_dv_f32;
     (*dispatch_lut)[MSML_OP_TANH] = &msml__blas_tanh_f32;
@@ -2698,11 +2734,12 @@ static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t*
 }
 
 msml_tensor_t*  MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
-    msml__compute_dag_eval(&(msml__blas_compute_info_t){
+    const msml__blas_compute_info_t info = {
         .ctx = tensor->ctx,
         .n_threads = 1,
         .thread_idx = 0
-    }, tensor, order == MSML_GRAPH_EVAL_ORDER_FORWARD);
+    };
+    msml__compute_dag_eval(&info, tensor, order == MSML_GRAPH_EVAL_ORDER_FORWARD);
     return tensor;
 }
 
