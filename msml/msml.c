@@ -2836,7 +2836,7 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
         if (msml_unlikely(r0s >= r0e || r1s >= r1e)) return; /* No work in this chunk */
         const int64_t row_size = y_d0*sizeof(float);
         #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE
-            float tmp[32];
+            float tmp[16];
         #endif
         for (int64_t i1 = r1s; i1 < r1e; i1 += MSML_MATMUL_BLK_Y) {
             for (int64_t i0 = r0s; i0 < r0e; i0 += MSML_MATMUL_BLK_X) {
