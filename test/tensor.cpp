@@ -307,7 +307,7 @@ TEST(msml_tensor_t, isclose) {
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_clone(origin);
+    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_clone(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_tensor_t* clone2 = msml_tensor_isomorphic(origin);
     msml_tensor_fill_random(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(msml_tensor_isclose(origin, clone, FLT_EPSILON, nullptr));
