@@ -3136,15 +3136,10 @@ static void msml__system_host_info_query_memory(uint64_t* out_phys_mem_total, ui
         uint32_t max_basic_leaf, max_extended_leaf;
 
         __cpuid(0, eax, ebx, ecx, edx);
-        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_EAX] = eax;
-        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_EBX] = ebx;
-        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_ECX] = ecx;
-        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_EDX] = edx;
+        msml__cpy_regs(0H);
         max_basic_leaf = eax;
-
         __cpuid(0x80000000u, eax, ebx, ecx, edx);
         max_extended_leaf = eax;
-
         if (max_basic_leaf >= 1u) {
             __cpuid(1, eax, ebx, ecx, edx);
             msml__cpy_regs(1H);
