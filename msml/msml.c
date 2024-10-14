@@ -23,6 +23,9 @@
 #elif defined(__x86_64__) || defined(_M_X64)
 #   include <nmmintrin.h>
 #   include <wmmintrin.h>
+#   ifndef _MSC_VER
+#       include <cpuid.h>
+#   endif
 #endif
 
 #ifdef _WIN32
@@ -132,6 +135,103 @@ msml_static_assert(sizeof(0ull) == 8);
 #define msml_log_warn(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
 #define msml_log_error(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCRED msg MSML_CCRESET "\n", ## __VA_ARGS__)
 
+#if defined(__x86_64__) || defined(_M_X64)
+
+    #define MSML__X86_64_CPUID_0H 0
+    #define MSML__X86_64_CPUID_1H 1
+    #define MSML__X86_64_CPUID_2H 2
+    #define MSML__X86_64_CPUID_7H 3
+    #define MSML__X86_64_CPUID_80000001H 4
+    #define MSML__X86_64_CPUID_80000007H 5
+    #define MSML__X86_64_CPUID_16H 6
+    #define MSML__X86_64_CPUID_7H_1H 7
+
+    #define MSML__X86_64_CPUID_EAX 0
+    #define MSML__X86_64_CPUID_EBX 1
+    #define MSML__X86_64_CPUID_ECX 2
+    #define MSML__X86_64_CPUID_EDX 3
+
+    #define msml_x86_64_feature_def(_, __) /* Enumerator | CPUDID Leaf | Register | Bit Index */\
+        _(AVX                  ,    1H,        ECX,     28)__\
+        _(AVX2                 ,    7H,        EBX,      5)__\
+        _(AVXVNNI              ,    7H_1H,     EAX,      4)__\
+        _(AVXVNNIINT8          ,    7H_1H,     EDX,      4)__\
+        _(AVXVNNIINT16         ,    7H_1H,     EDX,     10)__\
+        _(AVX512BW             ,    7H,        EBX,     30)__\
+        _(AVX512CD             ,    7H,        EBX,     28)__\
+        _(AVX512DQ             ,    7H,        EBX,     17)__\
+        _(AVX512ER             ,    7H,        EBX,     27)__\
+        _(AVX512F              ,    7H,        EBX,     16)__\
+        _(AVX512IFMA           ,    7H,        EBX,     21)__\
+        _(AVX512PF             ,    7H,        EBX,     26)__\
+        _(AVX512VBMI           ,    7H,        ECX,      1)__\
+        _(AVX512VL             ,    7H,        EBX,     31)__\
+        _(AVX512_4FMAPS        ,    7H,        EDX,      3)__\
+        _(AVX512_4VNNIW        ,    7H,        EDX,      2)__\
+        _(AVX512_FP16          ,    7H,        EDX,     23)__\
+        _(AVX512_BF16          ,    7H_1H,     EAX,      5)__\
+        _(AVX512_BITALG        ,    7H,        ECX,     12)__\
+        _(AVX512_VBMI2         ,    7H,        ECX,      6)__\
+        _(AVX512_VNNI          ,    7H,        ECX,     11)__\
+        _(AVX512_VP2INTERSECT  ,    7H,        EDX,      8)__\
+        _(AVX512_VPOPCNTDQ     ,    7H,        ECX,     14)__\
+        _(BMI                  ,    7H,        EBX,      3)__\
+        _(BMI2                 ,    7H,        EBX,      8)__\
+        _(F16C                 ,    1H,        ECX,     29)__\
+        _(FMA                  ,    1H,        ECX,     12)__\
+        _(FPU                  ,    1H,        EDX,      0)__\
+        _(GFNI                 ,    7H,        ECX,      8)__\
+        _(IA64                 ,    1H,        EDX,     30)__\
+        _(MMX                  ,    1H,        EDX,     23)__\
+        _(OSXSAVE              ,    1H,        ECX,     27)__\
+        _(PCLMUL               ,    1H,        ECX,      1)__\
+        _(RDRND                ,    1H,        ECX,     30)__\
+        _(RDSEED               ,    7H,        EBX,     18)__\
+        _(RDTSCP               ,    80000001H, EDX,     27)__\
+        _(SHA                  ,    7H,        EBX,     29)__\
+        _(SSE                  ,    1H,        EDX,     25)__\
+        _(SSE2                 ,    1H,        EDX,     26)__\
+        _(SSE3                 ,    1H,        ECX,      0)__\
+        _(SSE4_1               ,    1H,        ECX,     19)__\
+        _(SSE4_2               ,    1H,        ECX,     20)__\
+        _(SSSE3                ,    1H,        ECX,      9)__\
+        _(VAES                 ,    7H,        ECX,      9)__\
+        _(VME                  ,    1H,        EDX,      1)__\
+        _(VMX                  ,    1H,        ECX,      5)__\
+        _(VPCLMULQDQ           ,    7H,        ECX,     10)__\
+        _(XSAVE                ,    1H,        ECX,     26)__\
+        _(HYBRID_CPU           ,    7H,        EDX,     15)__
+
+    #define _(enumerator, leaf, reg, bit) MSML__X86_64_FEATURE_##enumerator
+    typedef enum msml__x86_64_feature_t {
+        msml_x86_64_feature_def(_, MSML_SEP)
+        MSML__X86_64_FEATURE__COUNT
+    } msml__x86_64_feature_t;
+    #undef _
+    #define _(enumerator, leaf, reg, bit) #enumerator
+    static const char* const msml__x86_64_feature_names[MSML__X86_64_FEATURE__COUNT] = {
+        msml_x86_64_feature_def(_, MSML_SEP)
+    };
+    #undef _
+    #define _(enumerator, leaf, reg, bit) (0xff&MSML__X86_64_CPUID_##leaf)
+    static const uint8_t msml__x86_64_feature_leaves[MSML__X86_64_FEATURE__COUNT] = {
+        msml_x86_64_feature_def(_, MSML_SEP)
+    };
+    #undef _
+    #define _(enumerator, leaf, reg, bit) (0xff&MSML__X86_64_CPUID_##reg)
+    static const uint8_t msml__x86_64_feature_regs[MSML__X86_64_FEATURE__COUNT] = {
+        msml_x86_64_feature_def(_, MSML_SEP)
+    };
+    #undef _
+    #define _(enumerator, leaf, reg, bit) (1u<<(bit))
+    static const uint32_t msml__x86_64_feature_masks[MSML__X86_64_FEATURE__COUNT] = {
+        msml_x86_64_feature_def(_, MSML_SEP)
+    };
+    #undef _
+    #undef msml_x86_64_feature_def
+
+#endif
+
 typedef struct msml__blas_compute_info_t msml__blas_compute_info_t; /* Forward declaration. */
 
 struct msml_ctx_t {
@@ -144,6 +244,9 @@ struct msml_ctx_t {
         uint32_t cpu_sockets; /* CPU sockets. */
         uint64_t phys_mem_total; /* Total physical memory in bytes. */
         uint64_t phys_mem_free; /* Free physical memory in bytes. */
+        #if defined(__x86_64__) || defined(_M_X64)
+            uint32_t x86_64_cpu_features[8][4]; /* x86-64 CPU features. */
+        #endif
     } sys;
     struct {
         size_t chunk_size;
@@ -304,19 +407,19 @@ static inline uintptr_t msml__thread_id(void) {
         __asm__ __volatile__("mrs %0, tpidr_el0" : "=r" (tid));
     #elif defined(__powerpc64__)
     #   ifdef __clang__
-            tid = (uintptr_t)__builtin_thread_pointer();
+        tid = (uintptr_t)__builtin_thread_pointer();
     #   else
-            register uintptr_t tp __asm__ ("r13");
-            __asm__ __volatile__("" : "=r" (tp));
-            tid = tp;
+        register uintptr_t tp __asm__ ("r13");
+        __asm__ __volatile__("" : "=r" (tp));
+        tid = tp;
     #   endif
     #elif defined(__powerpc__)
     #   ifdef __clang__
-                tid = (uintptr_t)__builtin_thread_pointer();
+            tid = (uintptr_t)__builtin_thread_pointer();
     #   else
-                register uintptr_t tp __asm__ ("r2");
-                __asm__ __volatile__("" : "=r" (tp));
-                tid = tp;
+        register uintptr_t tp __asm__ ("r2");
+        __asm__ __volatile__("" : "=r" (tp));
+        tid = tp;
     #   endif
     #elif defined(__s390__) && defined(__GNUC__)
         tid = (uintptr_t)__builtin_thread_pointer();
@@ -752,6 +855,15 @@ static void msml__ctx_push_chunk(msml_ctx_t* ctx) {
 static void msml__system_host_info_query(msml_ctx_t* ctx); /* Query host system information. */
 static void msml__blas_compute_dispatch_table_install(msml_ctx_t* ctx); /* Install BLAS dispatch table. */
 
+#if defined(__x86_64__) || defined(_M_X64)
+    static bool msml__ctx_x86_64_cpu_has_feature(const msml_ctx_t* ctx, msml__x86_64_feature_t feature) {
+        const uint8_t* leafs = msml__x86_64_feature_leaves, *regs = msml__x86_64_feature_regs;
+        const uint32_t* masks = msml__x86_64_feature_masks;
+        const uint32_t (*features)[8][4] = &ctx->sys.x86_64_cpu_features;
+        return (*features)[leafs[feature]][regs[feature]] & masks[feature];
+    }
+#endif
+
 msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     puts("Creating MSML context...");
     int64_t time_stamp_start = msml_hpc_clock_us();
@@ -804,6 +916,16 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     msml__system_host_info_query(ctx);
     printf("OS/Kernel: %s\n", ctx->sys.os_name);
     printf("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u\n", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
+    #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
+        printf("CPU Features:");
+        for (unsigned i=0, k=0; i < MSML__X86_64_FEATURE__COUNT; ++i) {
+            if (msml__ctx_x86_64_cpu_has_feature(ctx, i)) {
+                if (k++ % 8 == 0) printf("\n\t");
+                printf("%s ", msml__x86_64_feature_names[i]);
+            }
+        }
+        putchar('\n');
+    #endif
     double mem_total, mem_free, mem_used;
     const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
     msml__humanize_memory_size(ctx->sys.phys_mem_total, &mem_total, &mem_unit_total);
@@ -2994,12 +3116,97 @@ static void msml__system_host_info_query_memory(uint64_t* out_phys_mem_total, ui
     #endif
 }
 
+#if defined(__x86_64__) || defined(_M_X64)
+    static uint64_t MSML_AINLINE msml__xgetbv(void) { /* Query extended control register value. */
+        #ifdef _MSC_VER
+            return _xgetbv(0);
+        #else
+            uint32_t lo, hi;
+            __asm__ __volatile__("xgetbv\n\t" : "=a" (lo), "=d" (hi) : "c" (0));
+            return (uint64_t)lo | ((uint64_t)hi << 32);
+        #endif
+    }
+    #define msml__cpy_regs(id) \
+        (*features)[MSML__X86_64_CPUID_##id][MSML__X86_64_CPUID_EAX] = eax; \
+        (*features)[MSML__X86_64_CPUID_##id][MSML__X86_64_CPUID_EBX] = ebx; \
+        (*features)[MSML__X86_64_CPUID_##id][MSML__X86_64_CPUID_ECX] = ecx; \
+        (*features)[MSML__X86_64_CPUID_##id][MSML__X86_64_CPUID_EDX] = edx
+    static void msml__system_info_query_x86_64_cpu_features(uint32_t (*features)[8][4]) {
+        uint32_t eax, ebx, ecx, edx;
+        uint32_t max_basic_leaf, max_extended_leaf;
+
+        __cpuid(0, eax, ebx, ecx, edx);
+        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_EAX] = eax;
+        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_EBX] = ebx;
+        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_ECX] = ecx;
+        (*features)[MSML__X86_64_CPUID_0H][MSML__X86_64_CPUID_EDX] = edx;
+        max_basic_leaf = eax;
+
+        __cpuid(0x80000000u, eax, ebx, ecx, edx);
+        max_extended_leaf = eax;
+
+        if (max_basic_leaf >= 1u) {
+            __cpuid(1, eax, ebx, ecx, edx);
+            msml__cpy_regs(1H);
+        }
+        if (max_basic_leaf >= 2u) {
+            __cpuid(2u, eax, ebx, ecx, edx);
+            msml__cpy_regs(2H);
+        }
+        if (max_basic_leaf >= 7u) {
+            __cpuid_count(7u, 0, eax, ebx, ecx, edx);
+            msml__cpy_regs(7H);
+        }
+        if (max_basic_leaf >= 7u) {
+            __cpuid_count(7u, 1, eax, ebx, ecx, edx);
+            msml__cpy_regs(7H_1H);
+        }
+        if (max_basic_leaf >= 0x16u) {
+            __cpuid(0x16u, eax, ebx, ecx, edx);
+            msml__cpy_regs(16H);
+        }
+        if (max_extended_leaf >= 0x80000001u) {
+            __cpuid(0x80000001u, eax, ebx, ecx, edx);
+            msml__cpy_regs(80000001H);
+        }
+        if (max_extended_leaf >= 0x80000007u) {
+            __cpuid(0x80000007u, eax, ebx, ecx, edx);
+            msml__cpy_regs(80000007H);
+        }
+        bool cpu_avx_support = ((*features)[MSML__X86_64_CPUID_1H][MSML__X86_64_CPUID_ECX] & 0x10000000u) != 0;
+        bool cpu_osxsave_support = ((*features)[MSML__X86_64_CPUID_1H][MSML__X86_64_CPUID_ECX] & 0x8000000u) != 0;
+        if (cpu_avx_support && cpu_osxsave_support) {
+            uint64_t xcr0 = msml__xgetbv();
+            if ((xcr0 & 0x6) != 0x6u) {
+                (*features)[MSML__X86_64_CPUID_1H][MSML__X86_64_CPUID_ECX] &= ~0x10000000u; /* Clear AVX */
+                (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_EBX] &= ~0x20u; /* Clear AVX2 */
+            }
+            if ((xcr0 & 0xe0) != 0xe0u) { /* OS does not support AVX-512, clear AVX512 */
+                (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_EBX] &= ~0xdc230000u;
+                (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_ECX] &= ~0x5842u;
+                (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_EDX] &= ~0x10cu;
+                (*features)[MSML__X86_64_CPUID_7H_1H][MSML__X86_64_CPUID_EAX] &= ~0x20u;
+            }
+        } else {
+            (*features)[MSML__X86_64_CPUID_1H][MSML__X86_64_CPUID_ECX] &= ~0x10000000u; /* Clear AVX */
+            (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_EBX] &= ~0x20u; /* Clear AVX2 */
+            (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_EBX] &= ~0xdc230000u; /* Clear AVX512 */
+            (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_ECX] &= ~0x5842u; /* Clear AVX512 */
+            (*features)[MSML__X86_64_CPUID_7H][MSML__X86_64_CPUID_EDX] &= ~0x10cu; /* Clear AVX512 */
+            (*features)[MSML__X86_64_CPUID_7H_1H][MSML__X86_64_CPUID_EAX] &= ~0x20u; /* Clear AVX512 */
+        }
+    }
+    #undef msml__cpy_regs
+#endif
+
 static void msml__system_host_info_query(msml_ctx_t* ctx) {
     msml_system_host_info_query_os_name(&ctx->sys.os_name);
     msml_system_host_info_query_cpu_name(&ctx->sys.cpu_name);
     msml_system_host_info_query_cpu_cores(&ctx->sys.cpu_virtual_cores, &ctx->sys.cpu_physical_cores, &ctx->sys.cpu_sockets);
     msml__system_host_info_query_memory(&ctx->sys.phys_mem_total, &ctx->sys.phys_mem_free);
-
+    #if defined(__x86_64__) || defined(_M_X64)
+        msml__system_info_query_x86_64_cpu_features(&ctx->sys.x86_64_cpu_features);
+    #endif
     if (msml_unlikely(!*ctx->sys.os_name)) snprintf(ctx->sys.os_name, sizeof(ctx->sys.os_name), "Unknown");
     if (msml_unlikely(!*ctx->sys.cpu_name)) snprintf(ctx->sys.cpu_name, sizeof(ctx->sys.cpu_name), "Unknown");
 }
