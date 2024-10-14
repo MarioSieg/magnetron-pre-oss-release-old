@@ -292,7 +292,7 @@ struct msml_tensor_t {
     void* ud; /* User data. */
 };
 
-static MSML_NORET void msml_panic(const char* msg, ...) {
+static MSML_NORET void msml__panic(const char* msg, ...) {
     fprintf(stderr, "%s", MSML_CCRED);
     va_list args;
     va_start(args, msg);
@@ -304,11 +304,11 @@ static MSML_NORET void msml_panic(const char* msg, ...) {
     abort();
 }
 
-#define msml_assert(expr, msg, ...) \
+#define msml__assert(expr, msg, ...) \
     if (msml_unlikely(!(expr))) { \
-        msml_panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
+        msml__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
     }
-#define msml_assert2(expr) msml_assert(expr, "")
+#define msml__assert2(expr) msml__assert(expr, "")
 
 void* msml_default_allocator_impl(void* blk, size_t size) {
     if (!size) {
@@ -316,11 +316,11 @@ void* msml_default_allocator_impl(void* blk, size_t size) {
         return NULL;
     } else if(!blk) {
         blk = malloc(size);
-        msml_assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
+        msml__assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
         return blk;
     } else {
         void* block = realloc(blk, size);
-        msml_assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
+        msml__assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
         return block;
     }
 }
@@ -364,7 +364,7 @@ extern __declspec(dllimport) int __stdcall WideCharToMultiByte(
 #endif
 
 static FILE* msml__fopen(const char* file, const char* mode) {
-    msml_assert(file && *file && mode && *mode, "Invalid file name or mode");
+    msml__assert(file && *file && mode && *mode, "Invalid file name or mode");
     FILE* f = NULL;
     #ifdef _WIN32
         wchar_t w_mode[64];
@@ -704,7 +704,7 @@ typedef struct msml_hashset_t {
 #define msml_hashset_hash_fn(ptr) ((size_t)(uintptr_t)(ptr)>>3)
 
 static size_t msml_hashset_compute_hash_size(size_t sz) {
-    msml_assert2(sz > 0 && sz < MSML_HASHSET_MAX);
+    msml__assert2(sz > 0 && sz < MSML_HASHSET_MAX);
     static const size_t prime_lut[] = {
         2, 3, 5, 11, 17, 37, 67, 131, 257, 521, 1031,
         2053, 4099, 8209, 16411, 32771, 65537, 131101,
@@ -755,7 +755,7 @@ static size_t msml_hashset_insert(msml_hashset_t* set, const msml_tensor_t* key)
         if (set->keys[i] == key) return MSML_HASHSET_DUPLICATE; /* Key already exists. */
         i = (i+1) % set->len;
     } while (i != k);
-    msml_panic("Insertion target not found");
+    msml__panic("Insertion target not found");
 }
 static void msml_hashset_reset(msml_hashset_t* set) {
     memset(set->used, 0, msml_bitset_size(set->len)*sizeof(*set->used));
@@ -826,7 +826,7 @@ static void msml__prng_generate_n(msml_ctx_t* ctx, float* out_gen, int64_t out_n
             }
         } break;
         default:
-            msml_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
+            msml__panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
     }
 }
 
@@ -846,7 +846,7 @@ static void msml__prng_init(msml_ctx_t* ctx, uint64_t seed) {
             ctx->prng_state.pcg.inc = 0xda3e39cb94b95bdbull;
         } break;
         default:
-            msml_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
+            msml__panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
     }
 }
 
@@ -967,7 +967,7 @@ msml_ctx_t* msml_ctx_create2(size_t pool_chunk_size) {
 }
 
 void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
-    msml_assert(size > 0 && size < (size_t)PTRDIFF_MAX, "Allocation size must be within (0, %zu), but is: %zu", PTRDIFF_MAX, size);
+    msml__assert(size > 0 && size < (size_t)PTRDIFF_MAX, "Allocation size must be within (0, %zu), but is: %zu", PTRDIFF_MAX, size);
     if (ctx->pool.delta - ctx->pool.chunks[ctx->pool.chunk_len-1] < (ptrdiff_t)size) {
         if (ctx->pool.chunk_size < size) { /* Increase the chunk size if it's too small to accommodate the requested length */
             size_t lim = (size_t)PTRDIFF_MAX >> 1;
@@ -984,7 +984,7 @@ void* msml_ctx_pool_alloc(msml_ctx_t* ctx, size_t size) {
 }
 
 void* msml_ctx_pool_alloc_aligned(msml_ctx_t* ctx, size_t size, size_t align) {
-    msml_assert(align && !(align&(align-1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
+    msml__assert(align && !(align&(align-1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
     return (void*)(((uintptr_t)msml_ctx_pool_alloc(ctx, size+align-1)+align-1)&~(align-1));
 }
 
@@ -1553,7 +1553,7 @@ static bool nd_similar(uint32_t* nd, uint32_t ndhi, uint32_t* ref, size_t hilen,
     } else {
         prec -= hilen - 9;
     }
-    msml_assert(prec < 9, "bad precision %d", prec);
+    msml__assert(prec < 9, "bad precision %d", prec);
     msml__wuint9(nd9, nd[ndhi]);
     msml__wuint9(ref9, *ref);
     return !memcmp(nd9, ref9, prec) && (nd9[prec] < '5') == (ref9[prec] < '5');
@@ -1717,7 +1717,7 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
                 int32_t eidx = e + 70 + (MSML__ND_MUL2K_MAX_SHIFT < 29)
                                + (t.u32.lo >= 0xfffffffe && !(~t.u32.hi << 12));
                 const int8_t *m_e = msml__four_ulp_m_e + eidx * 2;
-                msml_assert(0 <= eidx && eidx < 128, "bad eidx %d", eidx);
+                msml__assert(0 <= eidx && eidx < 128, "bad eidx %d", eidx);
                 nd[33] = nd[ndhi];
                 nd[32] = nd[(ndhi - 1) & 0x3f];
                 nd[31] = nd[(ndhi - 2) & 0x3f];
@@ -1873,7 +1873,7 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
 }
 
 msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs) {
-    msml_assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
+    msml__assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
     if (view && view->view) { /* Accumulate relative view offset. */
         view_offs += view->view_offs;
         view = view->view;
@@ -1881,10 +1881,10 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     int64_t scalar_size = msml_get_dtype_info(type)->size;
     int64_t buf_size = scalar_size;
     for (int64_t i=0; i < rank; ++i) { /* Calculate buffer size and check for overflow. */
-        msml_assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
-        msml_assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
+        msml__assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
+        msml__assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
     }
-    msml_assert2(!view || !buf_size || buf_size + view_offs <= view->buf_size); /* Slice must be within viewed tensor data range. */
+    msml__assert2(!view || !buf_size || buf_size + view_offs <= view->buf_size); /* Slice must be within viewed tensor data range. */
     msml_tensor_t* tensor = (msml_tensor_t*)msml_ctx_pool_alloc(ctx, sizeof(*tensor) + (view ? 0 : buf_size)); /* Allocate memory for tensor struct and data */
     memset(tensor, 0, sizeof(*tensor));
     tensor->ctx = ctx;
@@ -1897,7 +1897,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
         tensor->shape[i] = i < rank ? msml_max(1, dims[i]) : 1;
     *tensor->strides = scalar_size;
     for (int i=1; i < MSML_MAX_DIMS; ++i) { /* Calculate strides and check for overflow. */
-        msml_assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
+        msml__assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
     }
     tensor->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(tensor + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return tensor;
@@ -1928,7 +1928,7 @@ msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_
         return NULL;
     }
     for (uint32_t i=0; i < n_inputs; ++i) { /* Make sure all required argument are not null. */
-        if (!inputs[i]) {
+        if (msml_unlikely(!inputs[i])) {
             msml_log_error("Missing args");
             return NULL;
         }
@@ -1941,10 +1941,8 @@ msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_
         result = msml_tensor_isomorphic(inputs[0]);
     }
     result->op = op;
-    for (uint32_t i=0; i < n_inputs; ++i) { /* Make sure all required argument are not null. */
-        result->inputs[i] = inputs[i];
-    }
-    return (*msml__op_get_validator_routine(op))(result, true) ? result : NULL;
+    memcpy(result->inputs, inputs, n_inputs*sizeof(*inputs));
+    return msml_tensor_is_op_possible(result, true) ? result : NULL;
 }
 
 msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor) {
@@ -1978,13 +1976,13 @@ msml_tensor_t* msml_tensor_transpose(msml_tensor_t* tensor) {
 }
 
 msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
-    msml_assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
+    msml__assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
     return tensor->inputs[slot];
 }
 
 void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg) {
-    msml_assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
-    msml_assert(tensor->inputs[slot] == NULL, "Argument at slot #%zu already set", slot);
+    msml__assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
+    msml__assert(tensor->inputs[slot] == NULL, "Argument at slot #%zu already set", slot);
     tensor->inputs[slot] = arg;
 }
 
@@ -1997,7 +1995,7 @@ void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op) {
 }
 
 void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size) {
-    msml_assert(size == (size_t)tensor->buf_size, "Buffer size mismatch: %zu != %lld", size, tensor->buf_size);
+    msml__assert(size == (size_t)tensor->buf_size, "Buffer size mismatch: %zu != %lld", size, tensor->buf_size);
     memcpy(tensor->buf, data, size);
 }
 
@@ -2012,7 +2010,7 @@ void msml_tensor_fill(msml_tensor_t* tensor, float x) {
             float* buf = (float*)tensor->buf;
             for (int64_t i=0; i < n; ++i) buf[i] = x;
         } break;
-        default: msml_panic("Unsupported DType: %d", tensor->dtype);
+        default: msml__panic("Unsupported DType: %d", tensor->dtype);
     }
 }
 
@@ -2023,7 +2021,7 @@ void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max) {
             float* buf = (float*)tensor->buf;
             msml__prng_generate_n(tensor->ctx, buf, n, min, max);
         } break;
-        default: msml_panic("Unsupported DType: %d", tensor->dtype);
+        default: msml__panic("Unsupported DType: %d", tensor->dtype);
     }
 }
 
@@ -2032,7 +2030,7 @@ size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor) {
 }
 
 void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
-    msml_assert(tensor->dtype == MSML_DTYPE_F32, "Tensor must be F32");
+    msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor must be F32");
     double buf_size_cvt = 0.0;
     const char* buf_size_unit = NULL;
     msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
@@ -2110,7 +2108,7 @@ void* msml_tensor_buf(const msml_tensor_t* tensor) {
 }
 
 float* msml_tensor_buf_f32(const msml_tensor_t* tensor) {
-    msml_assert(tensor->dtype == MSML_DTYPE_F32, "Tensor data type must be F32, not %s", msml_get_dtype_info(tensor->dtype)->name);
+    msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor data type must be F32, not %s", msml_get_dtype_info(tensor->dtype)->name);
     return (float*)tensor->buf;
 }
 
@@ -2203,7 +2201,7 @@ float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t
     const uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: return *(float*)dst;
-        default: msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -2211,7 +2209,7 @@ void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, in
     uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: *(float*)dst = x; break;
-        default: msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -2225,7 +2223,7 @@ float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t 
         case MSML_DTYPE_F32:
             return ((const float*)tensor->buf)[v_idx];
         default:
-            msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -2241,7 +2239,7 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, 
             ((float*)tensor->buf)[v_idx] = x;
             break;
         default:
-            msml_panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
     }
 }
 
@@ -2262,7 +2260,7 @@ bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b) {
             }
         } break;
         default:
-            msml_panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
     }
     return true;
 }
@@ -2283,7 +2281,7 @@ bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float e
                 if (fabsf(buf_a[i] - buf_b[i]) <= eps) ++n_eq;
         } break;
         default:
-            msml_panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
     }
     if (percent_eq) *percent_eq = (double)n_eq / (double)n * 100.0;
     return n_eq == n;
@@ -2439,7 +2437,7 @@ static void MSML_HOTPROC msml__vhard_sigmoid_dv_f32( /* σ^ : ℝ -> (0, 1), x |
     const float* const x
 ) {
     for (int64_t i=0; i < n; ++i) {
-        msml_panic("NYI!");
+        msml__panic("NYI!");
     }
 }
 
@@ -2459,7 +2457,7 @@ static void MSML_HOTPROC msml__vsilu_dv_f32( /* silu' : ℝ -> TODO */
     const float* const x
 ) {
     for (int64_t i=0; i < n; ++i) {
-        msml_panic("NYI!");
+        msml__panic("NYI!");
     }
 }
 
@@ -2520,7 +2518,7 @@ static void MSML_HOTPROC msml__vgelu_dv_f32( /* gelu' : ℝ -> ℝ, x |-> TODO *
     const float* const x
 ) {
     for (int64_t i=0; i < n; ++i) {
-        msml_panic("NYI"); /* TODO */
+        msml__panic("NYI"); /* TODO */
     }
 }
 
@@ -2546,7 +2544,7 @@ static void msml__blas_clone(
     const msml_tensor_t** const inputs
 ) {
     const msml_tensor_t* const x = inputs[0];
-    msml_assert2(msml_tensor_is_shape_eq(x, r));
+    msml__assert2(msml_tensor_is_shape_eq(x, r));
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
     msml__load_local_storage_group(r, r_d, shape)
@@ -2910,7 +2908,7 @@ static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
     msml__blas_compute_dispatch_table_default(&ctx->blas_dispatch);
     /* TODO: Add support for custom implementations for host CPU arch. */
     for (int i=MSML_OP_NOP; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
-        msml_assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name((msml_op_t)i));
+        msml__assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name((msml_op_t)i));
     }
 }
 
@@ -2926,7 +2924,7 @@ static unsigned MSML_HOTPROC msml__process_parent_inputs(
     const uint32_t n_inputs = msml_op_get_argcount(node->op);
     for (uint32_t i=0; i < n_inputs; ++i) { /* Eval parents and verify arguments */
         uint32_t idx = forward ? i : n_inputs-i-1; /* Left-to-right or right-to-left */
-        msml_assert(inputs[idx] != NULL, "Invalid argument %d for node %s", i, msml_op_get_name(node->op));
+        msml__assert(inputs[idx] != NULL, "Invalid argument %d for node %s", i, msml_op_get_name(node->op));
         msml__compute_dag_eval(bci, inputs[idx], forward); /* Eval parent node recursive */
     }
     *out_inputs = (const msml_tensor_t**)inputs;
@@ -3251,7 +3249,7 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
     }
     uint8_t* image_data = stbi_load(file_path, &width, &height, &channels, desired_channels);
     if (!image_data || width == 0 || height == 0 || channels == 0) {
-        msml_panic("Failed to load image from file: %s\n", file_path);
+        msml__panic("Failed to load image from file: %s\n", file_path);
     }
     if (resize_width && resize_height) { /* Resize image if requested */
         uint8_t* resized_data = stbir_resize_uint8_srgb(
@@ -3275,14 +3273,14 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
     msml_tensor_t* tensor = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
     float* dst = (float*)tensor->buf;
     int64_t n = width*height*channels;
-    msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
+    msml__assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
     for (int64_t i=0; i < n; ++i)
         dst[i] = (float)image_data[i] / 255.0f; /* Normalize pixel values to [0, 1] */
     stbi_image_free(image_data);
     msml_log_info("Loaded tensor from image: %s, width: %d, height: %d, channels: %d", file_path, width, height, channels);
     return tensor;
 #else
-    msml_panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
+    msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
 #endif
 }
 
@@ -3290,23 +3288,23 @@ void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_pat
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
     const int64_t* dims = msml_tensor_shape(tensor);
     int64_t rank = msml_tensor_rank(tensor);
-    msml_assert(rank == 3, "Tensor rank must be 3, but is: %" PRIi64, (size_t)rank);
+    msml__assert(rank == 3, "Tensor rank must be 3, but is: %" PRIi64, (size_t)rank);
     int64_t width = dims[0];
     int64_t height = dims[1];
     int64_t channels = dims[2];
-    msml_assert(channels == 1 || channels == 3 || channels == 4, "Invalid number of channels: %" PRIi64, channels);
+    msml__assert(channels == 1 || channels == 3 || channels == 4, "Invalid number of channels: %" PRIi64, channels);
     size_t n = width*height*channels;
-    msml_assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
+    msml__assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
     uint8_t* image_data = (*tensor->ctx->alloc_fn)(NULL, n); /* Allocate memory for image data */
     for (size_t i=0; i < n; ++i) { /* Clamp and denormalize pixel values to [0, 255] */
         image_data[i] = (uint8_t)(255.0f * msml_min(msml_max(((const float*)tensor->buf)[i], 0.0f), 1.0f));
     }
     int result = stbi_write_jpg(file_path, (int)width, (int)height, (int)channels, image_data, 100);
-    msml_assert(result, "Failed to save tensor to image: %s", file_path);
+    msml__assert(result, "Failed to save tensor to image: %s", file_path);
     (*tensor->ctx->alloc_fn)(image_data, 0); /* Free image data */
     msml_log_info("Saved tensor to image: %s, width: %d, height: %d, channels: %d", file_path, (int)width, (int)height, (int)channels);
 #else
-    msml_panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
+    msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
 #endif
 }
 
