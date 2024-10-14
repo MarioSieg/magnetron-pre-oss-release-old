@@ -514,7 +514,7 @@ static void* msml_advance_ptr(void** p, size_t sz, size_t align) {
     static uint32_t msml__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
         uint64_t stack = ~(uint64_t)1;
         uint32_t acc, low;
-        for (; n > 191; n = (n>>1) - 16)stack = (stack<<1) + (n & 1);
+        for (; n > 191; n = (n>>1) - 16) stack = (stack<<1) + (n & 1);
         stack = ~stack;
         acc = ((uint32_t)0x80000000) >> (n & 31);
         for (n >>= 5; n; --n) acc = _mm_crc32_u32(acc, 0);
