@@ -463,24 +463,32 @@ msml_static_assert(sizeof(msml_bitset_t) == 4);
 
 static uint32_t MSML_AINLINE msml__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        x = (x & 0xff000000) >> 24 |
-        (x & 0xff0000) >> 8 |
-        (x & 0xff00) << 8 |
-        (x & 0xff) << 24;
+    #   if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
+            x = (uint32_t)__builtin_bswap32((int32_t)x);
+    #   else
+            x = (x & 0xff000000) >> 24 |
+            (x & 0xff0000) >> 8 |
+            (x & 0xff00) << 8 |
+            (x & 0xff) << 24;
+    #   endif
     #endif
     return x;
 }
 
 static uint64_t MSML_AINLINE msml__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-        x = (x & 0xff00000000000000) >> 56 |
-        (x & 0xff000000000000) >> 40 |
-        (x & 0xff0000000000) >> 24 |
-        (x & 0xff00000000) >> 8 |
-        (x & 0xff000000) << 8 |
-        (x & 0xff0000) << 24 |
-        (x & 0xff00) << 40 |
-        (x & 0xff) << 56;
+    #   if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
+            x = (uint64_t)__builtin_bswap64((int64_t)x);
+    #   else
+            x = (x & 0xff00000000000000) >> 56 |
+            (x & 0xff000000000000) >> 40 |
+            (x & 0xff0000000000) >> 24 |
+            (x & 0xff00000000) >> 8 |
+            (x & 0xff000000) << 8 |
+            (x & 0xff0000) << 24 |
+            (x & 0xff00) << 40 |
+            (x & 0xff) << 56;
+    #   endif
     #endif
     return x;
 }
@@ -2333,11 +2341,36 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
     const float* const x,
     const float* const y
 ) {
-    double r = 0.0;
-    for (int64_t i=0; i < n; ++i) {
-        r += x[i] * y[i];
-    }
-    return (float)r;
+    #ifdef __ARM_NEON
+        #define STEP 16ll
+        const int64_t k = n & -STEP;
+        float32x4_t acc[4] = {vdupq_n_f32(0)};
+        float32x4_t vx[4];
+        float32x4_t vy[4];
+        for (int64_t i=0; i < k; i += STEP) { /* Process STEP elements at a time */
+            #pragma GCC unroll 4
+            for (int64_t j=0; j < 4; ++j) { /* Unrolled inner loop */
+                vx[j] = vld1q_f32(x+i+(j<<2));
+                vy[j] = vld1q_f32(y+i+(j<<2));
+                acc[j] = vfmaq_f32(acc[j], vx[j], vy[j]); /* (FMA) Fused multiply-accumulate */
+            }
+        }
+        acc[1] = vaddq_f32(acc[1], acc[3]); /* Fold acc[1] += acc[3] */
+        *acc = vaddq_f32(*acc, acc[2]);     /* Fold acc[0] += acc[2] */
+        *acc = vaddq_f32(*acc, acc[1]);     /* Fold acc[0] += acc[1] */
+        float sum = vaddvq_f32(*acc);       /* Reduce to scalar with horizontal sum. */
+        for (int64_t i=k; i < n; ++i) {     /* Process leftovers scalar-wise */
+            sum += x[i]*y[i];
+        }
+        return sum;
+        #undef STEP
+    #else
+        double r = 0.0;
+        for (int64_t i=0; i < n; ++i) {
+            r += x[i] * y[i];
+        }
+        return (float)r;
+    #endif
 }
 
 static void MSML_HOTPROC msml__vstep_f32( /* Heaviside step function. */

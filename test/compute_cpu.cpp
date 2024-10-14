@@ -172,10 +172,8 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
 
     // Create result tensor R for matrix multiplication
-    msml_tensor_t* R = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 2, 2);
-    msml_tensor_set_op(R, MSML_OP_MATMUL);
-    msml_tensor_set_arg(R, 0, A);
-    msml_tensor_set_arg(R, 1, B); // MSML automatically transposes B
+    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, (msml_tensor_t*[2]){A, B}, 2);
+    ASSERT_NE(R, nullptr);
 
     msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
 
@@ -232,11 +230,11 @@ TEST(compute_cpu, matmul_f32) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
     msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, K, M);
+    msml_tensor_copy_buffer_from(A, A_mtx, sizeof(A_mtx));
     msml_tensor_t* B = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, K, N);
-    msml_tensor_t* R = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, N, M);
-    msml_tensor_set_op(R, MSML_OP_MATMUL);
-    msml_tensor_set_arg(R, 0, A);
-    msml_tensor_set_arg(R, 1, B);
+    msml_tensor_copy_buffer_from(B, B_mtx, sizeof(B_mtx));
+    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, (msml_tensor_t*[2]){A, B}, 2);
+    ASSERT_NE(R, nullptr);
     msml_tensor_t* RR = msml_tensor_clone(msml_tensor_transpose(R));
     msml_tensor_evaluate(RR, MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_tensor_print(RR, true);
