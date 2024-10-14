@@ -172,7 +172,8 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
 
     // Create result tensor R for matrix multiplication
-    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, (msml_tensor_t*[2]){A, B}, 2);
+    msml_tensor_t* params[2] = {A, B};
+    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, params, 2);
     ASSERT_NE(R, nullptr);
 
     msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
@@ -233,7 +234,8 @@ TEST(compute_cpu, matmul_f32) {
     msml_tensor_copy_buffer_from(A, A_mtx, sizeof(A_mtx));
     msml_tensor_t* B = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, K, N);
     msml_tensor_copy_buffer_from(B, B_mtx, sizeof(B_mtx));
-    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, (msml_tensor_t*[2]){A, B}, 2);
+    msml_tensor_t* params[2] = {A, B};
+    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, params, 2);
     ASSERT_NE(R, nullptr);
     msml_tensor_t* RR = msml_tensor_clone(msml_tensor_transpose(R));
     msml_tensor_evaluate(RR, MSML_GRAPH_EVAL_ORDER_FORWARD);
