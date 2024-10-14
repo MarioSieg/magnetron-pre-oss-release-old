@@ -1936,7 +1936,7 @@ msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_
     for (uint32_t i=0; i < n_inputs; ++i) { /* Make sure all required argument are not null. */
         result->inputs[i] = inputs[i];
     }
-    return msml__op_get_validator_routine(op) ? result : NULL;
+    return (*msml__op_get_validator_routine(op))(result, true) ? result : NULL;
 }
 
 msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor) {
