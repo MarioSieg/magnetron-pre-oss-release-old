@@ -20,11 +20,11 @@ def p_not(xx: int) -> int:
 
 
 truth_table = [
-    0,
-    1,
-    0,
-    1,
+    [0, 0],
+    [1, 1],
+    [0, 1],
+    [1, 0],
 ]
 
-for bit in truth_table:
-    print(f'NOT {bit} = {p_not(bit)}')
+for pair in truth_table:
+    print(f'NOT {pair[0]} = {p_not(pair[0])}')

@@ -20,6 +20,7 @@ _deps
 /python/.idea
 /python/__pycache__
 /python/msml/__pycache__
+/python/examples/__pycache__
 **/.DS_Store
 .vs/
 out/

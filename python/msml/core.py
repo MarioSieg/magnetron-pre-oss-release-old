@@ -1,6 +1,10 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 # Implements the core functionality of the MSML Python bindings. Requires the MSML shared library.
 
+# To debug Python to C FFI calls:
+# $ cp examples/perceptron.py tmp.py && gdb -ex r --args python3 tmp.py
+# See also https://wiki.python.org/moin/DebuggingWithGdb
+
 import platform
 import random
 import faulthandler
@@ -22,7 +26,7 @@ msml_lib_locations: list[str] = []
 if platform.system() == 'Windows':
     msml_lib_locations.append(f'../bin/{BUILD_DIR}/msml.dll')
 elif platform.system() == 'Linux':
-    msml_lib_locations.append(f'../../bin/{BUILD_DIR}/libmsml.so')
+    msml_lib_locations.append(f'../bin/{BUILD_DIR}/libmsml.so')
 elif platform.system() == 'Darwin':
     msml_lib_locations.append(f'../bin/{BUILD_DIR}/libmsml.dylib')
 else:
@@ -129,7 +133,7 @@ ffi.cdef(f'''
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
     bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
     bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
-    bool msml_tensor_is_op_possible(const msml_tensor_t* tensor, bool print_error);
+    bool msml_tensor_is_op_possible(const msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
     
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
@@ -144,8 +148,8 @@ ffi.cdef(f'''
 def humanize_memory_size(size: int) -> str:
     units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
     unit = 0
-    while size >= 1024 and unit < len(units) - 1:
-        size /= 1024
+    while size >= (1<<10) and unit < len(units) - 1:
+        size /= (1<<10)
         unit += 1
     return f'{size:.2f} {units[unit]}'
 
@@ -356,9 +360,6 @@ class Tensor:
 
     def set_op(self, op: Operation) -> None:
         C.msml_tensor_set_op(self.tensor, op.value)
-
-    def _is_op_possible(self, print_error: bool) -> bool:
-        return C.msml_tensor_is_op_possible(self.tensor, print_error)
 
     def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""
@@ -595,7 +596,7 @@ class Tensor:
 
     @staticmethod
     def _emit_op_tensor(op: Operation, *args) -> 'Tensor':
-        assert len(args) == op.argument_count
+        assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count}'
         tensors = ffi.new(f'msml_tensor_t*[{len(args)}]')
         for i, arg in enumerate(args):
             assert isinstance(arg, Tensor), 'Argument must be a tensor'

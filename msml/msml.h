@@ -253,7 +253,7 @@ extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* 
 extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_API bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern MSML_API bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
-extern MSML_API bool msml_tensor_is_op_possible(const msml_tensor_t* tensor, bool print_error); /* Check if the tensor operation is possible and all arguments and parameters are valid. */
+extern MSML_API bool msml_tensor_is_op_possible(const msml_tensor_t* tensor); /* Check if the tensor operation is possible and all arguments and parameters are valid. */
 extern MSML_API msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order); /* Evaluate computation graph from root tensor. */
 
 extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */

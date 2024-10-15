@@ -22,7 +22,7 @@ class MultilayerPerceptron:
         #self.cache.append(prev.clone()())
         for i in range(0, len(self.weights)):
             x: Tensor = prev if i == 0 else prev.relu()
-            prev = self.biases[i] + (self.weights[i] @ x)
+            prev = (self.weights[i] @ x).clone() + self.biases[i]
             #self.cache.append(prev.clone()())
         return prev.sigmoid()
 
