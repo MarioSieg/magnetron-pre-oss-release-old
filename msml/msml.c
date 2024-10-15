@@ -2112,7 +2112,7 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
     double buf_size_cvt = 0.0;
     const char* buf_size_unit = NULL;
     msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
-    printf("Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu, %zu, %zu, %zu], Strides: [%zu, %zu, %zu, %zu], Mem: %.03f %s \n",
+    printf("Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s \n",
        tensor->name,
        msml_get_dtype_info(tensor->dtype)->name,
        (size_t)tensor->rank,
