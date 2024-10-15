@@ -1087,7 +1087,62 @@ uint8_t msml_op_get_argcount(msml_op_t op) {
     return arg_counts[op];
 }
 
-/* Generic validation expression. */
+/*
+**  validation error print template
+**
+**
+printf("SHORT ERROR DESCRIPTION"
+        "ERROR: Failed to execute operation: %s.\n"
+        "    - Input Tensor 1 '%s': MISMATCHES\n"
+        "    - Input Tensor 2 '%s': MISMATCHES\n"
+        "    Hint: ANY HINT FOR USR."
+);
+*/
+
+static void MSML_COLDPROC msml__validate_print_separator(void) {
+    for (int i=0; i <= 128; ++i) fputc('=', stderr);
+    fputc('\n', stderr);
+}
+
+static bool msml__validate_shape_eq(msml_op_t op, const msml_tensor_t* a, const msml_tensor_t* b) {
+    if (msml_likely(msml_tensor_is_shape_eq(a, b))) return true;
+    msml__validate_print_separator();
+    fprintf(stderr, "Failed to execute operation: %s.\n"
+           "ERROR: Input tensor shapes must be equal.\n"
+           "    - Input Tensor 1 '%s' Shape: [%lld %lld %lld %lld]\n"
+           "    - Input Tensor 2 '%s' Shape: [%lld %lld %lld %lld]\n"
+           "    Hint: Adjust tensor shapes using transposition or permutation.\n",
+          msml_op_get_name(op),
+          a->name, a->shape[0], a->shape[1], a->shape[2], a->shape[3],
+          b->name, b->shape[0], b->shape[1], b->shape[2], b->shape[3]
+    );
+    msml__validate_print_separator();
+    fflush(stderr);
+    return false;
+}
+
+static bool msml__validate_shape_broadcastable(msml_op_t op, const msml_tensor_t* a, const msml_tensor_t* b) { /* Check if tensor shapes are broadcast-able. (b into a) */
+    if (msml_likely(msml_tensor_can_broadcast(b, a))) return true;
+    msml__validate_print_separator();
+    fprintf(stderr, "Failed to execute operation: %s.\n"
+        "ERROR: Input tensor shapes must be broadcast-able.\n"
+        "    - Input Tensor 1 '%s' Shape: [%lld %lld %lld %lld]\n"
+        "    - Input Tensor 2 '%s' Shape: [%lld %lld %lld %lld]\n"
+        "    Broadcast-able: [%s, %s, %s, %s]\n"
+        "    Hint: Adjust tensor shapes using transposition or permutation.\n",
+        msml_op_get_name(op),
+        a->name, a->shape[0], a->shape[1], a->shape[2], a->shape[3],
+        b->name, b->shape[0], b->shape[1], b->shape[2], b->shape[3],
+        a->shape[0] % b->shape[0] == 0 ? "YES" : "NO",
+        a->shape[1] % b->shape[1] == 0 ? "YES" : "NO",
+        a->shape[2] % b->shape[2] == 0 ? "YES" : "NO",
+        a->shape[3] % b->shape[3] == 0 ? "YES" : "NO"
+    );
+    msml__validate_print_separator();
+    fflush(stderr);
+    return false;
+}
+
 #define msml__validate_expr_gen(expr, message, ...) \
     if (msml_unlikely(!(expr))) { \
         if (print_error) { \
@@ -1096,8 +1151,26 @@ uint8_t msml_op_get_argcount(msml_op_t op) {
         return false; \
     }
 
-#define msml__validate_shape_eq_r_x() msml__validate_expr_gen(msml_tensor_is_shape_eq(tensor->inputs[0], tensor), "Input tensor shape mismatch, both input tensors must have the same shape.");
-#define msml__validate_shape_broadcastable_y_x() msml__validate_expr_gen(msml_tensor_can_broadcast(tensor->inputs[1], tensor->inputs[0]), "Input tensor shape mismatch, second input tensor must be broadcastable into first input tensor.")
+#define msml__validate_shape_eq_r_x() \
+    msml__validate_expr_gen(msml_tensor_is_shape_eq(tensor->inputs[0], tensor), "Input tensor shape mismatch, both input tensors must have the same shape.");
+#define msml__validate_shape_broadcastable_y_x() \
+    msml__validate_expr_gen(msml_tensor_can_broadcast(tensor->inputs[1], tensor->inputs[0]), \
+        "Second input tensor must be broadcast-able into first input tensor." \
+        "ERROR: Operation failed due to shape mismatch.\n" \
+        "    - First Input Tensor: '%s', Dimensions [%zu %zu %zu %zu]\n" \
+        "    - Second Input Tensor: '%s', Dimensions [%zu %zu %zu %zu]\n" \
+        "    Hint: Ensure the dimensions allow broadcasting.", \
+        tensor->inputs[0]->name,\
+        (size_t)tensor->inputs[0]->shape[0], \
+        (size_t)tensor->inputs[0]->shape[1], \
+        (size_t)tensor->inputs[0]->shape[2], \
+        (size_t)tensor->inputs[0]->shape[3], \
+        tensor->inputs[1]->name, \
+        (size_t)tensor->inputs[1]->shape[0], \
+        (size_t)tensor->inputs[1]->shape[1], \
+        (size_t)tensor->inputs[1]->shape[2], \
+        (size_t)tensor->inputs[1]->shape[3] \
+    )
 
 static bool msml__validate_op_nop(const msml_tensor_t* tensor, bool print_error) {
     (void)tensor;
@@ -1106,118 +1179,117 @@ static bool msml__validate_op_nop(const msml_tensor_t* tensor, bool print_error)
 }
 
 static bool msml__validate_op_transpose(const msml_tensor_t* tensor, bool print_error) {
-    (void)print_error;
-    return tensor->rank >= 2;
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_TRANSPOSE, tensor->inputs[0], tensor->inputs[1]))) return false;
+    return true;
 }
 
 static bool msml__validate_op_clone(const msml_tensor_t* tensor, bool print_error) {
-    (void)tensor;
-    (void)print_error;
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_CLONE, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_step(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_STEP, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_softmax(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SOFTMAX, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_softmax_dv(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SOFTMAX_DV, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_sigmoid(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SIGMOID, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_sigmoid_dv(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SIGMOID_DV, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_hard_sigmoid(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_HARD_SIGMOID, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_hard_sigmoid_dv(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+   if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_HARD_SIGMOID_DV, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_silu(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SILU, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_silu_dv(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SILU_DV, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_tanh(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_TANH, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_tanh_dv(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_TANH_DV, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_relu(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_RELU, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_relu_dv(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_RELU_DV, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_gelu(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_GELU, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_gelu_dv(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_GELU_DV, tensor->inputs[0], tensor->inputs[1]))) return false;
     return true;
 }
 
 static bool msml__validate_op_add(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
-    msml__validate_shape_broadcastable_y_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_ADD, tensor, tensor->inputs[0]))) return false;
+    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_ADD, tensor->inputs[0], tensor->inputs[1]))) return false;
     msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
     msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
     return true;
 }
 
 static bool msml__validate_op_sub(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
-    msml__validate_shape_broadcastable_y_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SUB, tensor, tensor->inputs[0]))) return false;
+    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_SUB, tensor->inputs[0], tensor->inputs[1]))) return false;
     msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
     msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
     return true;
 }
 
 static bool msml__validate_op_mul(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
-    msml__validate_shape_broadcastable_y_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_MUL, tensor, tensor->inputs[0]))) return false;
+    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_MUL, tensor->inputs[0], tensor->inputs[1]))) return false;
     msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
     msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
     return true;
 }
 
 static bool msml__validate_op_div(const msml_tensor_t* tensor, bool print_error) {
-    msml__validate_shape_eq_r_x()
-    msml__validate_shape_broadcastable_y_x()
+    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_DIV, tensor, tensor->inputs[0]))) return false;
+    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_DIV, tensor->inputs[0], tensor->inputs[1]))) return false;
     msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
     msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
     return true;
@@ -1227,44 +1299,45 @@ static bool msml__validate_op_matmul(const msml_tensor_t* tensor, bool print_err
     msml__validate_expr_gen(
         tensor->shape[0] == tensor->inputs[0]->shape[1],
         "ERROR: Matmul operation failed due to shape mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [0] = %zu\n"
-        "    - First Input Tensor: '%s', Dimension [1] = %zu\n"
+        "    - Result Tensor: '%s', Dimension [0] = %lld\n"
+        "    - First Input Tensor: '%s', Dimension [1] = %lld\n"
         "    Hint: Ensure the second dimension of the first input tensor matches the first dimension of the result tensor.",
-        tensor->name, (size_t)tensor->shape[0], tensor->inputs[0]->name, (size_t)tensor->inputs[0]->shape[1]
+        tensor->name, tensor->shape[0], tensor->inputs[0]->name, tensor->inputs[0]->shape[1]
     );
 
     msml__validate_expr_gen(
         tensor->shape[1] == tensor->inputs[1]->shape[1],
         "ERROR: Matmul operation failed due to shape mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [1] = %zu\n"
-        "    - Second Input Tensor: '%s', Dimension [1] = %zu\n"
+        "    - Result Tensor: '%s', Dimension [1] = %lld\n"
+        "    - Second Input Tensor: '%s', Dimension [1] = %lld\n"
         "    Hint: Ensure the dimensions match for a valid multiplication.",
-        tensor->name, (size_t)tensor->shape[1], tensor->inputs[1]->name, (size_t)tensor->inputs[1]->shape[1]
+        tensor->name, tensor->shape[1], tensor->inputs[1]->name, tensor->inputs[1]->shape[1]
     );
 
     msml__validate_expr_gen(
         tensor->shape[2] == tensor->inputs[1]->shape[2],
         "ERROR: Dimension mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [2] = %zu\n"
-        "    - Second Input Tensor: '%s', Dimension [2] = %zu\n"
+        "    - Result Tensor: '%s', Dimension [2] = %lld\n"
+        "    - Second Input Tensor: '%s', Dimension [2] = %lld\n"
         "    Hint: The dimensions must match.",
-        tensor->name, (size_t)tensor->shape[2], tensor->inputs[1]->name, (size_t)tensor->inputs[1]->shape[2]
+        tensor->name, tensor->shape[2], tensor->inputs[1]->name, tensor->inputs[1]->shape[2]
     );
 
     msml__validate_expr_gen(
         tensor->shape[3] == tensor->inputs[1]->shape[3],
         "ERROR: Dimension mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [3] = %zu\n"
-        "    - Second Input Tensor: '%s', Dimension [3] = %zu\n"
+        "    - Result Tensor: '%s', Dimension [3] = %lld\n"
+        "    - Second Input Tensor: '%s', Dimension [3] = %lld\n"
         "    Hint: The dimensions must match.",
-        tensor->name, (size_t)tensor->shape[3], tensor->inputs[1]->name, (size_t)tensor->inputs[1]->shape[3]
+        tensor->name, tensor->shape[3], tensor->inputs[1]->name, tensor->inputs[1]->shape[3]
     );
+
     msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "Both input tensors must be contiguous");
     msml__validate_expr_gen(tensor->inputs[1]->strides[0] == sizeof(float), "Both input tensors must be contiguous");
     msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result tensor must be contiguous");
     msml__validate_expr_gen(tensor->strides[0] <= tensor->strides[1], "Result tensor cannot be permuted or transposed.");
     msml__validate_expr_gen(tensor->strides[1] <= tensor->strides[2], "Result tensor cannot be permuted or transposed.");
-    msml__validate_expr_gen(tensor->strides[2] <= tensor->strides[03], "Result tensor cannot be permuted or transposed.");
+    msml__validate_expr_gen(tensor->strides[2] <= tensor->strides[3], "Result tensor cannot be permuted or transposed.");
     msml__validate_expr_gen(tensor->inputs[1]->shape[2] % tensor->inputs[0]->shape[2] == 0, "Second input tensor must be broadcastable into first input tensor.");
     msml__validate_expr_gen(tensor->inputs[1]->shape[3] % tensor->inputs[0]->shape[3] == 0, "Second input tensor must be broadcastable into first input tensor.");
     return true;
@@ -1933,10 +2006,16 @@ msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_
             return NULL;
         }
     }
-    msml_tensor_t* result;
+    msml_tensor_t* result = NULL;
     if (op == MSML_OP_MATMUL) {
-        const int64_t shape[MSML_MAX_DIMS] = {inputs[0]->shape[1], inputs[1]->shape[1], inputs[1]->shape[2], inputs[1]->shape[3]};
-        result = msml_tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, 4, NULL, 0);
+        msml__assert2(n_inputs == 2);
+        const int64_t shape[MSML_MAX_DIMS] = {
+            inputs[0]->shape[1],
+            inputs[1]->shape[1],
+            inputs[1]->shape[2],
+            inputs[1]->shape[3]
+        };
+        result = msml_tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, sizeof(shape)/sizeof(*shape), NULL, 0);
     } else {
         result = msml_tensor_isomorphic(inputs[0]);
     }
@@ -2859,7 +2938,7 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                         memcpy(r_col+i0, tmp, (msml_min(i0 + MSML_MATMUL_BLK_X, r0e) - i0)*sizeof(float)); /* Store to result buffer. */
                     #else /* Store directly to result buffer. */
                         for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i) {
-                            r_col[i] = msml__vdot_f32(x_d0, (const float*) (x_row + i * x_s1), y_col);
+                            r_col[i] = msml__vdot_f32(x_d0, (const float*)(x_row + i * x_s1), y_col);
                         }
                     #endif
                 }

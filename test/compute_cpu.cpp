@@ -250,15 +250,24 @@ TEST(compute_cpu, matmul_f32) {
 
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
+    msml_tensor_t* A = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 16384, 16384, 3);
+    msml_tensor_t* B = msml_tensor_isomorphic(A);
+    msml_tensor_fill(B, 3.0);
+    msml_tensor_t* params[2] = {A, B};
+    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MUL, params, 2);
+    ASSERT_NE(R, nullptr);
+    msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
+    msml_ctx_destroy(ctx);
+}
 
-    msml_tensor_t* R = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 16384, 16384, 3);
-    msml_tensor_t* X = msml_tensor_isomorphic(R);
-    msml_tensor_fill(X, 3.0);
-    msml_tensor_t* Y = msml_tensor_isomorphic(R);
-    msml_tensor_set_op(Y, MSML_OP_MUL);
-    msml_tensor_set_arg(Y, 0, R);
-    msml_tensor_set_arg(Y, 1, X);
-    msml_tensor_evaluate(Y, MSML_GRAPH_EVAL_ORDER_FORWARD);
-
+TEST(compute_cpu, heavy_compute_single_op_scalar) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+    msml_tensor_t* A = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 1);
+    msml_tensor_t* B = msml_tensor_isomorphic(A);
+    msml_tensor_fill(B, 3.0);
+    msml_tensor_t* params[2] = {A, B};
+    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_ADD, params, 2);
+    ASSERT_NE(R, nullptr);
+    msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_ctx_destroy(ctx);
 }

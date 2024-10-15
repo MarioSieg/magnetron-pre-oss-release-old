@@ -15,7 +15,7 @@ faulthandler.enable()
 
 # Load shared library
 
-BUILD_DIR = 'release'
+BUILD_DIR = 'debug'
 
 msml_lib_locations: list[str] = []
 
@@ -595,11 +595,12 @@ class Tensor:
 
     @staticmethod
     def _emit_op_tensor(op: Operation, *args) -> 'Tensor':
+        assert len(args) == op.argument_count
         tensors = ffi.new(f'msml_tensor_t*[{len(args)}]')
         for i, arg in enumerate(args):
             assert isinstance(arg, Tensor), 'Argument must be a tensor'
             tensors[i] = arg.tensor
-        instance = C.msml_tensor_emit_op(op.value, tensors, len(args))
+        instance: ffi.CData = C.msml_tensor_emit_op(op.value, tensors, len(args))
         if instance == ffi.NULL:
             raise RuntimeError('Operation not possible')
         return Tensor(instance)

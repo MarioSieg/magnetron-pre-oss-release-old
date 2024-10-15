@@ -11,19 +11,19 @@ class MultilayerPerceptron:
         self.cache = []
 
         for i in range(0, len(layout)-1):
-            self.weights.append(Tensor.random(ctx, [layout[i+1], layout[i]]))
-            self.biases.append(Tensor.random(ctx, [layout[i+1], 1]))
+            self.weights.append(Tensor.random(ctx, [layout[i+1], layout[i]], name=f'Weight {i}'))
+            self.biases.append(Tensor.random(ctx, [layout[i+1], 1], name=f'Bias {i}'))
 
     def forward(self, inputs: Tensor) -> Tensor:
         """Forward propagate the input through the network."""
         assert len(self.weights) == len(self.biases)
         prev: Tensor = inputs
-        self.cache.clear()
-        self.cache.append(prev.clone()())
+        #self.cache.clear()
+        #self.cache.append(prev.clone()())
         for i in range(0, len(self.weights)):
             x: Tensor = prev if i == 0 else prev.relu()
-            prev = (self.weights[i] @ x) + self.biases[i]
-            self.cache.append(prev.clone()())
+            prev = self.biases[i] + (self.weights[i] @ x)
+            #self.cache.append(prev.clone()())
         return prev.sigmoid()
 
     def backward(self, outputs: Tensor, targets: Tensor, learning_rate: float):
