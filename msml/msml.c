@@ -1373,6 +1373,54 @@ static bool (*msml__op_get_validator_routine(msml_op_t op))(const msml_tensor_t*
 
 #undef msml__validate_inputs
 
+typedef enum msml_format_type {
+    MSML_FMT_EOF, MSML_FMT_ERR, MSML_FMT_LIT, MSML_FMT_INT,
+    MSML_FMT_UINT, MSML_FMT_NUM, MSML_FMT_STR, MSML_FMT_CHAR,
+    MSML_FMT_PTR
+} msml_format_type; /* Format types for formatted output */
+
+typedef uint32_t msml_format_flags; /* Flags for formatting output */
+
+/* Format flags */
+#define MSML_FMT_F_LEFT  0x0100 /* Left-align the output */
+#define MSML_FMT_F_PLUS  0x0200 /* Prefix positive numbers with a plus sign */
+#define MSML_FMT_F_ZERO  0x0400 /* Pad with zeros instead of spaces */
+#define MSML_FMT_F_SPACE 0x0800 /* Prefix a space for positive numbers */
+#define MSML_FMT_F_ALT   0x1000 /* Alternate format flag */
+#define MSML_FMT_F_UPPER 0x2000 /* Use uppercase letters for hex output */
+
+/* Format subtypes (bits reused) */
+#define MSML_FMT_T_HEX   0x0010 /* Hexadecimal format for unsigned integers */
+#define MSML_FMT_T_OCT   0x0020 /* Octal format for unsigned integers */
+#define MSML_FMT_T_FP_A  0x0000 /* 'a' format for floating-point numbers */
+#define MSML_FMT_T_FP_E  0x0010 /* 'e' format for floating-point numbers */
+#define MSML_FMT_T_FP_F  0x0020 /* 'f' format for floating-point numbers */
+#define MSML_FMT_T_FP_G  0x0030 /* 'g' format for floating-point numbers */
+#define MSML_FMT_T_QUOTED 0x0010 /* Quoted string format */
+
+#define MSML_FMT_SH_WIDTH 16    /* Shift width for formatting */
+#define MSML_FMT_SH_PREC  24    /* Shift precision for formatting */
+#define MSML_FMT_TYPE(sf) ((msml_format_type)((sf) & 15))  /* Extract format type */
+#define MSML_FMT_WIDTH(sf) (((sf) >> MSML_FMT_SH_WIDTH) & 255u) /* Extract width */
+#define MSML_FMT_PREC(sf) ((((sf) >> MSML_FMT_SH_PREC) & 255u) - 1u) /* Extract precision */
+#define MSML_FMT_FP(sf) (((sf) >> 4) & 3) /* Extract floating-point format */
+
+/* Formats for conversion characters */
+#define MSML_FMT_A (MSML_FMT_NUM|MSML_FMT_T_FP_A) /* 'a' format */
+#define MSML_FMT_C (MSML_FMT_CHAR) /* 'c' format */
+#define MSML_FMT_D (MSML_FMT_INT)  /* 'd' format */
+#define MSML_FMT_E (MSML_FMT_NUM|MSML_FMT_T_FP_E) /* 'e' format */
+#define MSML_FMT_F (MSML_FMT_NUM|MSML_FMT_T_FP_F) /* 'f' format */
+#define MSML_FMT_G (MSML_FMT_NUM|MSML_FMT_T_FP_G) /* 'g' format */
+#define MSML_FMT_I MSML_FMT_D /* 'i' format (same as 'd') */
+#define MSML_FMT_O (MSML_FMT_UINT|MSML_FMT_T_OCT) /* 'o' format */
+#define MSML_FMT_P (MSML_FMT_PTR) /* 'p' format */
+#define MSML_FMT_Q (MSML_FMT_STR|MSML_FMT_T_QUOTED) /* Quoted string */
+#define MSML_FMT_S (MSML_FMT_STR) /* 's' format */
+#define MSML_FMT_U (MSML_FMT_UINT) /* 'u' format */
+#define MSML_FMT_X (MSML_FMT_UINT|MSML_FMT_T_HEX) /* 'x' format */
+#define MSML_FMT_G14 (MSML_FMT_G | ((14+1) << MSML_FMT_SH_PREC)) /* 'g' format with precision 14 */
+
 /* Rescale factors to push the exponent of a number towards zero. */
 #define rescale_exponents(P, N) \
   P(308), P(289), P(270), P(250), P(231), P(212), P(193), P(173), P(154), \
