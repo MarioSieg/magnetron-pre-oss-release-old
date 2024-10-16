@@ -1360,8 +1360,8 @@ static bool msml__validate_op_matmul(const msml_tensor_t* tensor) {
 static bool (*msml__op_get_validator_routine(msml_op_t op))(const msml_tensor_t* tensor) {
     static bool (*const routines[MSML_OP__COUNT])(const msml_tensor_t* tensor) = {
         [MSML_OP_NOP] = &msml__validate_op_nop,
-        [MSML_OP_TRANSPOSE] = &msml__validate_op_transpose,
         [MSML_OP_CLONE] = &msml__validate_op_clone,
+        [MSML_OP_TRANSPOSE] = &msml__validate_op_transpose,
         [MSML_OP_STEP] = &msml__validate_op_step,
         [MSML_OP_SOFTMAX] = &msml__validate_op_softmax,
         [MSML_OP_SOFTMAX_DV] = &msml__validate_op_softmax_dv,
@@ -2406,7 +2406,7 @@ bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b) {
     return true;
 }
 
-bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq) {
+bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq) {
     if (a->dtype != b->dtype) return false;
     if (a->rank != b->rank) return false;
     if (memcmp(a->shape, b->shape, sizeof(a->shape)) != 0) return false;
@@ -3021,8 +3021,8 @@ bool msml_tensor_is_op_possible(const msml_tensor_t* tensor) {
 /* Dispatch table for default CPU-implementation. */
 static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[MSML_OP__COUNT])(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**)) {
     (*dispatch_lut)[MSML_OP_NOP] = &msml__blas_nop;
-    (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_transpose;
     (*dispatch_lut)[MSML_OP_CLONE] = &msml__blas_clone;
+    (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_transpose;
     (*dispatch_lut)[MSML_OP_STEP] = &msml__blas_step_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX] = &msml__blas_softmax_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;
@@ -3066,24 +3066,6 @@ static void msml__tensor_graph_visit_node(msml_tensor_t* node, void (*visitor)(m
     (*visitor)(node, ud); /* Dispatch visitor hook */
 }
 
-static void MSML_HOTPROC msml__compute_dag_eval_visitor(msml_tensor_t* node, void* ud) { /* Visitor for evaluating compute DAG */
-    const msml_op_t op = node->op;
-    if (op == MSML_OP_NOP || msml_unlikely(op >= MSML_OP__COUNT)) return; /* NOP */
-    const msml_tensor_t** input_nodes = (const msml_tensor_t**)node->inputs;
-    const msml__blas_compute_info_t* bci = (const msml__blas_compute_info_t*)ud;
-    void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
-    (*(*(dispatch_lut+op)))(bci, node, input_nodes); /* Dispatch to CPU implementation */
-}
-
-msml_tensor_t* MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
-    msml__tensor_graph_visit_node(tensor, &msml__compute_dag_eval_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, &(msml__blas_compute_info_t) {
-        .ctx = tensor->ctx,
-        .n_threads = 1,
-        .thread_idx = 0
-    });
-    return tensor;
-}
-
 struct msml_compute_graph_t {
     msml_ctx_t* ctx;
     msml_tensor_t** nodes;
@@ -3105,15 +3087,19 @@ static void MSML_HOTPROC msml__compute_graph_fold_visitor(msml_tensor_t* node, v
     msml_compute_graph_t* gra = (msml_compute_graph_t*)ud;
     size_t hz = msml__hashset_insert(&gra->visited_hs, node);
     msml__assert2(hz != MSML__HASHSET_FULL);
-    if (hz == MSML__HASHSET_DUPLICATE) return; /* Already visited */
+    if (msml_unlikely(hz == MSML__HASHSET_DUPLICATE)) return; /* Already visited */
     msml__assert2(msml_tensor_is_op_possible(node));
-    if (node->op == MSML_OP_NOP) { /* Leaf node */
+    if (node->op == MSML_OP_NOP) { /* Leaf node (constant, out of gradient flow) */
         gra->leafs[gra->num_leaf_nodes++] = node;
         for (uint32_t i=0; i < MSML_MAX_INPUT_TENSORS; ++i) { /* All inputs must be NULL for NOP node. */
             msml__assert2(!node->inputs[i]);
         }
     } else { /* Non-leaf node */
         gra->nodes[gra->num_internal_nodes++] = node;
+        uint32_t n = msml_op_get_argcount(node->op);
+        for (uint32_t i=0; i < n; ++i) { /* All inputs must be not NULL for operation node. */
+            msml__assert2(node->inputs[i]);
+        }
     }
 }
 
@@ -3146,8 +3132,24 @@ msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t*
     return gra;
 }
 
-void msml_compute_graph_execute(msml_compute_graph_t* gra) {
+static void MSML_HOTPROC msml__compute_dag_eval_visitor(msml_tensor_t* node, void* ud) { /* Visitor for evaluating compute DAG */
+    const msml_op_t op = node->op;
+    if (op == MSML_OP_NOP || msml_unlikely(op >= MSML_OP__COUNT)) return; /* NOP */
+    const msml_tensor_t** input_nodes = (const msml_tensor_t**)node->inputs;
+    const msml__blas_compute_info_t* bci = (const msml__blas_compute_info_t*)ud;
+    void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
+    (*(*(dispatch_lut+op)))(bci, node, input_nodes); /* Dispatch to CPU implementation */
+}
 
+msml_tensor_t* msml_compute_graph_execute(msml_compute_graph_t* gra) {
+    msml__assert2(gra->num_nodes_total && gra->nodes[gra->num_internal_nodes-1]);
+    msml_tensor_t* root = gra->nodes[gra->num_internal_nodes-1]; /* Evaluation root node */
+    msml__tensor_graph_visit_node(root, &msml__compute_dag_eval_visitor, gra->order == MSML_GRAPH_EVAL_ORDER_FORWARD, &(msml__blas_compute_info_t) {
+        .ctx = gra->ctx,
+        .n_threads = 1,
+        .thread_idx = 0
+    });
+    return root;
 }
 
 msml_ctx_t* msml_compute_graph_get_ctx(const msml_compute_graph_t* gra) { return gra->ctx; }

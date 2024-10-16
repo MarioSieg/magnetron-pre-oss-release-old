@@ -32,7 +32,7 @@ TEST(graph, compile_simple) {
 
     msml_tensor_t* result = msml_tensor_emit_op_va(MSML_OP_MATMUL, A_P_B, C_relu);
 
-    msml_compute_graph_t* gra = msml_compute_graph_compile(ctx, result, MSML_GRAPH_EVAL_ORDER_FORWARD, NULL);
+    msml_compute_graph_t* gra = msml_compute_graph_compile(ctx, result, MSML_GRAPH_EVAL_ORDER_FORWARD, nullptr);
     ASSERT_EQ(msml_compute_graph_get_num_total_nodes(gra), 6);
     ASSERT_EQ(msml_compute_graph_get_num_internal_nodes(gra), 3);
     ASSERT_EQ(msml_compute_graph_get_num_leaf_nodes(gra), 3);
@@ -43,10 +43,12 @@ TEST(graph, compile_simple) {
     ASSERT_EQ(leaves[1], B);
     ASSERT_EQ(leaves[2], C);
 
-    const msml_tensor_t** nodes = msml_compute_graph_get_internal_nodes(gra, nullptr);
+    size_t n_i = 0;
+    const msml_tensor_t** nodes = msml_compute_graph_get_internal_nodes(gra, &n_i);
     ASSERT_EQ(nodes[0], A_P_B);
     ASSERT_EQ(nodes[1], C_relu);
     ASSERT_EQ(nodes[2], result);
+    ASSERT_EQ(nodes[n_i-1], result); // Last node must be evaluation root and result
 
     msml_ctx_destroy(ctx);
 }

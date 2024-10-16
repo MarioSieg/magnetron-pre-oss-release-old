@@ -132,7 +132,7 @@ ffi.cdef(f'''
     float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
     void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
     bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
-    bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
+    bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
     bool msml_tensor_is_op_possible(const msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
     
@@ -201,8 +201,8 @@ class DesiredColorChannels(Enum):
 class Operation(Enum):
     """A"""
     NOP = 0
-    TRANSPOSE = auto()
     CLONE = auto()
+    TRANSPOSE = auto()
     STEP = auto()
     SOFTMAX = auto()
     SOFTMAX_DV = auto()
@@ -515,7 +515,7 @@ class Tensor:
         """Checks if the tensor is close to another tensor within a given epsilon."""
         """Returns a tuple with a boolean indicating if the tensors are close and the percentage of equal elements."""
         percent_eq = ffi.new(f'double[1]')
-        is_eq: bool = C.msml_tensor_isclose(self.tensor, other.tensor, eps, percent_eq)
+        is_eq: bool = C.msml_tensor_is_close(self.tensor, other.tensor, eps, percent_eq)
         if print_eq_percent:
             print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
         return is_eq, percent_eq[0]

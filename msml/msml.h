@@ -109,8 +109,8 @@ typedef enum msml_desired_color_channels_t {
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
     _(NOP,              "nop",              0)/* No Operation. */__\
-    _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ. */__\
     _(CLONE,            "clone",            1)/* R = X. */__\
+    _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ. */__\
     _(STEP,             "step",             1)/* R = 1 if x >= 0 else 0. Heaviside step function */__\
     _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
     _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
@@ -204,9 +204,8 @@ extern MSML_API void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor
 extern MSML_API float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx); /* Get scalar value at virtual index */
 extern MSML_API void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_API bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
-extern MSML_API bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
+extern MSML_API bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
 extern MSML_API bool msml_tensor_is_op_possible(const msml_tensor_t* tensor); /* Check if the tensor operation is possible and all arguments and parameters are valid. */
-extern MSML_API msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order); /* Evaluate computation graph from root tensor. */
 
 extern MSML_API void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */
 extern MSML_API msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */
@@ -218,7 +217,7 @@ extern MSML_API void msml_tensor_save_to_image(const msml_tensor_t* tensor, cons
 
 typedef struct msml_compute_graph_t msml_compute_graph_t; /* Opaque type representing a compute graph */
 extern MSML_API msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name); /* Compile computation graph from root tensor. */
-extern MSML_API void msml_compute_graph_execute(msml_compute_graph_t* gra); /* Execute computation graph. */
+extern MSML_API msml_tensor_t* msml_compute_graph_execute(msml_compute_graph_t* gra); /* Execute computation graph. */
 extern MSML_API msml_ctx_t* msml_compute_graph_get_ctx(const msml_compute_graph_t* gra); /* Get the context of the compute graph */
 extern MSML_API const char* msml_compute_graph_get_name(const msml_compute_graph_t* gra); /* Get the name of the compute graph */
 extern MSML_API const msml_tensor_t** msml_compute_graph_get_internal_nodes(const msml_compute_graph_t* gra, size_t* n_nodes); /* Get the nodes of the compute graph */

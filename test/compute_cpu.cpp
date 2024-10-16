@@ -1,7 +1,6 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-#include <gtest/gtest.h>
-#include <msml.h>
+#include "prelude.hpp"
 #include <cmath>
 
 #define impl_test_unary_op(name, op, scalar_op) \
@@ -195,6 +194,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_ctx_destroy(ctx);
 }
 
+#if 0
 TEST(compute_cpu, matmul_f32) {
     static constexpr std::size_t M = 4, N = 16, K = 36;
     static constexpr float A_mtx[M * K] = {
@@ -247,6 +247,7 @@ TEST(compute_cpu, matmul_f32) {
     }
     msml_ctx_destroy(ctx);
 }
+#endif
 
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);

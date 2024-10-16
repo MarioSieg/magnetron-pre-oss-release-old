@@ -1,7 +1,6 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-#include <gtest/gtest.h>
-#include <msml.h>
+#include "prelude.hpp"
 #include <array>
 #include <cstring>
 #include <unordered_set>
@@ -310,16 +309,16 @@ TEST(msml_tensor_t, isclose) {
     msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_clone(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_tensor_t* clone2 = msml_tensor_isomorphic(origin);
     msml_tensor_fill_random(clone2, 0.0f, 1.0f);
-    ASSERT_TRUE(msml_tensor_isclose(origin, clone, FLT_EPSILON, nullptr));
-    ASSERT_FALSE(msml_tensor_isclose(origin, clone2, FLT_EPSILON, nullptr));
-    ASSERT_FALSE(msml_tensor_isclose(clone, clone2, FLT_EPSILON, nullptr));
+    ASSERT_TRUE(msml_tensor_is_close(origin, clone, FLT_EPSILON, nullptr));
+    ASSERT_FALSE(msml_tensor_is_close(origin, clone2, FLT_EPSILON, nullptr));
+    ASSERT_FALSE(msml_tensor_is_close(clone, clone2, FLT_EPSILON, nullptr));
     msml_tensor_fill(clone, 0.0f);
     msml_tensor_fill(clone2, 0.0f);
     double percent = 0.0;
-    ASSERT_TRUE(msml_tensor_isclose(clone, clone2, FLT_EPSILON, &percent));
+    ASSERT_TRUE(msml_tensor_is_close(clone, clone2, FLT_EPSILON, & percent));
     ASSERT_DOUBLE_EQ(percent, 100.0);
     msml_tensor_fill(clone2, 1.0f);
-    ASSERT_FALSE(msml_tensor_isclose(clone, clone2, FLT_EPSILON, &percent));
+    ASSERT_FALSE(msml_tensor_is_close(clone, clone2, FLT_EPSILON, & percent));
     ASSERT_DOUBLE_EQ(percent, 0.0);
 
     msml_ctx_destroy(ctx);
