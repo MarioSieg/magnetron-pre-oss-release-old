@@ -3123,15 +3123,15 @@ msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t*
     msml__assert2(total_nodes > 0);
     uintptr_t mem_req = 0; /* Memory required for compute graph. */
     msml__pincr((void**)&mem_req, sizeof(msml_compute_graph_t), __alignof__(msml_compute_graph_t)); /* Graph struct itself */
-    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->nodes), __alignof__(msml_tensor_t*)); /* Nodes array. */
-    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->leafs), __alignof__(msml_tensor_t*)); /* Leafs array. */
-    msml_compute_graph_t* gra = (msml_compute_graph_t*)msml_ctx_pool_alloc_aligned(ctx, mem_req, __alignof__(msml_compute_graph_t));
+    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->nodes), __alignof__(*((msml_compute_graph_t*)0)->nodes)); /* Nodes array. */
+    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->leafs), __alignof__(*((msml_compute_graph_t*)0)->leafs)); /* Leafs array. */
+    msml_compute_graph_t* gra = (msml_compute_graph_t*)msml_ctx_pool_alloc_aligned(ctx, mem_req, __alignof__(*gra));
     void* data = gra+1; /* Start of data, end of header */
     memset(gra, 0, mem_req);
     gra->ctx = ctx;
     gra->num_nodes_total = total_nodes;
-    gra->nodes = msml__pincr((void**)&data, total_nodes*sizeof(*((msml_compute_graph_t*)0)->nodes), __alignof__(msml_tensor_t*)); /* Fetch nodes array. */
-    gra->leafs = msml__pincr((void**)&data, total_nodes*sizeof(*((msml_compute_graph_t*)0)->leafs), __alignof__(msml_tensor_t*)); /* Fetch leafs array. */
+    gra->nodes = msml__pincr(&data, total_nodes*sizeof(*gra->nodes), __alignof__(*gra->nodes)); /* Fetch nodes array. */
+    gra->leafs = msml__pincr(&data, total_nodes*sizeof(*gra->leafs), __alignof__(*gra->leafs)); /* Fetch leafs array. */
     gra->mem_size_total = mem_req;
     gra->order = order;
     gra->visited_hs = msml__hashset_create_pooled(ctx, total_nodes);
