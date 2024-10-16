@@ -493,8 +493,8 @@ static uint64_t MSML_AINLINE msml__bswap64(uint64_t x) { /* Swap bytes for endia
     return x;
 }
 
-static void* msml_advance_ptr(void** p, size_t sz, size_t align) {
-    void* pp = (void*)((((uintptr_t)*p + align) - 1) & ~((align) - 1));
+static MSML_AINLINE void* msml__pincr(void** p, size_t sz, size_t align) {
+    void* pp = (void*)(((uintptr_t)*p + align - 1) & ~((align) - 1));
     *p = (void*)((uint8_t*)pp + sz);
     return pp;
 }
@@ -692,19 +692,20 @@ static uint32_t msml__crc32c(const void* buffer, size_t size) { /* Compute CRC32
     #endif
 }
 
-typedef struct msml_hashset_t {
+typedef struct msml__hashset_t {
     void* ud;
     size_t len;
     msml_bitset_t* used;
     const msml_tensor_t** keys;
-} msml_hashset_t;
-#define MSML_HASHSET_FULL ((size_t)-1)
-#define MSML_HASHSET_DUPLICATE ((size_t)-2)
-#define MSML_HASHSET_MAX ((size_t)-3) /* Must be last. */
-#define msml_hashset_hash_fn(ptr) ((size_t)(uintptr_t)(ptr)>>3)
+    bool is_pool;
+} msml__hashset_t;
+#define MSML__HASHSET_FULL ((size_t)-1)
+#define MSML__HASHSET_DUPLICATE ((size_t)-2)
+#define MSML__HASHSET_MAX ((size_t)-3) /* Must be last. */
+#define msml__hashset_hash_fn(ptr) ((size_t)(uintptr_t)(ptr)>>3)
 
-static size_t msml_hashset_compute_hash_size(size_t sz) {
-    msml__assert2(sz > 0 && sz < MSML_HASHSET_MAX);
+static size_t msml__hashset_compute_hash_size(size_t sz) {
+    msml__assert2(sz > 0 && sz < MSML__HASHSET_MAX);
     static const size_t prime_lut[] = {
         2, 3, 5, 11, 17, 37, 67, 131, 257, 521, 1031,
         2053, 4099, 8209, 16411, 32771, 65537, 131101,
@@ -721,46 +722,60 @@ static size_t msml_hashset_compute_hash_size(size_t sz) {
     }
     return l < sizeof(prime_lut)/sizeof(*prime_lut) ? prime_lut[l] : sz|1;
 }
-static msml_hashset_t msml_hashset_create(size_t size) {
-    size = msml_hashset_compute_hash_size(size);
-    msml_hashset_t set = {
+static msml__hashset_t msml__hashset_create(size_t size) {
+    size = msml__hashset_compute_hash_size(size);
+    msml__hashset_t set = {
         .ud = NULL,
         .len = size,
         .used = (msml_bitset_t*)msml_alloc(NULL, msml_bitset_size(size)*sizeof(*set.used)),
         .keys = (const msml_tensor_t**)msml_alloc(NULL, size*sizeof(*set.keys)),
+        .is_pool = false
     };
     memset(set.used, 0, msml_bitset_size(size)*sizeof(*set.used));
     return set;
 }
-static size_t msml_hashset_lookup(msml_hashset_t* set, const msml_tensor_t* key) {
-    size_t k = msml_hashset_hash_fn(key) % set->len, i = k;
+static msml__hashset_t msml__hashset_create_pooled(msml_ctx_t* ctx, size_t size) {
+    size = msml__hashset_compute_hash_size(size);
+    msml__hashset_t set = {
+        .ud = NULL,
+        .len = size,
+        .used = (msml_bitset_t*)msml_ctx_pool_alloc_aligned(ctx, msml_bitset_size(size)*sizeof(*set.used), __alignof__(*set.used)),
+        .keys = (const msml_tensor_t**)msml_ctx_pool_alloc_aligned(ctx, size*sizeof(*set.keys), __alignof__(*set.used)),
+        .is_pool = true
+    };
+    memset(set.used, 0, msml_bitset_size(size)*sizeof(*set.used));
+    return set;
+}
+static size_t msml__hashset_lookup(msml__hashset_t* set, const msml_tensor_t* key) {
+    size_t k = msml__hashset_hash_fn(key) % set->len, i = k;
     while (msml_bitset_get(set->used, i) && set->keys[i] != key) { /* Linear probing. */
         i = (i+1) % set->len;
-        if (i == k) return MSML_HASHSET_FULL;
+        if (i == k) return MSML__HASHSET_FULL;
     }
     return i;
 }
-static bool msml_hashset_contains_key(msml_hashset_t* set, const msml_tensor_t* key) {
-    size_t i = msml_hashset_lookup(set, key);
-    return msml_bitset_get(set->used, i) && i != MSML_HASHSET_FULL;
+static bool msml__hashset_contains_key(msml__hashset_t* set, const msml_tensor_t* key) {
+    size_t i = msml__hashset_lookup(set, key);
+    return msml_bitset_get(set->used, i) && i != MSML__HASHSET_FULL;
 }
-static size_t msml_hashset_insert(msml_hashset_t* set, const msml_tensor_t* key) {
-    size_t k = msml_hashset_hash_fn(key) % set->len, i = k;
+static size_t msml__hashset_insert(msml__hashset_t* set, const msml_tensor_t* key) {
+    size_t k = msml__hashset_hash_fn(key) % set->len, i = k;
     do { /* Linear probing. */
         if (!msml_bitset_get(set->used, i)) { /* Insert key. */
             msml_bitset_set(set->used, i);
             set->keys[i] = key;
             return i;
         }
-        if (set->keys[i] == key) return MSML_HASHSET_DUPLICATE; /* Key already exists. */
+        if (set->keys[i] == key) return MSML__HASHSET_DUPLICATE; /* Key already exists. */
         i = (i+1) % set->len;
     } while (i != k);
     msml__panic("Insertion target not found");
 }
-static void msml_hashset_reset(msml_hashset_t* set) {
+static void msml__hashset_reset(msml__hashset_t* set) {
     memset(set->used, 0, msml_bitset_size(set->len)*sizeof(*set->used));
 }
-static void msml_hashset_destroy(msml_hashset_t* set) {
+static void msml_hashset_destroy(msml__hashset_t* set) {
+    msml__assert2(!set->is_pool); /* Cannot destroy pooled hashset. */
     msml_alloc(set->used, 0);
     msml_alloc(set->keys, 0);
 }
@@ -3038,43 +3053,126 @@ static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
     }
 }
 
-static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t* bci, msml_tensor_t* node, bool forward);
-
-static unsigned MSML_HOTPROC msml__process_parent_inputs(
-    const msml_tensor_t*** const out_inputs,
-    const msml__blas_compute_info_t* const bci,
-    msml_tensor_t* const node,
-    const bool forward
-) {
-    msml_tensor_t** inputs = node->inputs;
-    const uint32_t n_inputs = msml_op_get_argcount(node->op);
-    for (uint32_t i=0; i < n_inputs; ++i) { /* Eval parents and verify arguments */
-        uint32_t idx = forward ? i : n_inputs-i-1; /* Left-to-right or right-to-left */
-        msml__assert(inputs[idx] != NULL, "Invalid argument %d for node %s", i, msml_op_get_name(node->op));
-        msml__compute_dag_eval(bci, inputs[idx], forward); /* Eval parent node recursive */
+static void msml__tensor_graph_visit_node(msml_tensor_t* node, void (*visitor)(msml_tensor_t*, void*), bool forward, void* ud) {
+    if (msml_unlikely(!node)) return;
+    msml_tensor_t** parent_nodes = node->inputs;
+    uint32_t n = msml_op_get_argcount(node->op);
+    for (uint32_t i=0; i < n; ++i) {
+        uint32_t j = forward ? i : n-i-1; /* Left-to-right or right-to-left */
+        if (msml_likely(parent_nodes[j])) {
+            msml__tensor_graph_visit_node(parent_nodes[j], visitor, forward, ud);
+        }
     }
-    *out_inputs = (const msml_tensor_t**)inputs;
-    return n_inputs;
+    (*visitor)(node, ud); /* Dispatch visitor hook */
 }
 
-static void MSML_HOTPROC msml__compute_dag_eval(const msml__blas_compute_info_t* const bci, msml_tensor_t* const node, bool forward) {
+static void MSML_HOTPROC msml__compute_dag_eval_visitor(msml_tensor_t* node, void* ud) { /* Visitor for evaluating compute DAG */
     const msml_op_t op = node->op;
     if (op == MSML_OP_NOP || msml_unlikely(op >= MSML_OP__COUNT)) return; /* NOP */
-    const msml_tensor_t** inputs;
-    msml__process_parent_inputs(&inputs, bci, node, forward); /* Eval parents and verify arguments */
+    const msml_tensor_t** input_nodes = (const msml_tensor_t**)node->inputs;
+    const msml__blas_compute_info_t* bci = (const msml__blas_compute_info_t*)ud;
     void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
-    (*(*(dispatch_lut+op)))(bci, node, inputs); /* Dispatch to CPU implementation */
+    (*(*(dispatch_lut+op)))(bci, node, input_nodes); /* Dispatch to CPU implementation */
 }
 
-msml_tensor_t*  MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
-    const msml__blas_compute_info_t info = {
+msml_tensor_t* MSML_HOTPROC msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order) {
+    msml__tensor_graph_visit_node(tensor, &msml__compute_dag_eval_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, &(msml__blas_compute_info_t) {
         .ctx = tensor->ctx,
         .n_threads = 1,
         .thread_idx = 0
-    };
-    msml__compute_dag_eval(&info, tensor, order == MSML_GRAPH_EVAL_ORDER_FORWARD);
+    });
     return tensor;
 }
+
+struct msml_compute_graph_t {
+    msml_ctx_t* ctx;
+    msml_tensor_t** nodes;
+    msml_tensor_t** leafs;
+    size_t num_nodes_total;
+    size_t num_internal_nodes;
+    size_t num_leaf_nodes;
+    size_t mem_size_total;
+    msml__hashset_t visited_hs;
+    msml_graph_eval_order_t order;
+    char name[MSML_MAX_TENSOR_NAME_LEN];
+};
+
+static void MSML_HOTPROC msml__compute_graph_accumulate_visitor(msml_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
+    ++*(size_t*)ud;
+}
+
+static void MSML_HOTPROC msml__compute_graph_fold_visitor(msml_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
+    msml_compute_graph_t* gra = (msml_compute_graph_t*)ud;
+    size_t hz = msml__hashset_insert(&gra->visited_hs, node);
+    msml__assert2(hz != MSML__HASHSET_FULL);
+    if (hz == MSML__HASHSET_DUPLICATE) return; /* Already visited */
+    msml__assert2(msml_tensor_is_op_possible(node));
+    if (node->op == MSML_OP_NOP) { /* Leaf node */
+        gra->leafs[gra->num_leaf_nodes++] = node;
+        for (uint32_t i=0; i < MSML_MAX_INPUT_TENSORS; ++i) { /* All inputs must be NULL for NOP node. */
+            msml__assert2(!node->inputs[i]);
+        }
+    } else { /* Non-leaf node */
+        gra->nodes[gra->num_internal_nodes++] = node;
+    }
+}
+
+msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name) {
+    size_t total_nodes = 0;
+    msml__tensor_graph_visit_node(root, &msml__compute_graph_accumulate_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, &total_nodes);
+    msml__assert2(total_nodes > 0);
+    uintptr_t mem_req = 0; /* Memory required for compute graph. */
+    msml__pincr((void**)&mem_req, sizeof(msml_compute_graph_t), __alignof__(msml_compute_graph_t)); /* Graph struct itself */
+    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->nodes), __alignof__(msml_tensor_t*)); /* Nodes array. */
+    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->leafs), __alignof__(msml_tensor_t*)); /* Leafs array. */
+    msml_compute_graph_t* gra = (msml_compute_graph_t*)msml_ctx_pool_alloc_aligned(ctx, mem_req, __alignof__(msml_compute_graph_t));
+    void* data = gra+1; /* Start of data, end of header */
+    memset(gra, 0, mem_req);
+    gra->ctx = ctx;
+    gra->num_nodes_total = total_nodes;
+    gra->nodes = msml__pincr((void**)&data, total_nodes*sizeof(*((msml_compute_graph_t*)0)->nodes), __alignof__(msml_tensor_t*)); /* Fetch nodes array. */
+    gra->leafs = msml__pincr((void**)&data, total_nodes*sizeof(*((msml_compute_graph_t*)0)->leafs), __alignof__(msml_tensor_t*)); /* Fetch leafs array. */
+    gra->mem_size_total = mem_req;
+    gra->order = order;
+    gra->visited_hs = msml__hashset_create_pooled(ctx, total_nodes);
+    msml__hashset_reset(&gra->visited_hs);
+    size_t n_nodes = gra->num_internal_nodes;
+    msml__tensor_graph_visit_node(root, &msml__compute_graph_fold_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, gra);
+    size_t new_nodes = gra->num_internal_nodes - n_nodes;
+    if (new_nodes > 0) /* Latest node must be starting point. */
+        msml__assert2(gra->nodes[gra->num_internal_nodes-1] == root);
+    msml__assert2(gra->num_internal_nodes + gra->num_leaf_nodes == total_nodes);
+    if (name && *name) snprintf(gra->name, sizeof(gra->name), "%s", name);
+    return gra;
+}
+
+void msml_compute_graph_execute(msml_compute_graph_t* gra) {
+
+}
+
+msml_ctx_t* msml_compute_graph_get_ctx(const msml_compute_graph_t* gra) { return gra->ctx; }
+
+const char* msml_compute_graph_get_name(const msml_compute_graph_t* gra) { return gra->name; }
+
+const msml_tensor_t** msml_compute_graph_get_internal_nodes(const msml_compute_graph_t* gra, size_t* n_nodes) {
+    if (n_nodes) *n_nodes = gra->num_internal_nodes;
+    return (const msml_tensor_t**)gra->nodes;
+}
+
+const msml_tensor_t** msml_compute_graph_get_leaf_nodes(const msml_compute_graph_t* gra, size_t* n_leaves) {
+    if (n_leaves) *n_leaves = gra->num_leaf_nodes;
+    return (const msml_tensor_t**)gra->leafs;
+}
+
+size_t msml_compute_graph_get_num_total_nodes(const msml_compute_graph_t* gra) { return gra->num_nodes_total; }
+
+size_t msml_compute_graph_get_num_internal_nodes(const msml_compute_graph_t* graph) { return graph->num_internal_nodes; }
+
+size_t msml_compute_graph_get_num_leaf_nodes(const msml_compute_graph_t* gra) { return gra->num_leaf_nodes; }
+
+size_t msml_compute_graph_get_order(const msml_compute_graph_t* gra) { return gra->order; }
+
+size_t msml_compute_graph_get_memory_usage(const msml_compute_graph_t* gra) { return gra->mem_size_total; }
 
 #ifdef __APPLE__
     static bool msml__sysctl_mib01(uint8_t (*out)[256], size_t* o_len, int mib0, int mib1) { /* Get sysctl data */
@@ -3433,13 +3531,3 @@ void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_pat
     msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
 #endif
 }
-
-struct msml_compute_graph_t {
-    msml_ctx_t* ctx;
-    msml_tensor_t** nodes;
-    msml_tensor_t** leafs;
-    size_t num_nodes;
-    size_t num_leafs;
-    size_t size_total;
-    msml_graph_eval_order_t order;
-};
