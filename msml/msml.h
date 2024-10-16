@@ -218,6 +218,8 @@ extern MSML_API void msml_tensor_save_to_image(const msml_tensor_t* tensor, cons
 typedef struct msml_compute_graph_t msml_compute_graph_t; /* Opaque type representing a compute graph */
 extern MSML_API msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name); /* Compile computation graph from root tensor. */
 extern MSML_API msml_tensor_t* msml_compute_graph_execute(msml_compute_graph_t* gra); /* Execute computation graph. */
+extern MSML_API bool msml_compute_graph_contains(const msml_compute_graph_t* gra, const msml_tensor_t* tensor); /* Check if the tensor is in the compute graph */
+extern MSML_API void msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gra, const char* file_name); /* Dump computation graph to DOT file. */
 extern MSML_API msml_ctx_t* msml_compute_graph_get_ctx(const msml_compute_graph_t* gra); /* Get the context of the compute graph */
 extern MSML_API const char* msml_compute_graph_get_name(const msml_compute_graph_t* gra); /* Get the name of the compute graph */
 extern MSML_API const msml_tensor_t** msml_compute_graph_get_internal_nodes(const msml_compute_graph_t* gra, size_t* n_nodes); /* Get the nodes of the compute graph */

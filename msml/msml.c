@@ -693,7 +693,6 @@ static uint32_t msml__crc32c(const void* buffer, size_t size) { /* Compute CRC32
 }
 
 typedef struct msml__hashset_t {
-    void* ud;
     size_t len;
     msml_bitset_t* used;
     const msml_tensor_t** keys;
@@ -725,7 +724,6 @@ static size_t msml__hashset_compute_hash_size(size_t sz) {
 static msml__hashset_t msml__hashset_create(size_t size) {
     size = msml__hashset_compute_hash_size(size);
     msml__hashset_t set = {
-        .ud = NULL,
         .len = size,
         .used = (msml_bitset_t*)msml_alloc(NULL, msml_bitset_size(size)*sizeof(*set.used)),
         .keys = (const msml_tensor_t**)msml_alloc(NULL, size*sizeof(*set.keys)),
@@ -737,7 +735,6 @@ static msml__hashset_t msml__hashset_create(size_t size) {
 static msml__hashset_t msml__hashset_create_pooled(msml_ctx_t* ctx, size_t size) {
     size = msml__hashset_compute_hash_size(size);
     msml__hashset_t set = {
-        .ud = NULL,
         .len = size,
         .used = (msml_bitset_t*)msml_ctx_pool_alloc_aligned(ctx, msml_bitset_size(size)*sizeof(*set.used), __alignof__(*set.used)),
         .keys = (const msml_tensor_t**)msml_ctx_pool_alloc_aligned(ctx, size*sizeof(*set.keys), __alignof__(*set.used)),
@@ -2056,15 +2053,16 @@ msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
 
 msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs) {
     if (msml_unlikely(op == MSML_OP_NOP || n_inputs == 0 || n_inputs > MSML_MAX_INPUT_TENSORS)) {
+        msml_log_error("Invalid operation or number of inputs for op: %s", msml_op_get_name(op));
         return NULL;
     }
     if (msml_unlikely(msml_op_get_argcount(op) != n_inputs)) {
-        msml_log_error("Missing inputs");
+        msml_log_error("Missing inputs for op: %s. Required %u, got %u", msml_op_get_name(op), (unsigned)msml_op_get_argcount(op), (unsigned)n_inputs);
         return NULL;
     }
     for (uint32_t i=0; i < n_inputs; ++i) { /* Make sure all required argument are not null. */
         if (msml_unlikely(!inputs[i])) {
-            msml_log_error("Missing args");
+            msml_log_error("Missing input #%u for op: %s", i, msml_op_get_name(op));
             return NULL;
         }
     }
@@ -2198,7 +2196,6 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
             for (int64_t i2=0; i2 < tensor->shape[1]; ++i2) {
                 putchar('\t');
                 for (int64_t i1=0; i1 < tensor->shape[0]; ++i1) {
-                    // TODO: dtype check
                     float x = buf[i3 * tensor->shape[1] * tensor->shape[0] + i2 * tensor->shape[0] + i1];
                     char fmt_buf[128];
                     *msml__fmt_f64(MSML_FMT_G14, x, fmt_buf) = '\0';
@@ -3068,8 +3065,8 @@ static void msml__tensor_graph_visit_node(msml_tensor_t* node, void (*visitor)(m
 
 struct msml_compute_graph_t {
     msml_ctx_t* ctx;
-    msml_tensor_t** nodes;
-    msml_tensor_t** leafs;
+    msml_tensor_t** internal_nodes;
+    msml_tensor_t** leaf_nodes;
     size_t num_nodes_total;
     size_t num_internal_nodes;
     size_t num_leaf_nodes;
@@ -3083,21 +3080,21 @@ static void MSML_HOTPROC msml__compute_graph_accumulate_visitor(msml_tensor_t* n
     ++*(size_t*)ud;
 }
 
-static void MSML_HOTPROC msml__compute_graph_fold_visitor(msml_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
+static void MSML_HOTPROC msml__compute_graph_coalescence_nodes_visitor(msml_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
     msml_compute_graph_t* gra = (msml_compute_graph_t*)ud;
     size_t hz = msml__hashset_insert(&gra->visited_hs, node);
     msml__assert2(hz != MSML__HASHSET_FULL);
     if (msml_unlikely(hz == MSML__HASHSET_DUPLICATE)) return; /* Already visited */
     msml__assert2(msml_tensor_is_op_possible(node));
     if (node->op == MSML_OP_NOP) { /* Leaf node (constant, out of gradient flow) */
-        gra->leafs[gra->num_leaf_nodes++] = node;
+        gra->leaf_nodes[gra->num_leaf_nodes++] = node;
         for (uint32_t i=0; i < MSML_MAX_INPUT_TENSORS; ++i) { /* All inputs must be NULL for NOP node. */
             msml__assert2(!node->inputs[i]);
         }
     } else { /* Non-leaf node */
-        gra->nodes[gra->num_internal_nodes++] = node;
+        gra->internal_nodes[gra->num_internal_nodes++] = node;
         uint32_t n = msml_op_get_argcount(node->op);
-        for (uint32_t i=0; i < n; ++i) { /* All inputs must be not NULL for operation node. */
+        for (uint32_t i=0; i < n; ++i) { /* All required inputs must be not NULL for operation node. */
             msml__assert2(node->inputs[i]);
         }
     }
@@ -3109,47 +3106,152 @@ msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t*
     msml__assert2(total_nodes > 0);
     uintptr_t mem_req = 0; /* Memory required for compute graph. */
     msml__pincr((void**)&mem_req, sizeof(msml_compute_graph_t), __alignof__(msml_compute_graph_t)); /* Graph struct itself */
-    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->nodes), __alignof__(*((msml_compute_graph_t*)0)->nodes)); /* Nodes array. */
-    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->leafs), __alignof__(*((msml_compute_graph_t*)0)->leafs)); /* Leafs array. */
+    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->internal_nodes), __alignof__(*((msml_compute_graph_t*)0)->internal_nodes)); /* Nodes. */
+    msml__pincr((void**)&mem_req, total_nodes*sizeof(*((msml_compute_graph_t*)0)->leaf_nodes), __alignof__(*((msml_compute_graph_t*)0)->leaf_nodes)); /* Leafs. */
     msml_compute_graph_t* gra = (msml_compute_graph_t*)msml_ctx_pool_alloc_aligned(ctx, mem_req, __alignof__(*gra));
     void* data = gra+1; /* Start of data, end of header */
     memset(gra, 0, mem_req);
     gra->ctx = ctx;
     gra->num_nodes_total = total_nodes;
-    gra->nodes = msml__pincr(&data, total_nodes*sizeof(*gra->nodes), __alignof__(*gra->nodes)); /* Fetch nodes array. */
-    gra->leafs = msml__pincr(&data, total_nodes*sizeof(*gra->leafs), __alignof__(*gra->leafs)); /* Fetch leafs array. */
+    gra->internal_nodes = msml__pincr(&data, total_nodes * sizeof(*gra->internal_nodes), __alignof__(*gra->internal_nodes)); /* Fetch nodes. */
+    gra->leaf_nodes = msml__pincr(&data, total_nodes * sizeof(*gra->leaf_nodes), __alignof__(*gra->leaf_nodes)); /* Fetch leafs. */
     gra->mem_size_total = mem_req;
     gra->order = order;
     gra->visited_hs = msml__hashset_create_pooled(ctx, total_nodes);
     msml__hashset_reset(&gra->visited_hs);
     size_t n_nodes = gra->num_internal_nodes;
-    msml__tensor_graph_visit_node(root, &msml__compute_graph_fold_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, gra);
+    msml__tensor_graph_visit_node(root, &msml__compute_graph_coalescence_nodes_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, gra);
     size_t new_nodes = gra->num_internal_nodes - n_nodes;
     if (new_nodes > 0) /* Latest node must be starting point. */
-        msml__assert2(gra->nodes[gra->num_internal_nodes-1] == root);
-    msml__assert2(gra->num_internal_nodes + gra->num_leaf_nodes == total_nodes);
+        msml__assert2(gra->internal_nodes[gra->num_internal_nodes - 1] == root);
+    msml__assert2(gra->num_internal_nodes + gra->num_leaf_nodes <= total_nodes);
     if (name && *name) snprintf(gra->name, sizeof(gra->name), "%s", name);
     return gra;
 }
 
-static void MSML_HOTPROC msml__compute_dag_eval_visitor(msml_tensor_t* node, void* ud) { /* Visitor for evaluating compute DAG */
-    const msml_op_t op = node->op;
-    if (op == MSML_OP_NOP || msml_unlikely(op >= MSML_OP__COUNT)) return; /* NOP */
-    const msml_tensor_t** input_nodes = (const msml_tensor_t**)node->inputs;
-    const msml__blas_compute_info_t* bci = (const msml__blas_compute_info_t*)ud;
-    void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
-    (*(*(dispatch_lut+op)))(bci, node, input_nodes); /* Dispatch to CPU implementation */
-}
-
-msml_tensor_t* msml_compute_graph_execute(msml_compute_graph_t* gra) {
-    msml__assert2(gra->num_nodes_total && gra->nodes[gra->num_internal_nodes-1]);
-    msml_tensor_t* root = gra->nodes[gra->num_internal_nodes-1]; /* Evaluation root node */
-    msml__tensor_graph_visit_node(root, &msml__compute_dag_eval_visitor, gra->order == MSML_GRAPH_EVAL_ORDER_FORWARD, &(msml__blas_compute_info_t) {
+msml_tensor_t* MSML_HOTPROC msml_compute_graph_execute(msml_compute_graph_t* gra) {
+    msml__assert2(gra->num_internal_nodes <= INT64_MAX);
+    msml_tensor_t** nodes = gra->internal_nodes;
+    size_t n = gra->num_internal_nodes;
+    msml__assert2(gra->num_nodes_total && nodes[n-1]);
+    msml_tensor_t* root = nodes[n-1]; /* Evaluation root node */
+    msml__blas_compute_info_t bci = {
         .ctx = gra->ctx,
         .n_threads = 1,
         .thread_idx = 0
-    });
+    };
+    void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci.ctx->blas_dispatch; /* Dispatch table */
+    for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
+        msml_tensor_t* node = nodes[i];
+        const msml_op_t op = node->op;
+        const msml_tensor_t** input_nodes = (const msml_tensor_t**)node->inputs;
+        (*(*(dispatch_lut+op)))(&bci, node, input_nodes); /* Dispatch to operation. */
+    }
     return root;
+}
+
+bool msml_compute_graph_contains(const msml_compute_graph_t* gra, const msml_tensor_t* tensor) {
+    for (size_t i = 0; i < gra->num_internal_nodes; ++i) /* Linear search for internal nodes. */
+        if (gra->internal_nodes[i] == tensor) return true;
+    for (size_t i = 0; i < gra->num_leaf_nodes; ++i) /* Linear search for leaf nodes. */
+        if (gra->leaf_nodes[i] == tensor) return true;
+    return false;
+}
+
+void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gra, const char* file_name) {
+    FILE* f = msml__fopen(file_name, "wt");
+    if (msml_unlikely(!f)) {
+        msml_log_error("Failed to open file for writing: %s", file_name);
+        return;
+    }
+    fprintf(f, "digraph G {\n");
+    fprintf(f, "\tnewrank = true;\n");
+    fprintf(f, "\trankdir = LR;\n");
+    char color[32];
+    for (size_t i=0; i < gra->num_internal_nodes; ++i) {
+        const msml_tensor_t* node = gra->internal_nodes[i];
+        snprintf(color, sizeof(color), "paleturquoise1");
+        fprintf(
+            f,
+            "  \"%p\" [ "
+            "style = filled; fillcolor = %s; shape = Mrecord; "
+            "label=\"",
+            (void*)node,
+            color
+        );
+        if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_get_dtype_info(node->dtype)->name);
+        else fprintf(f, "(%s)|", msml_get_dtype_info(node->dtype)->name);
+        if (msml_tensor_is_matrix(node)) fprintf(f, "OP #%zu [%zu, %zu] | <x>%s", i, (size_t)node->shape[0], (size_t)node->shape[1], msml_op_get_name(node->op));
+        else fprintf(f, "OP #%zu [%zu, %zu, %zu] | <x>%s", i, (size_t)node->shape[0], (size_t)node->shape[1], (size_t)node->shape[2], msml_op_get_name(node->op));
+        fprintf(f, "\"; ]\n");
+    }
+    for (size_t i=0; i < gra->num_leaf_nodes; ++i) {
+        const msml_tensor_t* node = gra->leaf_nodes[i];
+        snprintf(color, sizeof(color), "palegreen1");
+        fprintf(
+            f,
+            "  \"%p\" [ "
+            "style = filled; fillcolor = %s; shape = Mrecord; "
+            "label=\"<x>",
+            (void*)node,
+            color
+        );
+        if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_get_dtype_info(node->dtype)->name);
+        else fprintf(f, "(%s)|", msml_get_dtype_info(node->dtype)->name);
+        fprintf(f, "IN #%zu [%zu, %zu]", i, (size_t)node->shape[0], (size_t)node->shape[1]);
+        size_t n = msml_tensor_buf_len(node);
+        if (n < 4) {
+            fprintf(f, " | (");
+            for (size_t j=0; j < n; ++j) {
+                switch (node->dtype) {
+                    case MSML_DTYPE_F32: {
+                        char fmt_buf[128];
+                        *msml__fmt_f64(MSML_FMT_G14, (double)msml_tensor_get_scalar_virtual_index(node, (int64_t)j), fmt_buf) = '\0';
+                        fprintf(f, "%s", fmt_buf);
+                    } break;
+                    default: msml_log_error("Invalid DType for format"); continue;
+                }
+                if (j < n-1) fprintf(f, ", ");
+            }
+            fprintf(f, ")");
+        }
+        fprintf(f, "\"; ]\n");
+    }
+    for (size_t i=0; i < gra->num_internal_nodes; ++i) {
+        const msml_tensor_t* node = gra->internal_nodes[i];
+        for (size_t j=0; j < MSML_MAX_INPUT_TENSORS; ++j) {
+            if (node->inputs[j]) {
+                char label[16];
+                snprintf(label, sizeof(label), "IN #%zu", j);
+                fprintf(
+                    f,
+                    "  \"%p\":x -> \"%p\":x [ arrowhead = none; style = solid; label = \"%s\"; ]\n",
+                    (void*)node->inputs[j],
+                    (void*)node,
+                    label
+                );
+            }
+        }
+    }
+    for (size_t i=0; i < gra->num_leaf_nodes; ++i) {
+        const msml_tensor_t* node = gra->leaf_nodes[i];
+        for (size_t j=0; j < MSML_MAX_INPUT_TENSORS; ++j) {
+            if (node->inputs[j]) {
+                char label[16];
+                snprintf(label, sizeof(label), "IN #%zu", j);
+                fprintf(
+                    f,
+                    "  \"%p\":%s -> \"%p\":%s [ label = \"%s\"; ]\n",
+                    (void*)node->inputs[j], "x",
+                    (void*)node, "x",
+                    label
+                );
+            }
+        }
+    }
+    fprintf(f, "}\n");
+    printf("dot -Tpng %s -o %s.png && open %s.png\n", file_name, file_name, file_name);
+    fclose(f);
 }
 
 msml_ctx_t* msml_compute_graph_get_ctx(const msml_compute_graph_t* gra) { return gra->ctx; }
@@ -3158,12 +3260,12 @@ const char* msml_compute_graph_get_name(const msml_compute_graph_t* gra) { retur
 
 const msml_tensor_t** msml_compute_graph_get_internal_nodes(const msml_compute_graph_t* gra, size_t* n_nodes) {
     if (n_nodes) *n_nodes = gra->num_internal_nodes;
-    return (const msml_tensor_t**)gra->nodes;
+    return (const msml_tensor_t**)gra->internal_nodes;
 }
 
 const msml_tensor_t** msml_compute_graph_get_leaf_nodes(const msml_compute_graph_t* gra, size_t* n_leaves) {
     if (n_leaves) *n_leaves = gra->num_leaf_nodes;
-    return (const msml_tensor_t**)gra->leafs;
+    return (const msml_tensor_t**)gra->leaf_nodes;
 }
 
 size_t msml_compute_graph_get_num_total_nodes(const msml_compute_graph_t* gra) { return gra->num_nodes_total; }
