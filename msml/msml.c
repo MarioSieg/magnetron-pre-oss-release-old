@@ -1453,9 +1453,8 @@ static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, co
     for (int i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
         tensor->shape[i] = i < rank ? msml_max(1, dims[i]) : 1;
     *tensor->strides = scalar_size;
-    for (int i=1; i < MSML_MAX_DIMS; ++i) { /* Calculate strides and check for overflow. */
+    for (int i=1; i < MSML_MAX_DIMS; ++i) /* Calculate strides and check for overflow. */
         msml__assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
-    }
     tensor->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(tensor + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return tensor;
 }
