@@ -85,12 +85,12 @@ ffi.cdef(f'''
     uint8_t msml_op_get_argcount(msml_op_t op);
 
     msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs);
+    msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs);
     msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
     msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
     msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
     msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-    msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs);
+    msml_tensor_t* msml_tensor_operator(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs);
     msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor);
     msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor);
@@ -134,7 +134,7 @@ ffi.cdef(f'''
     bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
     bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
     bool msml_tensor_is_op_possible(const msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
+    msml_tensor_t* msml_tensor_evaluate_static_graph(msml_tensor_t* tensor, msml_graph_eval_order_t order);
     
     void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
     msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
@@ -345,7 +345,7 @@ class Tensor:
         assert 0 < len(shape) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
         for dim in shape:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
-        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, shape, len(shape), ffi.NULL, 0)
+        self.tensor = C.msml__tensor_create(ctx.ctx, dtype.value, shape, len(shape), ffi.NULL, 0)
         if name is not None:
             self.name = name
 
@@ -601,7 +601,7 @@ class Tensor:
         for i, arg in enumerate(args):
             assert isinstance(arg, Tensor), 'Argument must be a tensor'
             tensors[i] = arg.tensor
-        instance: ffi.CData = C.msml_tensor_emit_op(op.value, tensors, len(args))
+        instance: ffi.CData = C.msml_tensor_operator(op.value, tensors, len(args))
         if instance == ffi.NULL:
             raise RuntimeError('Operation not possible')
         return Tensor(instance)
@@ -680,7 +680,7 @@ class Tensor:
 
     def __call__(self, *args, **kwargs)-> 'Tensor':
         order: GraphEvalOrder = kwargs['order'] if 'order' in kwargs else GraphEvalOrder.FORWARD
-        C.msml_tensor_evaluate(self.tensor, order.value)
+        C.msml_tensor_evaluate_static_graph(self.tensor, order.value)
         return self
 
     def __str__(self) -> str:

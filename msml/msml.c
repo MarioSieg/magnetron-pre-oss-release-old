@@ -259,6 +259,7 @@ struct msml_ctx_t {
         size_t mapped_total;
         size_t alloc_total;
     } pool;
+    msml_exec_mode_t exec_mode;
     union {
         struct {
             uint64_t state;
@@ -272,7 +273,7 @@ struct msml_ctx_t {
     } prng_state;
     msml_prng_algorithm_t prng_algorithm;
     uintptr_t host_thread_id;
-    void (*blas_dispatch[MSML_OP__COUNT])(const msml__blas_compute_info_t* bci, msml_tensor_t* r, const msml_tensor_t** inputs); /* BLAS dispatch table. Specialized for host CPU architecture. */
+    void (*blas_dispatch[MSML_OP__COUNT])(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**); /* BLAS dispatch table. Specialized for host CPU architecture. */
     void* ud; /* User data. */
 };
 
@@ -284,8 +285,9 @@ struct msml_tensor_t {
     msml_dtype_t dtype;
     void* buf;
     int64_t buf_size;
-    msml_op_t op;
-    msml_tensor_t* inputs[MSML_MAX_INPUT_TENSORS];
+    msml_exec_mode_t exec_mode;
+    msml_op_t op; /* OpCode - Only used if exec_mode == DEFERRED */
+    msml_tensor_t* inputs[MSML_MAX_INPUT_TENSORS]; /* Inputs - only used if exec_mode == DEFERRED */
     msml_tensor_t* view;
     size_t view_offs;
     char name[MSML_MAX_TENSOR_NAME_LEN];
@@ -692,6 +694,56 @@ static uint32_t msml__crc32c(const void* buffer, size_t size) { /* Compute CRC32
     #endif
 }
 
+typedef enum msml_format_type {
+    MSML_FMT_EOF, MSML_FMT_ERR, MSML_FMT_LIT, MSML_FMT_INT,
+    MSML_FMT_UINT, MSML_FMT_NUM, MSML_FMT_STR, MSML_FMT_CHAR,
+    MSML_FMT_PTR
+} msml_format_type; /* Format types for formatted output */
+
+typedef uint32_t msml_format_flags; /* Flags for formatting output */
+
+/* Format flags */
+#define MSML_FMT_F_LEFT  0x0100 /* Left-align the output */
+#define MSML_FMT_F_PLUS  0x0200 /* Prefix positive numbers with a plus sign */
+#define MSML_FMT_F_ZERO  0x0400 /* Pad with zeros instead of spaces */
+#define MSML_FMT_F_SPACE 0x0800 /* Prefix a space for positive numbers */
+#define MSML_FMT_F_ALT   0x1000 /* Alternate format flag */
+#define MSML_FMT_F_UPPER 0x2000 /* Use uppercase letters for hex output */
+
+/* Format subtypes (bits reused) */
+#define MSML_FMT_T_HEX   0x0010 /* Hexadecimal format for unsigned integers */
+#define MSML_FMT_T_OCT   0x0020 /* Octal format for unsigned integers */
+#define MSML_FMT_T_FP_A  0x0000 /* 'a' format for floating-point numbers */
+#define MSML_FMT_T_FP_E  0x0010 /* 'e' format for floating-point numbers */
+#define MSML_FMT_T_FP_F  0x0020 /* 'f' format for floating-point numbers */
+#define MSML_FMT_T_FP_G  0x0030 /* 'g' format for floating-point numbers */
+#define MSML_FMT_T_QUOTED 0x0010 /* Quoted string format */
+
+#define MSML_FMT_SH_WIDTH 16    /* Shift width for formatting */
+#define MSML_FMT_SH_PREC  24    /* Shift precision for formatting */
+#define MSML_FMT_TYPE(sf) ((msml_format_type)((sf) & 15))  /* Extract format type */
+#define MSML_FMT_WIDTH(sf) (((sf) >> MSML_FMT_SH_WIDTH) & 255u) /* Extract width */
+#define MSML_FMT_PREC(sf) ((((sf) >> MSML_FMT_SH_PREC) & 255u) - 1u) /* Extract precision */
+#define MSML_FMT_FP(sf) (((sf) >> 4) & 3) /* Extract floating-point format */
+
+/* Formats for conversion characters */
+#define MSML_FMT_A (MSML_FMT_NUM|MSML_FMT_T_FP_A) /* 'a' format */
+#define MSML_FMT_C (MSML_FMT_CHAR) /* 'c' format */
+#define MSML_FMT_D (MSML_FMT_INT)  /* 'd' format */
+#define MSML_FMT_E (MSML_FMT_NUM|MSML_FMT_T_FP_E) /* 'e' format */
+#define MSML_FMT_F (MSML_FMT_NUM|MSML_FMT_T_FP_F) /* 'f' format */
+#define MSML_FMT_G (MSML_FMT_NUM|MSML_FMT_T_FP_G) /* 'g' format */
+#define MSML_FMT_I MSML_FMT_D /* 'i' format (same as 'd') */
+#define MSML_FMT_O (MSML_FMT_UINT|MSML_FMT_T_OCT) /* 'o' format */
+#define MSML_FMT_P (MSML_FMT_PTR) /* 'p' format */
+#define MSML_FMT_Q (MSML_FMT_STR|MSML_FMT_T_QUOTED) /* Quoted string */
+#define MSML_FMT_S (MSML_FMT_STR) /* 's' format */
+#define MSML_FMT_U (MSML_FMT_UINT) /* 'u' format */
+#define MSML_FMT_X (MSML_FMT_UINT|MSML_FMT_T_HEX) /* 'x' format */
+#define MSML_FMT_G14 (MSML_FMT_G | ((14+1) << MSML_FMT_SH_PREC)) /* 'g' format with precision 14 */
+
+static char* msml__fmt_f64(msml_format_flags sf, double n, char* p);
+
 typedef struct msml__hashset_t {
     size_t len;
     msml_bitset_t* used;
@@ -965,6 +1017,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     ctx->host_thread_id = host_tid;
 
     /* Install BLAS dispatch table, specialized for host CPU arch. */
+    ctx->exec_mode = ctx_info.exec_mode;
     msml__blas_compute_dispatch_table_install(ctx);
 
     /* Print context initialization time. */
@@ -1007,11 +1060,15 @@ size_t msml_ctx_total_allocated_pool_memory(const msml_ctx_t* ctx) {
     return mem;
 }
 
+msml_exec_mode_t msml_ctx_get_exec_mode(const msml_ctx_t* ctx) { return ctx->exec_mode; }
+
+void msml_ctx_set_exec_mode(msml_ctx_t* ctx, msml_exec_mode_t mode) { ctx->exec_mode = mode; }
+
 msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx) { return ctx->prng_algorithm; }
 
 void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed) {
     ctx->prng_algorithm = algorithm;
-    msml__prng_init(ctx, seed);
+    msml__prng_init(ctx, seed); /* Reinitialize PRNG state with new seed. */
 }
 
 const char* msml_ctx_get_os_name(const msml_ctx_t* ctx) { return ctx->sys.os_name; }
@@ -1116,17 +1173,60 @@ static void MSML_COLDPROC msml__validate_print_separator(void) {
     fputc('\n', stderr);
 }
 
+static bool msml__validate_inputs(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs) {
+    if (msml_unlikely(n_inputs > MSML_MAX_INPUT_TENSORS)) {
+        msml__validate_print_separator();
+        fprintf(stderr,
+            "Failed to execute operation: %s.\n"
+            "ERROR: Operation requires at most %u input tensors, but %u were provided.\n"
+            "    Hint: Ensure the correct number of input tensors are provided.\n",
+            msml_op_get_name(op), MSML_MAX_INPUT_TENSORS, n_inputs
+        );
+        msml__validate_print_separator();
+        fflush(stderr);
+        return false;
+    }
+    if (msml_unlikely(msml_op_get_argcount(op) != n_inputs)) {
+        msml__validate_print_separator();
+        fprintf(stderr,
+            "Failed to execute operation: %s.\n"
+            "ERROR: Operation requires %u input tensors, but %u were provided.\n"
+            "    Hint: Ensure the correct number of input tensors are provided.\n",
+            msml_op_get_name(op), msml_op_get_argcount(op), n_inputs
+        );
+        msml__validate_print_separator();
+        fflush(stderr);
+        return false;
+    }
+    for (uint32_t i=0; i < msml_op_get_argcount(op); ++i) {
+        if (msml_unlikely(!inputs[i])) {
+            msml__validate_print_separator();
+            fprintf(stderr,
+                "Failed to execute operation: %s.\n"
+                "ERROR: Input tensor %u is NULL.\n"
+                "    Hint: Ensure all input tensors are valid and non-NULL.\n",
+                msml_op_get_name(op), i
+            );
+            msml__validate_print_separator();
+            fflush(stderr);
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool msml__validate_shape_eq(msml_op_t op, const msml_tensor_t* a, const msml_tensor_t* b) {
     if (msml_likely(msml_tensor_is_shape_eq(a, b))) return true;
     msml__validate_print_separator();
-    fprintf(stderr, "Failed to execute operation: %s.\n"
-           "ERROR: Input tensor shapes must be equal.\n"
-           "    - Input Tensor 1 '%s' Shape: [%zu %zu %zu %zu]\n"
-           "    - Input Tensor 2 '%s' Shape: [%zu %zu %zu %zu]\n"
-           "    Hint: Adjust tensor shapes using transposition or permutation.\n",
-          msml_op_get_name(op),
-          a->name, (size_t)a->shape[0], (size_t)a->shape[1], (size_t)a->shape[2], (size_t)a->shape[3],
-          b->name, (size_t)b->shape[0], (size_t)b->shape[1], (size_t)b->shape[2], (size_t)b->shape[3]
+    fprintf(stderr,
+        "Failed to execute operation: %s.\n"
+        "ERROR: Input tensor shapes must be equal.\n"
+        "    - Input Tensor 1 '%s' Shape: [%zu %zu %zu %zu]\n"
+        "    - Input Tensor 2 '%s' Shape: [%zu %zu %zu %zu]\n"
+        "    Hint: Adjust tensor shapes using transposition or permutation.\n",
+        msml_op_get_name(op),
+        a->name, (size_t)a->shape[0], (size_t)a->shape[1], (size_t)a->shape[2], (size_t)a->shape[3],
+        b->name, (size_t)b->shape[0], (size_t)b->shape[1], (size_t)b->shape[2], (size_t)b->shape[3]
     );
     msml__validate_print_separator();
     fflush(stderr);
@@ -1136,7 +1236,8 @@ static bool msml__validate_shape_eq(msml_op_t op, const msml_tensor_t* a, const 
 static bool msml__validate_shape_broadcastable(msml_op_t op, const msml_tensor_t* a, const msml_tensor_t* b) { /* Check if tensor shapes are broadcast-able. (b into a) */
     if (msml_likely(msml_tensor_can_broadcast(b, a))) return true;
     msml__validate_print_separator();
-    fprintf(stderr, "Failed to execute operation: %s.\n"
+    fprintf(stderr,
+        "Failed to execute operation: %s.\n"
         "ERROR: Input tensor shapes must be broadcast-able.\n"
         "    - Input Tensor 1 '%s' Shape: [%zu %zu %zu %zu]\n"
         "    - Input Tensor 2 '%s' Shape: [%zu %zu %zu %zu]\n"
@@ -1163,848 +1264,171 @@ static bool msml__validate_shape_broadcastable(msml_op_t op, const msml_tensor_t
         return false; \
     }
 
-#define msml__validate_shape_eq_r_x() \
-    msml__validate_expr_gen(msml_tensor_is_shape_eq(tensor->inputs[0], tensor), "Input tensor shape mismatch, both input tensors must have the same shape.");
-#define msml__validate_shape_broadcastable_y_x() \
-    msml__validate_expr_gen(msml_tensor_can_broadcast(tensor->inputs[1], tensor->inputs[0]), \
-        "Second input tensor must be broadcast-able into first input tensor." \
-        "ERROR: Operation failed due to shape mismatch.\n" \
-        "    - First Input Tensor: '%s', Dimensions [%zu %zu %zu %zu]\n" \
-        "    - Second Input Tensor: '%s', Dimensions [%zu %zu %zu %zu]\n" \
-        "    Hint: Ensure the dimensions allow broadcasting.", \
-        tensor->inputs[0]->name,\
-        (size_t)tensor->inputs[0]->shape[0], \
-        (size_t)tensor->inputs[0]->shape[1], \
-        (size_t)tensor->inputs[0]->shape[2], \
-        (size_t)tensor->inputs[0]->shape[3], \
-        tensor->inputs[1]->name, \
-        (size_t)tensor->inputs[1]->shape[0], \
-        (size_t)tensor->inputs[1]->shape[1], \
-        (size_t)tensor->inputs[1]->shape[2], \
-        (size_t)tensor->inputs[1]->shape[3] \
-    )
-
-static bool msml__validate_op_nop(const msml_tensor_t* tensor) {
-    (void)tensor;
+static bool msml__validate_op_nop(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+    (void)op, (void)result, (void)inputs, (void)n_inputs;
     return true;
 }
 
-static bool msml__validate_op_transpose(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_TRANSPOSE, tensor, tensor->inputs[0]))) return false;
+static bool msml__validate_op_unary(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+    if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
+    if (msml_unlikely(!msml__validate_shape_eq(op, result, inputs[0]))) return false;
     return true;
 }
 
-static bool msml__validate_op_clone(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_CLONE, tensor, tensor->inputs[0]))) return false;
+static bool msml__validate_op_binary(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+    if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
+    if (msml_unlikely(!msml__validate_shape_eq(op, result, inputs[0]))) return false;
+    if (msml_unlikely(!msml__validate_shape_broadcastable(op, inputs[0], inputs[1]))) return false;
+    msml__validate_expr_gen(result->strides[0] == msml_get_dtype_info(result->dtype)->size, "Result must be contiguous.");
+    msml__validate_expr_gen(inputs[0]->strides[0] == msml_get_dtype_info(result->dtype)->size, "First tensor must be contiguous.");
     return true;
 }
 
-static bool msml__validate_op_step(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_STEP, tensor, tensor->inputs[0]))) return false;
+static bool msml__validate_op_transpose(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+    if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
     return true;
 }
 
-static bool msml__validate_op_softmax(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SOFTMAX, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
+static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+    if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
 
-static bool msml__validate_op_softmax_dv(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SOFTMAX_DV, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_sigmoid(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SIGMOID, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_sigmoid_dv(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SIGMOID_DV, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_hard_sigmoid(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_HARD_SIGMOID, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_hard_sigmoid_dv(const msml_tensor_t* tensor) {
-   if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_HARD_SIGMOID_DV, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_silu(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SILU, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_silu_dv(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SILU_DV, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_tanh(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_TANH, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_tanh_dv(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_TANH_DV, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_relu(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_RELU, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_relu_dv(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_RELU_DV, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_gelu(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_GELU, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_gelu_dv(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_GELU_DV, tensor, tensor->inputs[0]))) return false;
-    return true;
-}
-
-static bool msml__validate_op_add(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_ADD, tensor, tensor->inputs[0]))) return false;
-    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_ADD, tensor->inputs[0], tensor->inputs[1]))) return false;
-    msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
-    msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
-    return true;
-}
-
-static bool msml__validate_op_sub(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_SUB, tensor, tensor->inputs[0]))) return false;
-    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_SUB, tensor->inputs[0], tensor->inputs[1]))) return false;
-    msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
-    msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
-    return true;
-}
-
-static bool msml__validate_op_mul(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_MUL, tensor, tensor->inputs[0]))) return false;
-    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_MUL, tensor->inputs[0], tensor->inputs[1]))) return false;
-    msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
-    msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
-    return true;
-}
-
-static bool msml__validate_op_div(const msml_tensor_t* tensor) {
-    if (msml_unlikely(!msml__validate_shape_eq(MSML_OP_DIV, tensor, tensor->inputs[0]))) return false;
-    if (msml_unlikely(!msml__validate_shape_broadcastable(MSML_OP_DIV, tensor->inputs[0], tensor->inputs[1]))) return false;
-    msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result must be contiguous.");
-    msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "First tensor must be contiguous.");
-    return true;
-}
-
-static bool msml__validate_op_matmul(const msml_tensor_t* tensor) {
     msml__validate_expr_gen(
-        tensor->shape[0] == tensor->inputs[0]->shape[1],
-        "ERROR: Matmul operation failed due to shape mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [0] = %zu\n"
-        "    - First Input Tensor: '%s', Dimension [1] = %zu\n"
-        "    Hint: Ensure the second dimension of the first input tensor matches the first dimension of the result tensor.",
-        tensor->name, (size_t)tensor->shape[0], tensor->inputs[0]->name, (size_t)tensor->inputs[0]->shape[1]
+            result->shape[0] == inputs[0]->shape[1],
+            "ERROR: Matmul operation failed due to shape mismatch.\n"
+            "    - Result Tensor: '%s', Dimension [0] = %zu\n"
+            "    - First Input Tensor: '%s', Dimension [1] = %zu\n"
+            "    Hint: Ensure the second dimension of the first input tensor matches the first dimension of the result tensor.",
+            result->name, (size_t)result->shape[0], result->inputs[0]->name, (size_t)result->inputs[0]->shape[1]
     );
 
     msml__validate_expr_gen(
-        tensor->shape[1] == tensor->inputs[1]->shape[1],
-        "ERROR: Matmul operation failed due to shape mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [1] = %zu\n"
-        "    - Second Input Tensor: '%s', Dimension [1] = %zu\n"
-        "    Hint: Ensure the dimensions match for a valid multiplication.",
-        tensor->name, (size_t)tensor->shape[1], tensor->inputs[1]->name, (size_t)tensor->inputs[1]->shape[1]
+            result->shape[1] == inputs[1]->shape[1],
+            "ERROR: Matmul operation failed due to shape mismatch.\n"
+            "    - Result Tensor: '%s', Dimension [1] = %zu\n"
+            "    - Second Input Tensor: '%s', Dimension [1] = %zu\n"
+            "    Hint: Ensure the dimensions match for a valid multiplication.",
+            result->name, (size_t)result->shape[1], result->inputs[1]->name, (size_t)result->inputs[1]->shape[1]
     );
 
     msml__validate_expr_gen(
-        tensor->shape[2] == tensor->inputs[1]->shape[2],
-        "ERROR: Dimension mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [2] = %zu\n"
-        "    - Second Input Tensor: '%s', Dimension [2] = %zu\n"
-        "    Hint: The dimensions must match.",
-        tensor->name, (size_t)tensor->shape[2], tensor->inputs[1]->name, (size_t)tensor->inputs[1]->shape[2]
+            result->shape[2] == inputs[1]->shape[2],
+            "ERROR: Dimension mismatch.\n"
+            "    - Result Tensor: '%s', Dimension [2] = %zu\n"
+            "    - Second Input Tensor: '%s', Dimension [2] = %zu\n"
+            "    Hint: The dimensions must match.",
+            result->name, (size_t)result->shape[2], result->inputs[1]->name, (size_t)result->inputs[1]->shape[2]
     );
 
     msml__validate_expr_gen(
-        tensor->shape[3] == tensor->inputs[1]->shape[3],
-        "ERROR: Dimension mismatch.\n"
-        "    - Result Tensor: '%s', Dimension [3] = %zu\n"
-        "    - Second Input Tensor: '%s', Dimension [3] = %zu\n"
-        "    Hint: The dimensions must match.",
-        tensor->name, (size_t)tensor->shape[3], tensor->inputs[1]->name, (size_t)tensor->inputs[1]->shape[3]
+            result->shape[3] == inputs[1]->shape[3],
+            "ERROR: Dimension mismatch.\n"
+            "    - Result Tensor: '%s', Dimension [3] = %zu\n"
+            "    - Second Input Tensor: '%s', Dimension [3] = %zu\n"
+            "    Hint: The dimensions must match.",
+            result->name, (size_t)result->shape[3], result->inputs[1]->name, (size_t)result->inputs[1]->shape[3]
     );
 
-    msml__validate_expr_gen(tensor->inputs[0]->strides[0] == sizeof(float), "Both input tensors must be contiguous");
-    msml__validate_expr_gen(tensor->inputs[1]->strides[0] == sizeof(float), "Both input tensors must be contiguous");
-    msml__validate_expr_gen(tensor->strides[0] == sizeof(float), "Result tensor must be contiguous");
-    msml__validate_expr_gen(tensor->strides[0] <= tensor->strides[1], "Result tensor cannot be permuted or transposed.");
-    msml__validate_expr_gen(tensor->strides[1] <= tensor->strides[2], "Result tensor cannot be permuted or transposed.");
-    msml__validate_expr_gen(tensor->strides[2] <= tensor->strides[3], "Result tensor cannot be permuted or transposed.");
-    msml__validate_expr_gen(tensor->inputs[1]->shape[2] % tensor->inputs[0]->shape[2] == 0, "Second input tensor must be broadcastable into first input tensor.");
-    msml__validate_expr_gen(tensor->inputs[1]->shape[3] % tensor->inputs[0]->shape[3] == 0, "Second input tensor must be broadcastable into first input tensor.");
+    msml__validate_expr_gen(inputs[0]->strides[0] == msml_get_dtype_info(result->dtype)->size, "Both input tensors must be contiguous");
+    msml__validate_expr_gen(inputs[1]->strides[0] == msml_get_dtype_info(result->dtype)->size, "Both input tensors must be contiguous");
+    msml__validate_expr_gen(result->strides[0] == msml_get_dtype_info(result->dtype)->size, "Result tensor must be contiguous");
+    msml__validate_expr_gen(result->strides[0] <= result->strides[1], "Result tensor cannot be permuted or transposed.");
+    msml__validate_expr_gen(result->strides[1] <= result->strides[2], "Result tensor cannot be permuted or transposed.");
+    msml__validate_expr_gen(result->strides[2] <= result->strides[3], "Result tensor cannot be permuted or transposed.");
+    msml__validate_expr_gen(inputs[1]->shape[2] % inputs[0]->shape[2] == 0, "Second input tensor must be broadcastable into first input tensor.");
+    msml__validate_expr_gen(inputs[1]->shape[3] % inputs[0]->shape[3] == 0, "Second input tensor must be broadcastable into first input tensor.");
     return true;
 }
 
-static bool (*msml__op_get_validator_routine(msml_op_t op))(const msml_tensor_t* tensor) {
-    static bool (*const routines[MSML_OP__COUNT])(const msml_tensor_t* tensor) = {
+static bool (*msml__op_get_validator_routine(msml_op_t op))(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) {
+    static bool (*const routines[MSML_OP__COUNT])(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) = {
         [MSML_OP_NOP] = &msml__validate_op_nop,
-        [MSML_OP_CLONE] = &msml__validate_op_clone,
+        [MSML_OP_CLONE] = &msml__validate_op_unary,
+        [MSML_OP_VIEW] = &msml__validate_op_unary,
         [MSML_OP_TRANSPOSE] = &msml__validate_op_transpose,
-        [MSML_OP_STEP] = &msml__validate_op_step,
-        [MSML_OP_SOFTMAX] = &msml__validate_op_softmax,
-        [MSML_OP_SOFTMAX_DV] = &msml__validate_op_softmax_dv,
-        [MSML_OP_SIGMOID] = &msml__validate_op_sigmoid,
-        [MSML_OP_SIGMOID_DV] = &msml__validate_op_sigmoid_dv,
-        [MSML_OP_HARD_SIGMOID] = &msml__validate_op_hard_sigmoid,
-        [MSML_OP_HARD_SIGMOID_DV] = &msml__validate_op_hard_sigmoid_dv,
-        [MSML_OP_SILU] = &msml__validate_op_silu,
-        [MSML_OP_SILU_DV] = &msml__validate_op_silu_dv,
-        [MSML_OP_TANH] = &msml__validate_op_tanh,
-        [MSML_OP_TANH_DV] = &msml__validate_op_tanh_dv,
-        [MSML_OP_RELU] = &msml__validate_op_relu,
-        [MSML_OP_RELU_DV] = &msml__validate_op_relu_dv,
-        [MSML_OP_GELU] = &msml__validate_op_gelu,
-        [MSML_OP_GELU_DV] = &msml__validate_op_gelu_dv,
-        [MSML_OP_ADD] = &msml__validate_op_add,
-        [MSML_OP_SUB] = &msml__validate_op_sub,
-        [MSML_OP_MUL] = &msml__validate_op_mul,
-        [MSML_OP_DIV] = &msml__validate_op_div,
+        [MSML_OP_STEP] = &msml__validate_op_unary,
+        [MSML_OP_SOFTMAX] = &msml__validate_op_unary,
+        [MSML_OP_SOFTMAX_DV] = &msml__validate_op_unary,
+        [MSML_OP_SIGMOID] = &msml__validate_op_unary,
+        [MSML_OP_SIGMOID_DV] = &msml__validate_op_unary,
+        [MSML_OP_HARD_SIGMOID] = &msml__validate_op_unary,
+        [MSML_OP_SILU] = &msml__validate_op_unary,
+        [MSML_OP_SILU_DV] = &msml__validate_op_unary,
+        [MSML_OP_TANH] = &msml__validate_op_unary,
+        [MSML_OP_TANH_DV] = &msml__validate_op_unary,
+        [MSML_OP_RELU] = &msml__validate_op_unary,
+        [MSML_OP_RELU_DV] = &msml__validate_op_unary,
+        [MSML_OP_GELU] = &msml__validate_op_unary,
+        [MSML_OP_GELU_DV] = &msml__validate_op_unary,
+        [MSML_OP_ADD] = &msml__validate_op_binary,
+        [MSML_OP_SUB] = &msml__validate_op_binary,
+        [MSML_OP_MUL] = &msml__validate_op_binary,
+        [MSML_OP_DIV] = &msml__validate_op_binary,
         [MSML_OP_MATMUL] = &msml__validate_op_matmul,
     };
     return routines[op];
 }
 
+static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs);
+
+static msml_tensor_t* msml__result_constructor_routine_nop(msml_tensor_t** inputs) {
+    return NULL;
+}
+
+static msml_tensor_t* msml__result_constructor_routine_isomorph(msml_tensor_t** inputs) {
+    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, inputs[0]->rank, NULL, 0);
+}
+
+static msml_tensor_t* msml__result_constructor_routine_view(msml_tensor_t** inputs) {
+    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, inputs[0]->rank, inputs[0], 0);
+}
+
+static msml_tensor_t* msml__result_constructor_routine_transposed(msml_tensor_t** inputs) {
+    msml_tensor_t* transposed = msml__result_constructor_routine_isomorph(inputs);
+    msml_swap(int64_t, transposed->shape[0], transposed->shape[1]);
+    msml_swap(int64_t, transposed->strides[0], transposed->strides[1]);
+    return transposed;
+}
+
+static msml_tensor_t* msml__result_constructor_routine_matmul(msml_tensor_t** inputs) {
+    int64_t shape[MSML_MAX_DIMS];
+    *shape = inputs[0]->shape[1]; /* R = IN 0's rows. */
+    memcpy(shape+1, inputs[1]->shape+1, 3*sizeof(*shape)); /* R = IN 1's cols, 3rd and 4th dims. */
+    return msml__tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, sizeof(shape) / sizeof(* shape), NULL, 0);
+}
+
+static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(msml_tensor_t**) {
+    static msml_tensor_t* (*const routines[])(msml_tensor_t**) = {
+        [MSML_OP_NOP] = &msml__result_constructor_routine_nop,
+        [MSML_OP_CLONE] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_VIEW] = &msml__result_constructor_routine_view,
+        [MSML_OP_TRANSPOSE] = &msml__result_constructor_routine_transposed,
+        [MSML_OP_STEP] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_SOFTMAX] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_SOFTMAX_DV] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_SIGMOID] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_SIGMOID_DV] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_HARD_SIGMOID] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_SILU] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_SILU_DV] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_TANH] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_TANH_DV] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_RELU] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_RELU_DV] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_GELU] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_GELU_DV] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_ADD] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_SUB] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_MUL] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_DIV] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_MATMUL] = &msml__result_constructor_routine_matmul,
+    };
+    msml_static_assert(MSML_OP__COUNT == sizeof(routines)/sizeof(*routines));
+    return routines[op];
+}
+
 #undef msml__validate_inputs
 
-typedef enum msml_format_type {
-    MSML_FMT_EOF, MSML_FMT_ERR, MSML_FMT_LIT, MSML_FMT_INT,
-    MSML_FMT_UINT, MSML_FMT_NUM, MSML_FMT_STR, MSML_FMT_CHAR,
-    MSML_FMT_PTR
-} msml_format_type; /* Format types for formatted output */
-
-typedef uint32_t msml_format_flags; /* Flags for formatting output */
-
-/* Format flags */
-#define MSML_FMT_F_LEFT  0x0100 /* Left-align the output */
-#define MSML_FMT_F_PLUS  0x0200 /* Prefix positive numbers with a plus sign */
-#define MSML_FMT_F_ZERO  0x0400 /* Pad with zeros instead of spaces */
-#define MSML_FMT_F_SPACE 0x0800 /* Prefix a space for positive numbers */
-#define MSML_FMT_F_ALT   0x1000 /* Alternate format flag */
-#define MSML_FMT_F_UPPER 0x2000 /* Use uppercase letters for hex output */
-
-/* Format subtypes (bits reused) */
-#define MSML_FMT_T_HEX   0x0010 /* Hexadecimal format for unsigned integers */
-#define MSML_FMT_T_OCT   0x0020 /* Octal format for unsigned integers */
-#define MSML_FMT_T_FP_A  0x0000 /* 'a' format for floating-point numbers */
-#define MSML_FMT_T_FP_E  0x0010 /* 'e' format for floating-point numbers */
-#define MSML_FMT_T_FP_F  0x0020 /* 'f' format for floating-point numbers */
-#define MSML_FMT_T_FP_G  0x0030 /* 'g' format for floating-point numbers */
-#define MSML_FMT_T_QUOTED 0x0010 /* Quoted string format */
-
-#define MSML_FMT_SH_WIDTH 16    /* Shift width for formatting */
-#define MSML_FMT_SH_PREC  24    /* Shift precision for formatting */
-#define MSML_FMT_TYPE(sf) ((msml_format_type)((sf) & 15))  /* Extract format type */
-#define MSML_FMT_WIDTH(sf) (((sf) >> MSML_FMT_SH_WIDTH) & 255u) /* Extract width */
-#define MSML_FMT_PREC(sf) ((((sf) >> MSML_FMT_SH_PREC) & 255u) - 1u) /* Extract precision */
-#define MSML_FMT_FP(sf) (((sf) >> 4) & 3) /* Extract floating-point format */
-
-/* Formats for conversion characters */
-#define MSML_FMT_A (MSML_FMT_NUM|MSML_FMT_T_FP_A) /* 'a' format */
-#define MSML_FMT_C (MSML_FMT_CHAR) /* 'c' format */
-#define MSML_FMT_D (MSML_FMT_INT)  /* 'd' format */
-#define MSML_FMT_E (MSML_FMT_NUM|MSML_FMT_T_FP_E) /* 'e' format */
-#define MSML_FMT_F (MSML_FMT_NUM|MSML_FMT_T_FP_F) /* 'f' format */
-#define MSML_FMT_G (MSML_FMT_NUM|MSML_FMT_T_FP_G) /* 'g' format */
-#define MSML_FMT_I MSML_FMT_D /* 'i' format (same as 'd') */
-#define MSML_FMT_O (MSML_FMT_UINT|MSML_FMT_T_OCT) /* 'o' format */
-#define MSML_FMT_P (MSML_FMT_PTR) /* 'p' format */
-#define MSML_FMT_Q (MSML_FMT_STR|MSML_FMT_T_QUOTED) /* Quoted string */
-#define MSML_FMT_S (MSML_FMT_STR) /* 's' format */
-#define MSML_FMT_U (MSML_FMT_UINT) /* 'u' format */
-#define MSML_FMT_X (MSML_FMT_UINT|MSML_FMT_T_HEX) /* 'x' format */
-#define MSML_FMT_G14 (MSML_FMT_G | ((14+1) << MSML_FMT_SH_PREC)) /* 'g' format with precision 14 */
-
-/* Rescale factors to push the exponent of a number towards zero. */
-#define rescale_exponents(P, N) \
-  P(308), P(289), P(270), P(250), P(231), P(212), P(193), P(173), P(154), \
-  P(135), P(115), P(96), P(77), P(58), P(38), P(0), P(0), P(0), N(39), N(58), \
-  N(77), N(96), N(116), N(135), N(154), N(174), N(193), N(212), N(231), \
-  N(251), N(270), N(289)
-#define one_e_p(X) 1e+0 ## X
-#define one_e_n(X) 1e-0 ## X
-static const int16_t msml__rescale_e[] = { rescale_exponents(-, +) };
-static const double msml__rescale_n[] = { rescale_exponents(one_e_p, one_e_n) };
-#undef one_e_n
-#undef one_e_p
-
-/*
-** For p in range -70 through 57, this table encodes pairs (m, e) such that
-** 4*2^p <= (uint8_t)m*10^e, and is the smallest value for which this holds.
-*/
-static const int8_t msml__four_ulp_m_e[] = {
-    34, -21, 68, -21, 14, -20, 28, -20, 55, -20, 2, -19, 3, -19, 5, -19, 9, -19,
-    -82, -18, 35, -18, 7, -17, -117, -17, 28, -17, 56, -17, 112, -16, -33, -16,
-    45, -16, 89, -16, -78, -15, 36, -15, 72, -15, -113, -14, 29, -14, 57, -14,
-    114, -13, -28, -13, 46, -13, 91, -12, -74, -12, 37, -12, 73, -12, 15, -11, 3,
-    -11, 59, -11, 2, -10, 3, -10, 5, -10, 1, -9, -69, -9, 38, -9, 75, -9, 15, -7,
-    3, -7, 6, -7, 12, -6, -17, -7, 48, -7, 96, -7, -65, -6, 39, -6, 77, -6, -103,
-    -5, 31, -5, 62, -5, 123, -4, -11, -4, 49, -4, 98, -4, -60, -3, 4, -2, 79, -3,
-    16, -2, 32, -2, 63, -2, 2, -1, 25, 0, 5, 1, 1, 2, 2, 2, 4, 2, 8, 2, 16, 2,
-    32, 2, 64, 2, -128, 2, 26, 2, 52, 2, 103, 3, -51, 3, 41, 4, 82, 4, -92, 4,
-    33, 4, 66, 4, -124, 5, 27, 5, 53, 5, 105, 6, 21, 6, 42, 6, 84, 6, 17, 7, 34,
-    7, 68, 7, 2, 8, 3, 8, 6, 8, 108, 9, -41, 9, 43, 10, 86, 9, -84, 10, 35, 10,
-    69, 10, -118, 11, 28, 11, 55, 12, 11, 13, 22, 13, 44, 13, 88, 13, -80, 13,
-    36, 13, 71, 13, -115, 14, 29, 14, 57, 14, 113, 15, -30, 15, 46, 15, 91, 15,
-    19, 16, 37, 16, 73, 16, 2, 17, 3, 17, 6, 17
-};
-
-/* min(2^32-1, 10^e-1) for e in range 0 through 10 */
-static const uint32_t msml__ndigits_dec_threshold[] = {
-    0, 9U, 99U, 999U, 9999U, 99999U, 999999U,
-    9999999U, 99999999U, 999999999U, 0xffffffffU
-};
-
-/* Compute the number of digits in the decimal representation of x. */
-static size_t msml__ndigits_dec(uint32_t x) {
-    size_t t = ((msml_fls(x | 1) * 77) >> 8) + 1; /* 2^8/77 is roughly log2(10) */
-    return t + (x > msml__ndigits_dec_threshold[t]);
-}
-
-#define wint_r(x, sh, sc) { uint32_t d = (x*(((1<<sh)+sc-1)/sc))>>sh; x -= d*sc; *p++ = (char)('0'+d); }
-static char* msml__wuint9(char* p, uint32_t u) {
-    uint32_t v = u / 10000, w;
-    u -= v * 10000;
-    w = v / 10000;
-    v -= w * 10000;
-    *p++ = (char)('0'+w);
-    wint_r(v, 23, 1000)
-    wint_r(v, 12, 100)
-    wint_r(v, 10, 10)
-    *p++ = (char)('0'+v);
-    wint_r(u, 23, 1000)
-    wint_r(u, 12, 100)
-    wint_r(u, 10, 10)
-    *p++ = (char)('0'+u);
-    return p;
-}
-#undef wint_r
-
-#define wint_r(x, sh, sc) { uint32_t d = (x*(((1<<sh)+sc-1)/sc))>>sh; x -= d*sc; *p++ = (char)('0'+d); }
-static char* msml__wint(char* p, int32_t k) {
-    uint32_t u = (uint32_t)k;
-    if (k < 0) { u = ~u+1u; *p++ = '-'; }
-    if (u < 10000) {
-        if (u < 10) goto dig1;
-        if (u < 100) goto dig2;
-        if (u < 1000) goto dig3;
-    } else {
-        uint32_t v = u / 10000; u -= v * 10000;
-        if (v < 10000) {
-            if (v < 10) goto dig5;
-            if (v < 100) goto dig6;
-            if (v < 1000) goto dig7;
-        } else {
-            uint32_t w = v / 10000; v -= w * 10000;
-            if (w >= 10) wint_r(w, 10, 10)
-                         *p++ = (char)('0'+w);
-        }
-        wint_r(v, 23, 1000)
-        dig7: wint_r(v, 12, 100)
-        dig6: wint_r(v, 10, 10)
-        dig5: *p++ = (char)('0'+v);
-    }
-    wint_r(u, 23, 1000)
-    dig3: wint_r(u, 12, 100)
-    dig2: wint_r(u, 10, 10)
-    dig1: *p++ = (char)('0'+u);
-    return p;
-}
-#undef wint_r
-
-/* -- Extended precision arithmetic --------------------------------------- */
-
-/*
-** The "nd" format is a fixed-precision decimal representation for numbers. It
-** consists of up to 64 uint32_t values, with each uint32_t storing a value
-** in the range [0, 1e9). A number in "nd" format consists of three variables:
-**
-**  uint32_t nd[64];
-**  uint32_t ndlo;
-**  uint32_t ndhi;
-**
-** The integral part of the number is stored in nd[0 ... ndhi], the value of
-** which is sum{i in [0, ndhi] | nd[i] * 10^(9*i)}. If the fractional part of
-** the number is zero, ndlo is zero. Otherwise, the fractional part is stored
-** in nd[ndlo ... 63], the value of which is taken to be
-** sum{i in [ndlo, 63] | nd[i] * 10^(9*(i-64))}.
-**
-** If the array part had 128 elements rather than 64, then every double would
-** have an exact representation in "nd" format. With 64 elements, all integral
-** doubles have an exact representation, and all non-integral doubles have
-** enough digits to make both %.99e and %.99f do the right thing.
-*/
-#define MSML__ND_MUL2K_MAX_SHIFT 29
-#define MSML__ND_MUL2K_DIV1E9(val) ((uint32_t)((val) / 1000000000))
-
-/* Multiply nd by 2^k and add carry_in (ndlo is assumed to be zero). */
-static uint32_t nd_mul2k(uint32_t* nd, uint32_t ndhi, uint32_t k, uint32_t carry_in, msml_format_flags sf) {
-    uint32_t i, ndlo = 0, start = 1;
-    /* Performance hacks. */
-    if (k > MSML__ND_MUL2K_MAX_SHIFT*2 && MSML_FMT_FP(sf) != MSML_FMT_FP(MSML_FMT_T_FP_F)) {
-        start = ndhi - (MSML_FMT_PREC(sf) + 17) / 8;
-    }
-    /* Real logic. */
-    while (k >= MSML__ND_MUL2K_MAX_SHIFT) {
-        for (i = ndlo; i <= ndhi; i++) {
-            uint64_t val = ((uint64_t)nd[i] << MSML__ND_MUL2K_MAX_SHIFT) | carry_in;
-            carry_in = MSML__ND_MUL2K_DIV1E9(val);
-            nd[i] = (uint32_t)val - carry_in * 1000000000;
-        }
-        if (carry_in) {
-            nd[++ndhi] = carry_in; carry_in = 0;
-            if (start++ == ndlo) ++ndlo;
-        }
-        k -= MSML__ND_MUL2K_MAX_SHIFT;
-    }
-    if (k) {
-        for (i = ndlo; i <= ndhi; i++) {
-            uint64_t val = ((uint64_t)nd[i] << k) | carry_in;
-            carry_in = MSML__ND_MUL2K_DIV1E9(val);
-            nd[i] = (uint32_t)val - carry_in * 1000000000;
-        }
-        if (carry_in) nd[++ndhi] = carry_in;
-    }
-    return ndhi;
-}
-
-/* Divide nd by 2^k (ndlo is assumed to be zero). */
-static uint32_t nd_div2k(uint32_t* nd, uint32_t ndhi, uint32_t k, msml_format_flags sf) {
-    uint32_t ndlo = 0, stop1 = ~0, stop2 = ~0;
-    /* Performance hacks. */
-    if (!ndhi) {
-        if (!nd[0]) {
-            return 0;
-        } else {
-            uint32_t s = msml_ffs(nd[0]);
-            if (s >= k) { nd[0] >>= k; return 0; }
-            nd[0] >>= s; k -= s;
-        }
-    }
-    if (k > 18) {
-        if (MSML_FMT_FP(sf) == MSML_FMT_FP(MSML_FMT_T_FP_F)) {
-            stop1 = 63 - (int32_t)MSML_FMT_PREC(sf) / 9;
-        } else {
-            int32_t floorlog2 = ndhi * 29 + msml_fls(nd[ndhi]) - k;
-            int32_t floorlog10 = (int32_t)(floorlog2 * 0.30102999566398114);
-            stop1 = 62 + (floorlog10 - (int32_t)MSML_FMT_PREC(sf)) / 9;
-            stop2 = 61 + ndhi - (int32_t)MSML_FMT_PREC(sf) / 8;
-        }
-    }
-    /* Real logic. */
-    while (k >= 9) {
-        uint32_t i = ndhi, carry = 0;
-        for (;;) {
-            uint32_t val = nd[i];
-            nd[i] = (val >> 9) + carry;
-            carry = (val & 0x1ff) * 1953125;
-            if (i == ndlo) break;
-            i = (i - 1) & 0x3f;
-        }
-        if (ndlo != stop1 && ndlo != stop2) {
-            if (carry) { ndlo = (ndlo - 1) & 0x3f; nd[ndlo] = carry; }
-            if (!nd[ndhi]) { ndhi = (ndhi - 1) & 0x3f; stop2--; }
-        } else if (!nd[ndhi]) {
-            if (ndhi != ndlo) { ndhi = (ndhi - 1) & 0x3f; stop2--; }
-            else return ndlo;
-        }
-        k -= 9;
-    }
-    if (k) {
-        uint32_t mask = (1U << k) - 1, mul = 1000000000 >> k, i = ndhi, carry = 0;
-        for (;;) {
-            uint32_t val = nd[i];
-            nd[i] = (val >> k) + carry;
-            carry = (val & mask) * mul;
-            if (i == ndlo) break;
-            i = (i - 1) & 0x3f;
-        }
-        if (carry) { ndlo = (ndlo - 1) & 0x3f; nd[ndlo] = carry; }
-    }
-    return ndlo;
-}
-
-/* Add m*10^e to nd (assumes ndlo <= e/9 <= ndhi and 0 <= m <= 9). */
-static uint32_t nd_add_m10e(uint32_t* nd, uint32_t ndhi, uint8_t m, int32_t e) {
-    uint32_t i, carry;
-    if (e >= 0) {
-        i = (uint32_t)e/9;
-        carry = m * (msml__ndigits_dec_threshold[e - (int32_t)i*9] + 1);
-    } else {
-        int32_t f = (e-8)/9;
-        i = (uint32_t)(64 + f);
-        carry = m * (msml__ndigits_dec_threshold[e - f*9] + 1);
-    }
-    for (;;) {
-        uint32_t val = nd[i] + carry;
-        if (msml_unlikely(val >= 1000000000)) {
-            val -= 1000000000;
-            nd[i] = val;
-            if (msml_unlikely(i == ndhi)) {
-                ndhi = (ndhi + 1) & 0x3f;
-                nd[ndhi] = 1;
-                break;
-            }
-            carry = 1;
-            i = (i + 1) & 0x3f;
-        } else {
-            nd[i] = val;
-            break;
-        }
-    }
-    return ndhi;
-}
-
-static bool nd_similar(uint32_t* nd, uint32_t ndhi, uint32_t* ref, size_t hilen, size_t prec) {
-    char nd9[9], ref9[9];
-    if (hilen <= prec) {
-        if (msml_unlikely(nd[ndhi] != *ref)) return 0;
-        prec -= hilen; ref--; ndhi = (ndhi - 1) & 0x3f;
-        if (prec >= 9) {
-            if (msml_unlikely(nd[ndhi] != *ref)) return 0;
-            prec -= 9; ref--; ndhi = (ndhi - 1) & 0x3f;
-        }
-    } else {
-        prec -= hilen - 9;
-    }
-    msml__assert(prec < 9, "bad precision %d", prec);
-    msml__wuint9(nd9, nd[ndhi]);
-    msml__wuint9(ref9, *ref);
-    return !memcmp(nd9, ref9, prec) && (nd9[prec] < '5') == (ref9[prec] < '5');
-}
-
-/* Format f64 according to format flags. */
-static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
-    size_t width = MSML_FMT_WIDTH(sf), prec = MSML_FMT_PREC(sf), len;
-    union {
-        uint64_t u64;
-        double n;
-        struct { /* TODO: make endian aware */
-            uint32_t lo, hi;
-        } u32;
-    } t = {.n = n};
-    if (msml_unlikely((t.u32.hi << 1) >= 0xffe00000)) {
-        /* Handle non-finite values uniformly for %a, %e, %f, %g. */
-        int prefix = 0, ch = (sf & MSML_FMT_F_UPPER) ? 0x202020 : 0;
-        if (((t.u32.hi & 0x000fffff) | t.u32.lo) != 0) {
-            ch ^= ('n' << 16) | ('a' << 8) | 'n';
-            if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
-        } else {
-            ch ^= ('i' << 16) | ('n' << 8) | 'f';
-            if ((t.u32.hi & 0x80000000)) prefix = '-';
-            else if ((sf & MSML_FMT_F_PLUS)) prefix = '+';
-            else if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
-        }
-        len = 3 + (prefix != 0);
-        if (!(sf & MSML_FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
-        if (prefix) *p++ = prefix;
-        *p++ = (char)(ch >> 16); *p++ = (char)(ch >> 8); *p++ = (char)ch;
-    } else if (MSML_FMT_FP(sf) == MSML_FMT_FP(MSML_FMT_T_FP_A)) {
-        /* %a */
-        const char* hexdig = (sf & MSML_FMT_F_UPPER) ? "0123456789ABCDEFPX" : "0123456789abcdefpx";
-        int32_t e = (t.u32.hi >> 20) & 0x7ff;
-        char prefix = 0, eprefix = '+';
-        if (t.u32.hi & 0x80000000) prefix = '-';
-        else if ((sf & MSML_FMT_F_PLUS)) prefix = '+';
-        else if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
-        t.u32.hi &= 0xfffff;
-        if (e) {
-            t.u32.hi |= 0x100000;
-            e -= 1023;
-        } else if (t.u32.lo | t.u32.hi) {
-            /* Non-zero denormal - normalise it. */
-            uint32_t shift = t.u32.hi ? 20-msml_fls(t.u32.hi) : 52-msml_fls(t.u32.lo);
-            e = -1022 - shift;
-            t.u64 <<= shift;
-        }
-        /* abs(n) == t.u64 * 2^(e - 52) */
-        /* If n != 0, bit 52 of t.u64 is set, and is the highest set bit. */
-        if ((int32_t)prec < 0) {
-            /* Default precision: use smallest precision giving exact result. */
-            prec = t.u32.lo ? 13-msml_ffs(t.u32.lo)/4 : 5-msml_ffs(t.u32.hi|0x100000)/4;
-        } else if (prec < 13) {
-            /* Precision is sufficiently low as to maybe require rounding. */
-            t.u64 += (((uint64_t)1) << (51 - prec*4));
-        }
-        if (e < 0) {
-            eprefix = '-';
-            e = -e;
-        }
-        len = 5 + msml__ndigits_dec((uint32_t)e) + prec + (prefix != 0)
-              + ((prec | (sf & MSML_FMT_F_ALT)) != 0);
-        if (!(sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO))) {
-            while (width-- > len) *p++ = ' ';
-        }
-        if (prefix) *p++ = prefix;
-        *p++ = '0';
-        *p++ = hexdig[17]; /* x or X */
-        if ((sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO)) == MSML_FMT_F_ZERO) {
-            while (width-- > len) *p++ = '0';
-        }
-        *p++ = '0' + (t.u32.hi >> 20); /* Usually '1', sometimes '0' or '2'. */
-        if ((prec | (sf & MSML_FMT_F_ALT))) {
-            /* Emit fractional part. */
-            char* q = p + 1 + prec;
-            *p = '.';
-            if (prec < 13) t.u64 >>= (52 - prec*4);
-            else while (prec > 13) p[prec--] = '0';
-            while (prec) { p[prec--] = hexdig[t.u64 & 15]; t.u64 >>= 4; }
-            p = q;
-        }
-        *p++ = hexdig[16]; /* p or P */
-        *p++ = eprefix; /* + or - */
-        p = msml__wint(p, e);
-    } else {
-        /* %e or %f or %g - begin by converting n to "nd" format. */
-        uint32_t nd[64];
-        uint32_t ndhi = 0, ndlo, i;
-        int32_t e = (int32_t)(t.u32.hi >> 20) & 0x7ff, ndebias = 0;
-        char prefix = 0, *q;
-        if (t.u32.hi & 0x80000000) prefix = '-';
-        else if ((sf & MSML_FMT_F_PLUS)) prefix = '+';
-        else if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
-        prec += ((int32_t)prec >> 31) & 7; /* Default precision is 6. */
-        if (MSML_FMT_FP(sf) == MSML_FMT_FP(MSML_FMT_T_FP_G)) {
-            /* %g - decrement precision if non-zero (to make it like %e). */
-            prec--;
-            prec ^= (uint32_t)((int32_t)prec >> 31);
-        }
-        if ((sf & MSML_FMT_T_FP_E) && prec < 14 && n != 0) {
-            /* Precision is sufficiently low that rescaling will probably work. */
-            if ((ndebias = msml__rescale_e[e >> 6])) {
-                t.n = n * msml__rescale_n[e >> 6];
-                if (msml_unlikely(!e)) t.n *= 1e10, ndebias -= 10;
-                t.u64 -= 2; /* Convert 2ulp below (later we convert 2ulp above). */
-                nd[0] = 0x100000 | (t.u32.hi & 0xfffff);
-                e = ((int32_t)(t.u32.hi >> 20) & 0x7ff) - 1075 - (MSML__ND_MUL2K_MAX_SHIFT < 29);
-                goto load_t_lo; rescale_failed:
-                t.n = n;
-                e = (int32_t)(t.u32.hi >> 20) & 0x7ff;
-                ndebias = 0;
-                ndhi = 0;
-            }
-        }
-        nd[0] = t.u32.hi & 0xfffff;
-        if (e == 0) e++; else nd[0] |= 0x100000;
-        e -= 1043;
-        if (t.u32.lo) {
-            e -= 32 + (MSML__ND_MUL2K_MAX_SHIFT < 29); load_t_lo:
-            #if MSML__ND_MUL2K_MAX_SHIFT >= 29
-                nd[0] = (nd[0] << 3) | (t.u32.lo >> 29);
-                ndhi = nd_mul2k(nd, ndhi, 29, t.u32.lo & 0x1fffffff, sf);
-            #elif MSML__ND_MUL2K_MAX_SHIFT >= 11
-                ndhi = nd_mul2k(nd, ndhi, 11, t.u32.lo >> 21, sf);
-                ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo >> 10) & 0x7ff, sf);
-                ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo <<  1) & 0x7ff, sf);
-            #else
-            #   error "MSML__ND_MUL2K_MAX_SHIFT not big enough"
-            #endif
-        }
-        if (e >= 0) {
-            ndhi = nd_mul2k(nd, ndhi, (uint32_t)e, 0, sf);
-            ndlo = 0;
-        } else {
-            ndlo = nd_div2k(nd, ndhi, (uint32_t)-e, sf);
-            if (ndhi && !nd[ndhi]) ndhi--;
-        }
-        /* |n| == nd * 10^ndebias (for slightly loose interpretation of ==) */
-        if ((sf & MSML_FMT_T_FP_E)) {
-            /* %e or %g - assume %e and start by calculating nd's exponent (nde). */
-            char eprefix = '+';
-            int32_t nde = -1;
-            size_t hilen;
-            if (ndlo && !nd[ndhi]) {
-                ndhi = 64; do {} while (!nd[--ndhi]);
-                nde -= 64 * 9;
-            }
-            hilen = msml__ndigits_dec(nd[ndhi]);
-            nde += (int32_t)(ndhi * 9 + hilen);
-            if (ndebias) {
-                /*
-                ** Rescaling was performed, but this introduced some error, and might
-                ** have pushed us across a rounding boundary. We check whether this
-                ** error affected the result by introducing even more error (2ulp in
-                ** either direction), and seeing whether a rounding boundary was
-                ** crossed. Having already converted the -2ulp case, we save off its
-                ** most significant digits, convert the +2ulp case, and compare them.
-                */
-                int32_t eidx = e + 70 + (MSML__ND_MUL2K_MAX_SHIFT < 29)
-                               + (t.u32.lo >= 0xfffffffe && !(~t.u32.hi << 12));
-                const int8_t *m_e = msml__four_ulp_m_e + eidx * 2;
-                msml__assert(0 <= eidx && eidx < 128, "bad eidx %d", eidx);
-                nd[33] = nd[ndhi];
-                nd[32] = nd[(ndhi - 1) & 0x3f];
-                nd[31] = nd[(ndhi - 2) & 0x3f];
-                nd_add_m10e(nd, ndhi, (uint8_t)*m_e, m_e[1]);
-                if (msml_unlikely(!nd_similar(nd, ndhi, nd + 33, hilen, prec + 1))) {
-                    goto rescale_failed;
-                }
-            }
-            if ((int32_t)(prec - nde) < (0x3f & -(int32_t)ndlo) * 9) {
-                /* Precision is sufficiently low as to maybe require rounding. */
-                ndhi = nd_add_m10e(nd, ndhi, 5, (int32_t)nde - prec - 1);
-                nde += (hilen != msml__ndigits_dec(nd[ndhi]));
-            }
-            nde += ndebias;
-            if ((sf & MSML_FMT_T_FP_F)) {
-                /* %g */
-                if ((int32_t)prec >= nde && nde >= -4) {
-                    if (nde < 0) ndhi = 0;
-                    prec -= nde;
-                    goto g_format_like_f;
-                } else if (!(sf & MSML_FMT_F_ALT) && prec && width > 5) {
-                    /* Decrease precision in order to strip trailing zeroes. */
-                    char tail[9];
-                    uint32_t maxprec = hilen - 1 + ((ndhi - ndlo) & 0x3f) * 9;
-                    if (prec >= maxprec) prec = maxprec;
-                    else ndlo = (ndhi - (((int32_t)(prec - hilen) + 9) / 9)) & 0x3f;
-                    i = prec - hilen - (((ndhi - ndlo) & 0x3f) * 9) + 10;
-                    msml__wuint9(tail, nd[ndlo]);
-                    while (prec && tail[--i] == '0') {
-                        prec--;
-                        if (!i) {
-                            if (ndlo == ndhi) { prec = 0; break; }
-                            ndlo = (ndlo + 1) & 0x3f;
-                            msml__wuint9(tail, nd[ndlo]);
-                            i = 9;
-                        }
-                    }
-                }
-            }
-            if (nde < 0) {
-                /* Make nde non-negative. */
-                eprefix = '-';
-                nde = -nde;
-            }
-            len = 3 + prec + (prefix != 0) + msml__ndigits_dec((uint32_t)nde) + (nde < 10)
-                  + ((prec | (sf & MSML_FMT_F_ALT)) != 0);
-            if (!(sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO))) {
-                while (width-- > len) *p++ = ' ';
-            }
-            if (prefix) *p++ = prefix;
-            if ((sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO)) == MSML_FMT_F_ZERO) {
-                while (width-- > len) *p++ = '0';
-            }
-            q = msml__wint(p + 1, nd[ndhi]);
-            p[0] = p[1]; /* Put leading digit in the correct place. */
-            if ((prec | (sf & MSML_FMT_F_ALT))) {
-                /* Emit fractional part. */
-                p[1] = '.'; p += 2;
-                prec -= (size_t)(q - p); p = q; /* Account for digits already emitted. */
-                /* Then emit chunks of 9 digits (this may emit 8 digits too many). */
-                for (i = ndhi; (int32_t)prec > 0 && i != ndlo; prec -= 9) {
-                    i = (i - 1) & 0x3f;
-                    p = msml__wuint9(p, nd[i]);
-                }
-                if ((sf & MSML_FMT_T_FP_F) && !(sf & MSML_FMT_F_ALT)) {
-                    /* %g (and not %#g) - strip trailing zeroes. */
-                    p += (int32_t)prec & ((int32_t)prec >> 31);
-                    while (p[-1] == '0') p--;
-                    if (p[-1] == '.') p--;
-                } else {
-                    /* %e (or %#g) - emit trailing zeroes. */
-                    while ((int32_t)prec > 0) { *p++ = '0'; prec--; }
-                    p += (int32_t)prec;
-                }
-            } else {
-                p++;
-            }
-            *p++ = (sf & MSML_FMT_F_UPPER) ? 'E' : 'e';
-            *p++ = eprefix; /* + or - */
-            if (nde < 10) *p++ = '0'; /* Always at least two digits of exponent. */
-            p = msml__wint(p, nde);
-        } else {
-            /* %f (or, shortly, %g in %f style) */
-            if (prec < (size_t)(0x3f & -(int32_t)ndlo) * 9) {
-                /* Precision is sufficiently low as to maybe require rounding. */
-                ndhi = nd_add_m10e(nd, ndhi, 5, 0 - prec - 1);
-            }
-            g_format_like_f:
-            if ((sf & MSML_FMT_T_FP_E) && !(sf & MSML_FMT_F_ALT) && prec && width) {
-                /* Decrease precision in order to strip trailing zeroes. */
-                if (ndlo) {
-                    /* nd has a fractional part; we need to look at its digits. */
-                    char tail[9];
-                    uint32_t maxprec = (64 - ndlo) * 9;
-                    if (prec >= maxprec) prec = maxprec;
-                    else ndlo = 64 - (prec + 8) / 9;
-                    i = prec - ((63 - ndlo) * 9);
-                    msml__wuint9(tail, nd[ndlo]);
-                    while (prec && tail[--i] == '0') {
-                        prec--;
-                        if (!i) {
-                            if (ndlo == 63) { prec = 0; break; }
-                            msml__wuint9(tail, nd[++ndlo]);
-                            i = 9;
-                        }
-                    }
-                } else {
-                    /* nd has no fractional part, so precision goes straight to zero. */
-                    prec = 0;
-                }
-            }
-            len = ndhi * 9 + msml__ndigits_dec(nd[ndhi]) + prec + (prefix != 0)
-                  + ((prec | (sf & MSML_FMT_F_ALT)) != 0);
-            if (!(sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO))) {
-                while (width-- > len) *p++ = ' ';
-            }
-            if (prefix) *p++ = prefix;
-            if ((sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO)) == MSML_FMT_F_ZERO) {
-                while (width-- > len) *p++ = '0';
-            }
-            /* Emit integer part. */
-            p = msml__wint(p, nd[ndhi]);
-            i = ndhi;
-            while (i) p = msml__wuint9(p, nd[--i]);
-            if ((prec | (sf & MSML_FMT_F_ALT))) {
-                /* Emit fractional part. */
-                *p++ = '.';
-                /* Emit chunks of 9 digits (this may emit 8 digits too many). */
-                while ((int32_t)prec > 0 && i != ndlo) {
-                    i = (i - 1) & 0x3f;
-                    p = msml__wuint9(p, nd[i]);
-                    prec -= 9;
-                }
-                if ((sf & MSML_FMT_T_FP_E) && !(sf & MSML_FMT_F_ALT)) {
-                    /* %g (and not %#g) - strip trailing zeroes. */
-                    p += (int32_t)prec & ((int32_t)prec >> 31);
-                    while (p[-1] == '0') p--;
-                    if (p[-1] == '.') p--;
-                } else {
-                    /* %f (or %#g) - emit trailing zeroes. */
-                    while ((int32_t)prec > 0) { *p++ = '0'; prec--; }
-                    p += (int32_t)prec;
-                }
-            }
-        }
-    }
-    if ((sf & MSML_FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
-    return p;
-}
-
-msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
-    return tensor->ctx;
-}
-
-msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs) {
+static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs) {
     msml__assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
     if (view && view->view) { /* Accumulate relative view offset. */
         view_offs += view->view_offs;
@@ -2023,6 +1447,7 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
     tensor->rank = rank;
     tensor->dtype = type;
     tensor->buf_size = buf_size;
+    tensor->exec_mode = ctx->exec_mode;
     tensor->view = view;
     tensor->view_offs = view_offs;
     for (int i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
@@ -2036,82 +1461,67 @@ msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int6
 }
 
 msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1}, 1, NULL, 0);
+    return msml__tensor_create(ctx, type, (int64_t[]) {d1}, 1, NULL, 0);
 }
 
 msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2}, 2, NULL, 0);
+    return msml__tensor_create(ctx, type, (int64_t[]) {d1, d2}, 2, NULL, 0);
 }
 
 msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3}, 3, NULL, 0);
+    return msml__tensor_create(ctx, type, (int64_t[]) {d1, d2, d3}, 3, NULL, 0);
 }
 
 msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
-    return msml_tensor_create(ctx, type, (int64_t[]){d1, d2, d3, d4}, 4, NULL, 0);
+    return msml__tensor_create(ctx, type, (int64_t[]) {d1, d2, d3, d4}, 4, NULL, 0);
 }
 
-msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs) {
-    if (msml_unlikely(op == MSML_OP_NOP || n_inputs == 0 || n_inputs > MSML_MAX_INPUT_TENSORS)) {
-        msml_log_error("Invalid operation or number of inputs for op: %s", msml_op_get_name(op));
-        return NULL;
+struct msml__blas_compute_info_t {
+    msml_ctx_t* ctx;
+    int64_t n_threads;
+    int64_t thread_idx;
+};
+
+static void msml__blas_compute_info_sequential(msml_ctx_t* ctx, msml__blas_compute_info_t* bci) {
+    *bci = (msml__blas_compute_info_t){
+        .ctx = ctx,
+        .n_threads = 1,
+        .thread_idx = 0
+    };
+}
+
+static void msml__blas_compute_info_parallel(msml_ctx_t* ctx, msml__blas_compute_info_t* bci, uint32_t n_threads) {
+    *bci = (msml__blas_compute_info_t){
+        .ctx = ctx,
+        .n_threads = msml_max(1, n_threads),
+        .thread_idx = 0
+    };
+}
+
+static void msml__op_store_deferred(msml_tensor_t* R, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs) {
+    R->op = op;
+    memcpy(R->inputs, inputs, n_inputs * sizeof(*inputs));
+}
+
+static void MSML_AINLINE msml__op_execute(msml_tensor_t* R, msml_op_t op, const msml_tensor_t** inputs, const msml__blas_compute_info_t* bci) {
+    void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
+    (*(*(dispatch_lut+op)))(bci, R, inputs); /* Dispatch to operation. */
+}
+
+msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs) {
+    msml__assert2(op != MSML_OP_NOP);
+    msml_tensor_t* (*construct_result)(msml_tensor_t**) = msml__op_get_result_constructor_routine(op);
+    bool (*validate_op)(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) = msml__op_get_validator_routine(op);
+    msml_tensor_t* R = (*construct_result)(inputs);
+    msml__assert((*validate_op)(op, R, inputs, n_inputs), "Invalid operation"); /* Verify op configuration. */
+    if (ctx->exec_mode == MSML_EXEC_MODE_EAGER) { /* In eager execution mode, we execute immediately. */
+        msml__blas_compute_info_t bci;
+        msml__blas_compute_info_sequential(ctx, &bci); /* Sequential eager execution. */
+        msml__op_execute(R, op, (const msml_tensor_t**)inputs, &bci); /* Execute the operation immediately. */
+    } else { /* We just store op, execution happens later */
+        msml__op_store_deferred(R, op, inputs, n_inputs);
     }
-    if (msml_unlikely(msml_op_get_argcount(op) != n_inputs)) {
-        msml_log_error("Missing inputs for op: %s. Required %u, got %u", msml_op_get_name(op), (unsigned)msml_op_get_argcount(op), (unsigned)n_inputs);
-        return NULL;
-    }
-    for (uint32_t i=0; i < n_inputs; ++i) { /* Make sure all required argument are not null. */
-        if (msml_unlikely(!inputs[i])) {
-            msml_log_error("Missing input #%u for op: %s", i, msml_op_get_name(op));
-            return NULL;
-        }
-    }
-    msml_tensor_t* result = NULL;
-    if (op == MSML_OP_MATMUL) {
-        msml__assert2(n_inputs == 2);
-        const int64_t shape[MSML_MAX_DIMS] = {
-            inputs[0]->shape[1],
-            inputs[1]->shape[1],
-            inputs[1]->shape[2],
-            inputs[1]->shape[3]
-        };
-        result = msml_tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, sizeof(shape)/sizeof(*shape), NULL, 0);
-    } else {
-        result = msml_tensor_isomorphic(inputs[0]);
-    }
-    result->op = op;
-    memcpy(result->inputs, inputs, n_inputs*sizeof(*inputs));
-    return msml_tensor_is_op_possible(result) ? result : NULL;
-}
-
-msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor) {
-    msml_tensor_t* isomorph = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->shape, tensor->rank, NULL, 0);
-    msml_tensor_fmt_name(isomorph, "%s (isomorph)", tensor->name);
-    return isomorph;
-}
-
-msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor) {
-    msml_tensor_t* clone = msml_tensor_isomorphic(tensor);
-    msml_tensor_set_op(clone, MSML_OP_CLONE);
-    msml_tensor_set_arg(clone, 0, tensor);
-    msml_tensor_fmt_name(clone, "%s (clone)", tensor->name);
-    return clone;
-}
-
-msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor) {
-    msml_tensor_t* view = msml_tensor_create(tensor->ctx, tensor->dtype, tensor->shape, tensor->rank, tensor, 0);
-    msml_tensor_fmt_name(view, "%s (view)", tensor->name);
-    return view;
-}
-
-msml_tensor_t* msml_tensor_transpose(msml_tensor_t* tensor) {
-    msml_tensor_t* transposed = msml_tensor_view(tensor);
-    msml_tensor_set_op(transposed, MSML_OP_TRANSPOSE);
-    msml_tensor_set_arg(transposed, 0, tensor);
-    msml_swap(int64_t, transposed->shape[0], transposed->shape[1]);
-    msml_swap(int64_t, transposed->strides[0], transposed->strides[1]);
-    msml_tensor_fmt_name(transposed, "%s (transposed)", tensor->name);
-    return transposed;
+    return R;
 }
 
 msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
@@ -2425,6 +1835,10 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
     return n_eq == n;
 }
 
+msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
+    return tensor->ctx;
+}
+
 /* CPU BLAS impl */
 #define MSML__GELU_COEFF 0.044715f
 
@@ -2660,12 +2074,6 @@ static void MSML_HOTPROC msml__vgelu_dv_f32( /* gelu' : ℝ -> ℝ, x |-> TODO *
     }
 }
 
-struct msml__blas_compute_info_t {
-    msml_ctx_t* ctx;
-    int64_t n_threads;
-    int64_t thread_idx;
-};
-
 static void msml__blas_nop(
     const msml__blas_compute_info_t* const bci,
     msml_tensor_t* const r,
@@ -2798,16 +2206,6 @@ static void msml__blas_clone(
             }
         }
     }
-}
-
-static void msml__blas_transpose(
-    const msml__blas_compute_info_t* const bci,
-    msml_tensor_t* const r,
-    const msml_tensor_t** const inputs
-) {
-    (void)bci;
-    (void)r;
-    (void)inputs;
 }
 
 #define msml__blas_impl_unary_op(name, T, vec_op) \
@@ -3011,22 +2409,18 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
 #undef MSML_MATMUL_BLK_Y
 #undef MSML_MATMUL_BLK_X
 
-bool msml_tensor_is_op_possible(const msml_tensor_t* tensor) {
-    return (*(msml__op_get_validator_routine(tensor->op)))(tensor);
-}
-
 /* Dispatch table for default CPU-implementation. */
 static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[MSML_OP__COUNT])(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**)) {
-    (*dispatch_lut)[MSML_OP_NOP] = &msml__blas_nop;
+    (*dispatch_lut)[MSML_OP_NOP] = &msml__blas_nop; /* No operation */
     (*dispatch_lut)[MSML_OP_CLONE] = &msml__blas_clone;
-    (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_transpose;
+    (*dispatch_lut)[MSML_OP_VIEW] = &msml__blas_nop; /* View is a no-op */
+    (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_nop; /* Transpose is a no-op */
     (*dispatch_lut)[MSML_OP_STEP] = &msml__blas_step_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX] = &msml__blas_softmax_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;
     (*dispatch_lut)[MSML_OP_SIGMOID] = &msml__blas_sigmoid_f32;
     (*dispatch_lut)[MSML_OP_SIGMOID_DV] = &msml__blas_sigmoid_dv_f32;
     (*dispatch_lut)[MSML_OP_HARD_SIGMOID] = &msml__blas_hard_sigmoid_f32;
-    (*dispatch_lut)[MSML_OP_HARD_SIGMOID_DV] = &msml__blas_hard_sigmoid_dv_f32;
     (*dispatch_lut)[MSML_OP_SILU] = &msml__blas_silu_f32;
     (*dispatch_lut)[MSML_OP_SILU_DV] = &msml__blas_silu_dv_f32;
     (*dispatch_lut)[MSML_OP_TANH] = &msml__blas_tanh_f32;
@@ -3081,11 +2475,11 @@ static void MSML_HOTPROC msml__compute_graph_accumulate_visitor(msml_tensor_t* n
 }
 
 static void MSML_HOTPROC msml__compute_graph_coalescence_nodes_visitor(msml_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
+    msml__assert(node->exec_mode == MSML_EXEC_MODE_DEFERRED, "Tensor must be in deferred execution mode.");
     msml_compute_graph_t* gra = (msml_compute_graph_t*)ud;
     size_t hz = msml__hashset_insert(&gra->visited_hs, node);
     msml__assert2(hz != MSML__HASHSET_FULL);
     if (msml_unlikely(hz == MSML__HASHSET_DUPLICATE)) return; /* Already visited */
-    msml__assert2(msml_tensor_is_op_possible(node));
     if (node->op == MSML_OP_NOP) { /* Leaf node (constant, out of gradient flow) */
         gra->leaf_nodes[gra->num_leaf_nodes++] = node;
         for (uint32_t i=0; i < MSML_MAX_INPUT_TENSORS; ++i) { /* All inputs must be NULL for NOP node. */
@@ -3093,14 +2487,14 @@ static void MSML_HOTPROC msml__compute_graph_coalescence_nodes_visitor(msml_tens
         }
     } else { /* Non-leaf node */
         gra->internal_nodes[gra->num_internal_nodes++] = node;
-        uint32_t n = msml_op_get_argcount(node->op);
-        for (uint32_t i=0; i < n; ++i) { /* All required inputs must be not NULL for operation node. */
+        for (uint32_t i=0; i < msml_op_get_argcount(node->op); ++i) { /* All required inputs must be not NULL for operation node. */
             msml__assert2(node->inputs[i]);
         }
     }
 }
 
 msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name) {
+    msml__assert(root->ctx == ctx && root->exec_mode == MSML_EXEC_MODE_DEFERRED, "Tensor must be in deferred execution mode, to be used with static graphs.");
     size_t total_nodes = 0;
     msml__tensor_graph_visit_node(root, &msml__compute_graph_accumulate_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, &total_nodes);
     msml__assert2(total_nodes > 0);
@@ -3113,8 +2507,8 @@ msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t*
     memset(gra, 0, mem_req);
     gra->ctx = ctx;
     gra->num_nodes_total = total_nodes;
-    gra->internal_nodes = msml__pincr(&data, total_nodes * sizeof(*gra->internal_nodes), __alignof__(*gra->internal_nodes)); /* Fetch nodes. */
-    gra->leaf_nodes = msml__pincr(&data, total_nodes * sizeof(*gra->leaf_nodes), __alignof__(*gra->leaf_nodes)); /* Fetch leafs. */
+    gra->internal_nodes = msml__pincr(&data, total_nodes*sizeof(*gra->internal_nodes), __alignof__(*gra->internal_nodes)); /* Fetch nodes. */
+    gra->leaf_nodes = msml__pincr(&data, total_nodes*sizeof(*gra->leaf_nodes), __alignof__(*gra->leaf_nodes)); /* Fetch leafs. */
     gra->mem_size_total = mem_req;
     gra->order = order;
     gra->visited_hs = msml__hashset_create_pooled(ctx, total_nodes);
@@ -3135,17 +2529,11 @@ msml_tensor_t* MSML_HOTPROC msml_compute_graph_execute(msml_compute_graph_t* gra
     size_t n = gra->num_internal_nodes;
     msml__assert2(gra->num_nodes_total && nodes[n-1]);
     msml_tensor_t* root = nodes[n-1]; /* Evaluation root node */
-    msml__blas_compute_info_t bci = {
-        .ctx = gra->ctx,
-        .n_threads = 1,
-        .thread_idx = 0
-    };
-    void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci.ctx->blas_dispatch; /* Dispatch table */
+    msml__blas_compute_info_t bci;
+    msml__blas_compute_info_sequential(gra->ctx, &bci);
     for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
-        msml_tensor_t* node = nodes[i];
-        const msml_op_t op = node->op;
-        const msml_tensor_t** input_nodes = (const msml_tensor_t**)node->inputs;
-        (*(*(dispatch_lut+op)))(&bci, node, input_nodes); /* Dispatch to operation. */
+        msml_tensor_t* R = nodes[i];
+        msml__op_execute(R, R->op, (const msml_tensor_t**)R->inputs, &bci);
     }
     return root;
 }
@@ -3634,4 +3022,571 @@ void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_pat
 #else
     msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
 #endif
+}
+
+/* Rescale factors to push the exponent of a number towards zero. */
+#define rescale_exponents(P, N) \
+  P(308), P(289), P(270), P(250), P(231), P(212), P(193), P(173), P(154), \
+  P(135), P(115), P(96), P(77), P(58), P(38), P(0), P(0), P(0), N(39), N(58), \
+  N(77), N(96), N(116), N(135), N(154), N(174), N(193), N(212), N(231), \
+  N(251), N(270), N(289)
+#define one_e_p(X) 1e+0 ## X
+#define one_e_n(X) 1e-0 ## X
+static const int16_t msml__rescale_e[] = { rescale_exponents(-, +) };
+static const double msml__rescale_n[] = { rescale_exponents(one_e_p, one_e_n) };
+#undef one_e_n
+#undef one_e_p
+
+/*
+** For p in range -70 through 57, this table encodes pairs (m, e) such that
+** 4*2^p <= (uint8_t)m*10^e, and is the smallest value for which this holds.
+*/
+static const int8_t msml__four_ulp_m_e[] = {
+    34, -21, 68, -21, 14, -20, 28, -20, 55, -20, 2, -19, 3, -19, 5, -19, 9, -19,
+    -82, -18, 35, -18, 7, -17, -117, -17, 28, -17, 56, -17, 112, -16, -33, -16,
+    45, -16, 89, -16, -78, -15, 36, -15, 72, -15, -113, -14, 29, -14, 57, -14,
+    114, -13, -28, -13, 46, -13, 91, -12, -74, -12, 37, -12, 73, -12, 15, -11, 3,
+    -11, 59, -11, 2, -10, 3, -10, 5, -10, 1, -9, -69, -9, 38, -9, 75, -9, 15, -7,
+    3, -7, 6, -7, 12, -6, -17, -7, 48, -7, 96, -7, -65, -6, 39, -6, 77, -6, -103,
+    -5, 31, -5, 62, -5, 123, -4, -11, -4, 49, -4, 98, -4, -60, -3, 4, -2, 79, -3,
+    16, -2, 32, -2, 63, -2, 2, -1, 25, 0, 5, 1, 1, 2, 2, 2, 4, 2, 8, 2, 16, 2,
+    32, 2, 64, 2, -128, 2, 26, 2, 52, 2, 103, 3, -51, 3, 41, 4, 82, 4, -92, 4,
+    33, 4, 66, 4, -124, 5, 27, 5, 53, 5, 105, 6, 21, 6, 42, 6, 84, 6, 17, 7, 34,
+    7, 68, 7, 2, 8, 3, 8, 6, 8, 108, 9, -41, 9, 43, 10, 86, 9, -84, 10, 35, 10,
+    69, 10, -118, 11, 28, 11, 55, 12, 11, 13, 22, 13, 44, 13, 88, 13, -80, 13,
+    36, 13, 71, 13, -115, 14, 29, 14, 57, 14, 113, 15, -30, 15, 46, 15, 91, 15,
+    19, 16, 37, 16, 73, 16, 2, 17, 3, 17, 6, 17
+};
+
+/* min(2^32-1, 10^e-1) for e in range 0 through 10 */
+static const uint32_t msml__ndigits_dec_threshold[] = {
+    0, 9U, 99U, 999U, 9999U, 99999U, 999999U,
+    9999999U, 99999999U, 999999999U, 0xffffffffU
+};
+
+/* Compute the number of digits in the decimal representation of x. */
+static size_t msml__ndigits_dec(uint32_t x) {
+    size_t t = ((msml_fls(x | 1) * 77) >> 8) + 1; /* 2^8/77 is roughly log2(10) */
+    return t + (x > msml__ndigits_dec_threshold[t]);
+}
+
+#define wint_r(x, sh, sc) { uint32_t d = (x*(((1<<sh)+sc-1)/sc))>>sh; x -= d*sc; *p++ = (char)('0'+d); }
+static char* msml__wuint9(char* p, uint32_t u) {
+    uint32_t v = u / 10000, w;
+    u -= v * 10000;
+    w = v / 10000;
+    v -= w * 10000;
+    *p++ = (char)('0'+w);
+    wint_r(v, 23, 1000)
+    wint_r(v, 12, 100)
+    wint_r(v, 10, 10)
+    *p++ = (char)('0'+v);
+    wint_r(u, 23, 1000)
+    wint_r(u, 12, 100)
+    wint_r(u, 10, 10)
+    *p++ = (char)('0'+u);
+    return p;
+}
+#undef wint_r
+
+#define wint_r(x, sh, sc) { uint32_t d = (x*(((1<<sh)+sc-1)/sc))>>sh; x -= d*sc; *p++ = (char)('0'+d); }
+static char* msml__wint(char* p, int32_t k) {
+    uint32_t u = (uint32_t)k;
+    if (k < 0) { u = ~u+1u; *p++ = '-'; }
+    if (u < 10000) {
+        if (u < 10) goto dig1;
+        if (u < 100) goto dig2;
+        if (u < 1000) goto dig3;
+    } else {
+        uint32_t v = u / 10000; u -= v * 10000;
+        if (v < 10000) {
+            if (v < 10) goto dig5;
+            if (v < 100) goto dig6;
+            if (v < 1000) goto dig7;
+        } else {
+            uint32_t w = v / 10000; v -= w * 10000;
+            if (w >= 10) wint_r(w, 10, 10)
+            *p++ = (char)('0'+w);
+        }
+        wint_r(v, 23, 1000)
+        dig7: wint_r(v, 12, 100)
+        dig6: wint_r(v, 10, 10)
+        dig5: *p++ = (char)('0'+v);
+    }
+    wint_r(u, 23, 1000)
+    dig3: wint_r(u, 12, 100)
+    dig2: wint_r(u, 10, 10)
+    dig1: *p++ = (char)('0'+u);
+    return p;
+}
+#undef wint_r
+
+/* -- Extended precision arithmetic --------------------------------------- */
+
+/*
+** The "nd" format is a fixed-precision decimal representation for numbers. It
+** consists of up to 64 uint32_t values, with each uint32_t storing a value
+** in the range [0, 1e9). A number in "nd" format consists of three variables:
+**
+**  uint32_t nd[64];
+**  uint32_t ndlo;
+**  uint32_t ndhi;
+**
+** The integral part of the number is stored in nd[0 ... ndhi], the value of
+** which is sum{i in [0, ndhi] | nd[i] * 10^(9*i)}. If the fractional part of
+** the number is zero, ndlo is zero. Otherwise, the fractional part is stored
+** in nd[ndlo ... 63], the value of which is taken to be
+** sum{i in [ndlo, 63] | nd[i] * 10^(9*(i-64))}.
+**
+** If the array part had 128 elements rather than 64, then every double would
+** have an exact representation in "nd" format. With 64 elements, all integral
+** doubles have an exact representation, and all non-integral doubles have
+** enough digits to make both %.99e and %.99f do the right thing.
+*/
+#define MSML__ND_MUL2K_MAX_SHIFT 29
+#define MSML__ND_MUL2K_DIV1E9(val) ((uint32_t)((val) / 1000000000))
+
+/* Multiply nd by 2^k and add carry_in (ndlo is assumed to be zero). */
+static uint32_t nd_mul2k(uint32_t* nd, uint32_t ndhi, uint32_t k, uint32_t carry_in, msml_format_flags sf) {
+    uint32_t i, ndlo = 0, start = 1;
+    /* Performance hacks. */
+    if (k > MSML__ND_MUL2K_MAX_SHIFT*2 && MSML_FMT_FP(sf) != MSML_FMT_FP(MSML_FMT_T_FP_F)) {
+        start = ndhi - (MSML_FMT_PREC(sf) + 17) / 8;
+    }
+    /* Real logic. */
+    while (k >= MSML__ND_MUL2K_MAX_SHIFT) {
+        for (i = ndlo; i <= ndhi; i++) {
+            uint64_t val = ((uint64_t)nd[i] << MSML__ND_MUL2K_MAX_SHIFT) | carry_in;
+            carry_in = MSML__ND_MUL2K_DIV1E9(val);
+            nd[i] = (uint32_t)val - carry_in * 1000000000;
+        }
+        if (carry_in) {
+            nd[++ndhi] = carry_in; carry_in = 0;
+            if (start++ == ndlo) ++ndlo;
+        }
+        k -= MSML__ND_MUL2K_MAX_SHIFT;
+    }
+    if (k) {
+        for (i = ndlo; i <= ndhi; i++) {
+            uint64_t val = ((uint64_t)nd[i] << k) | carry_in;
+            carry_in = MSML__ND_MUL2K_DIV1E9(val);
+            nd[i] = (uint32_t)val - carry_in * 1000000000;
+        }
+        if (carry_in) nd[++ndhi] = carry_in;
+    }
+    return ndhi;
+}
+
+/* Divide nd by 2^k (ndlo is assumed to be zero). */
+static uint32_t nd_div2k(uint32_t* nd, uint32_t ndhi, uint32_t k, msml_format_flags sf) {
+    uint32_t ndlo = 0, stop1 = ~0, stop2 = ~0;
+    /* Performance hacks. */
+    if (!ndhi) {
+        if (!nd[0]) {
+            return 0;
+        } else {
+            uint32_t s = msml_ffs(nd[0]);
+            if (s >= k) { nd[0] >>= k; return 0; }
+            nd[0] >>= s; k -= s;
+        }
+    }
+    if (k > 18) {
+        if (MSML_FMT_FP(sf) == MSML_FMT_FP(MSML_FMT_T_FP_F)) {
+            stop1 = 63 - (int32_t)MSML_FMT_PREC(sf) / 9;
+        } else {
+            int32_t floorlog2 = ndhi * 29 + msml_fls(nd[ndhi]) - k;
+            int32_t floorlog10 = (int32_t)(floorlog2 * 0.30102999566398114);
+            stop1 = 62 + (floorlog10 - (int32_t)MSML_FMT_PREC(sf)) / 9;
+            stop2 = 61 + ndhi - (int32_t)MSML_FMT_PREC(sf) / 8;
+        }
+    }
+    /* Real logic. */
+    while (k >= 9) {
+        uint32_t i = ndhi, carry = 0;
+        for (;;) {
+            uint32_t val = nd[i];
+            nd[i] = (val >> 9) + carry;
+            carry = (val & 0x1ff) * 1953125;
+            if (i == ndlo) break;
+            i = (i - 1) & 0x3f;
+        }
+        if (ndlo != stop1 && ndlo != stop2) {
+            if (carry) { ndlo = (ndlo - 1) & 0x3f; nd[ndlo] = carry; }
+            if (!nd[ndhi]) { ndhi = (ndhi - 1) & 0x3f; stop2--; }
+        } else if (!nd[ndhi]) {
+            if (ndhi != ndlo) { ndhi = (ndhi - 1) & 0x3f; stop2--; }
+            else return ndlo;
+        }
+        k -= 9;
+    }
+    if (k) {
+        uint32_t mask = (1U << k) - 1, mul = 1000000000 >> k, i = ndhi, carry = 0;
+        for (;;) {
+            uint32_t val = nd[i];
+            nd[i] = (val >> k) + carry;
+            carry = (val & mask) * mul;
+            if (i == ndlo) break;
+            i = (i - 1) & 0x3f;
+        }
+        if (carry) { ndlo = (ndlo - 1) & 0x3f; nd[ndlo] = carry; }
+    }
+    return ndlo;
+}
+
+/* Add m*10^e to nd (assumes ndlo <= e/9 <= ndhi and 0 <= m <= 9). */
+static uint32_t nd_add_m10e(uint32_t* nd, uint32_t ndhi, uint8_t m, int32_t e) {
+    uint32_t i, carry;
+    if (e >= 0) {
+        i = (uint32_t)e/9;
+        carry = m * (msml__ndigits_dec_threshold[e - (int32_t)i*9] + 1);
+    } else {
+        int32_t f = (e-8)/9;
+        i = (uint32_t)(64 + f);
+        carry = m * (msml__ndigits_dec_threshold[e - f*9] + 1);
+    }
+    for (;;) {
+        uint32_t val = nd[i] + carry;
+        if (msml_unlikely(val >= 1000000000)) {
+            val -= 1000000000;
+            nd[i] = val;
+            if (msml_unlikely(i == ndhi)) {
+                ndhi = (ndhi + 1) & 0x3f;
+                nd[ndhi] = 1;
+                break;
+            }
+            carry = 1;
+            i = (i + 1) & 0x3f;
+        } else {
+            nd[i] = val;
+            break;
+        }
+    }
+    return ndhi;
+}
+
+static bool nd_similar(uint32_t* nd, uint32_t ndhi, uint32_t* ref, size_t hilen, size_t prec) {
+    char nd9[9], ref9[9];
+    if (hilen <= prec) {
+        if (msml_unlikely(nd[ndhi] != *ref)) return 0;
+        prec -= hilen; ref--; ndhi = (ndhi - 1) & 0x3f;
+        if (prec >= 9) {
+            if (msml_unlikely(nd[ndhi] != *ref)) return 0;
+            prec -= 9; ref--; ndhi = (ndhi - 1) & 0x3f;
+        }
+    } else {
+        prec -= hilen - 9;
+    }
+    msml__assert(prec < 9, "bad precision %d", prec);
+    msml__wuint9(nd9, nd[ndhi]);
+    msml__wuint9(ref9, *ref);
+    return !memcmp(nd9, ref9, prec) && (nd9[prec] < '5') == (ref9[prec] < '5');
+}
+
+/* Format f64 according to format flags. */
+static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
+    size_t width = MSML_FMT_WIDTH(sf), prec = MSML_FMT_PREC(sf), len;
+    union {
+        uint64_t u64;
+        double n;
+        struct { /* TODO: make endian aware */
+            uint32_t lo, hi;
+        } u32;
+    } t = {.n = n};
+    if (msml_unlikely((t.u32.hi << 1) >= 0xffe00000)) {
+        /* Handle non-finite values uniformly for %a, %e, %f, %g. */
+        int prefix = 0, ch = (sf & MSML_FMT_F_UPPER) ? 0x202020 : 0;
+        if (((t.u32.hi & 0x000fffff) | t.u32.lo) != 0) {
+            ch ^= ('n' << 16) | ('a' << 8) | 'n';
+            if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
+        } else {
+            ch ^= ('i' << 16) | ('n' << 8) | 'f';
+            if ((t.u32.hi & 0x80000000)) prefix = '-';
+            else if ((sf & MSML_FMT_F_PLUS)) prefix = '+';
+            else if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
+        }
+        len = 3 + (prefix != 0);
+        if (!(sf & MSML_FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
+        if (prefix) *p++ = prefix;
+        *p++ = (char)(ch >> 16); *p++ = (char)(ch >> 8); *p++ = (char)ch;
+    } else if (MSML_FMT_FP(sf) == MSML_FMT_FP(MSML_FMT_T_FP_A)) {
+        /* %a */
+        const char* hexdig = (sf & MSML_FMT_F_UPPER) ? "0123456789ABCDEFPX" : "0123456789abcdefpx";
+        int32_t e = (t.u32.hi >> 20) & 0x7ff;
+        char prefix = 0, eprefix = '+';
+        if (t.u32.hi & 0x80000000) prefix = '-';
+        else if ((sf & MSML_FMT_F_PLUS)) prefix = '+';
+        else if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
+        t.u32.hi &= 0xfffff;
+        if (e) {
+            t.u32.hi |= 0x100000;
+            e -= 1023;
+        } else if (t.u32.lo | t.u32.hi) {
+            /* Non-zero denormal - normalise it. */
+            uint32_t shift = t.u32.hi ? 20-msml_fls(t.u32.hi) : 52-msml_fls(t.u32.lo);
+            e = -1022 - shift;
+            t.u64 <<= shift;
+        }
+        /* abs(n) == t.u64 * 2^(e - 52) */
+        /* If n != 0, bit 52 of t.u64 is set, and is the highest set bit. */
+        if ((int32_t)prec < 0) {
+            /* Default precision: use smallest precision giving exact result. */
+            prec = t.u32.lo ? 13-msml_ffs(t.u32.lo)/4 : 5-msml_ffs(t.u32.hi|0x100000)/4;
+        } else if (prec < 13) {
+            /* Precision is sufficiently low as to maybe require rounding. */
+            t.u64 += (((uint64_t)1) << (51 - prec*4));
+        }
+        if (e < 0) {
+            eprefix = '-';
+            e = -e;
+        }
+        len = 5 + msml__ndigits_dec((uint32_t)e) + prec + (prefix != 0)
+              + ((prec | (sf & MSML_FMT_F_ALT)) != 0);
+        if (!(sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO))) {
+            while (width-- > len) *p++ = ' ';
+        }
+        if (prefix) *p++ = prefix;
+        *p++ = '0';
+        *p++ = hexdig[17]; /* x or X */
+        if ((sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO)) == MSML_FMT_F_ZERO) {
+            while (width-- > len) *p++ = '0';
+        }
+        *p++ = '0' + (t.u32.hi >> 20); /* Usually '1', sometimes '0' or '2'. */
+        if ((prec | (sf & MSML_FMT_F_ALT))) {
+            /* Emit fractional part. */
+            char* q = p + 1 + prec;
+            *p = '.';
+            if (prec < 13) t.u64 >>= (52 - prec*4);
+            else while (prec > 13) p[prec--] = '0';
+            while (prec) { p[prec--] = hexdig[t.u64 & 15]; t.u64 >>= 4; }
+            p = q;
+        }
+        *p++ = hexdig[16]; /* p or P */
+        *p++ = eprefix; /* + or - */
+        p = msml__wint(p, e);
+    } else {
+        /* %e or %f or %g - begin by converting n to "nd" format. */
+        uint32_t nd[64];
+        uint32_t ndhi = 0, ndlo, i;
+        int32_t e = (int32_t)(t.u32.hi >> 20) & 0x7ff, ndebias = 0;
+        char prefix = 0, *q;
+        if (t.u32.hi & 0x80000000) prefix = '-';
+        else if ((sf & MSML_FMT_F_PLUS)) prefix = '+';
+        else if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
+        prec += ((int32_t)prec >> 31) & 7; /* Default precision is 6. */
+        if (MSML_FMT_FP(sf) == MSML_FMT_FP(MSML_FMT_T_FP_G)) {
+            /* %g - decrement precision if non-zero (to make it like %e). */
+            prec--;
+            prec ^= (uint32_t)((int32_t)prec >> 31);
+        }
+        if ((sf & MSML_FMT_T_FP_E) && prec < 14 && n != 0) {
+            /* Precision is sufficiently low that rescaling will probably work. */
+            if ((ndebias = msml__rescale_e[e >> 6])) {
+                t.n = n * msml__rescale_n[e >> 6];
+                if (msml_unlikely(!e)) t.n *= 1e10, ndebias -= 10;
+                t.u64 -= 2; /* Convert 2ulp below (later we convert 2ulp above). */
+                nd[0] = 0x100000 | (t.u32.hi & 0xfffff);
+                e = ((int32_t)(t.u32.hi >> 20) & 0x7ff) - 1075 - (MSML__ND_MUL2K_MAX_SHIFT < 29);
+                goto load_t_lo; rescale_failed:
+                t.n = n;
+                e = (int32_t)(t.u32.hi >> 20) & 0x7ff;
+                ndebias = 0;
+                ndhi = 0;
+            }
+        }
+        nd[0] = t.u32.hi & 0xfffff;
+        if (e == 0) e++; else nd[0] |= 0x100000;
+        e -= 1043;
+        if (t.u32.lo) {
+            e -= 32 + (MSML__ND_MUL2K_MAX_SHIFT < 29); load_t_lo:
+#if MSML__ND_MUL2K_MAX_SHIFT >= 29
+            nd[0] = (nd[0] << 3) | (t.u32.lo >> 29);
+            ndhi = nd_mul2k(nd, ndhi, 29, t.u32.lo & 0x1fffffff, sf);
+#elif MSML__ND_MUL2K_MAX_SHIFT >= 11
+            ndhi = nd_mul2k(nd, ndhi, 11, t.u32.lo >> 21, sf);
+                ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo >> 10) & 0x7ff, sf);
+                ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo <<  1) & 0x7ff, sf);
+            #else
+            #   error "MSML__ND_MUL2K_MAX_SHIFT not big enough"
+#endif
+        }
+        if (e >= 0) {
+            ndhi = nd_mul2k(nd, ndhi, (uint32_t)e, 0, sf);
+            ndlo = 0;
+        } else {
+            ndlo = nd_div2k(nd, ndhi, (uint32_t)-e, sf);
+            if (ndhi && !nd[ndhi]) ndhi--;
+        }
+        /* |n| == nd * 10^ndebias (for slightly loose interpretation of ==) */
+        if ((sf & MSML_FMT_T_FP_E)) {
+            /* %e or %g - assume %e and start by calculating nd's exponent (nde). */
+            char eprefix = '+';
+            int32_t nde = -1;
+            size_t hilen;
+            if (ndlo && !nd[ndhi]) {
+                ndhi = 64; do {} while (!nd[--ndhi]);
+                nde -= 64 * 9;
+            }
+            hilen = msml__ndigits_dec(nd[ndhi]);
+            nde += (int32_t)(ndhi * 9 + hilen);
+            if (ndebias) {
+                /*
+                ** Rescaling was performed, but this introduced some error, and might
+                ** have pushed us across a rounding boundary. We check whether this
+                ** error affected the result by introducing even more error (2ulp in
+                ** either direction), and seeing whether a rounding boundary was
+                ** crossed. Having already converted the -2ulp case, we save off its
+                ** most significant digits, convert the +2ulp case, and compare them.
+                */
+                int32_t eidx = e + 70 + (MSML__ND_MUL2K_MAX_SHIFT < 29)
+                               + (t.u32.lo >= 0xfffffffe && !(~t.u32.hi << 12));
+                const int8_t *m_e = msml__four_ulp_m_e + eidx * 2;
+                msml__assert(0 <= eidx && eidx < 128, "bad eidx %d", eidx);
+                nd[33] = nd[ndhi];
+                nd[32] = nd[(ndhi - 1) & 0x3f];
+                nd[31] = nd[(ndhi - 2) & 0x3f];
+                nd_add_m10e(nd, ndhi, (uint8_t)*m_e, m_e[1]);
+                if (msml_unlikely(!nd_similar(nd, ndhi, nd + 33, hilen, prec + 1))) {
+                    goto rescale_failed;
+                }
+            }
+            if ((int32_t)(prec - nde) < (0x3f & -(int32_t)ndlo) * 9) {
+                /* Precision is sufficiently low as to maybe require rounding. */
+                ndhi = nd_add_m10e(nd, ndhi, 5, (int32_t)nde - prec - 1);
+                nde += (hilen != msml__ndigits_dec(nd[ndhi]));
+            }
+            nde += ndebias;
+            if ((sf & MSML_FMT_T_FP_F)) {
+                /* %g */
+                if ((int32_t)prec >= nde && nde >= -4) {
+                    if (nde < 0) ndhi = 0;
+                    prec -= nde;
+                    goto g_format_like_f;
+                } else if (!(sf & MSML_FMT_F_ALT) && prec && width > 5) {
+                    /* Decrease precision in order to strip trailing zeroes. */
+                    char tail[9];
+                    uint32_t maxprec = hilen - 1 + ((ndhi - ndlo) & 0x3f) * 9;
+                    if (prec >= maxprec) prec = maxprec;
+                    else ndlo = (ndhi - (((int32_t)(prec - hilen) + 9) / 9)) & 0x3f;
+                    i = prec - hilen - (((ndhi - ndlo) & 0x3f) * 9) + 10;
+                    msml__wuint9(tail, nd[ndlo]);
+                    while (prec && tail[--i] == '0') {
+                        prec--;
+                        if (!i) {
+                            if (ndlo == ndhi) { prec = 0; break; }
+                            ndlo = (ndlo + 1) & 0x3f;
+                            msml__wuint9(tail, nd[ndlo]);
+                            i = 9;
+                        }
+                    }
+                }
+            }
+            if (nde < 0) {
+                /* Make nde non-negative. */
+                eprefix = '-';
+                nde = -nde;
+            }
+            len = 3 + prec + (prefix != 0) + msml__ndigits_dec((uint32_t)nde) + (nde < 10)
+                  + ((prec | (sf & MSML_FMT_F_ALT)) != 0);
+            if (!(sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO))) {
+                while (width-- > len) *p++ = ' ';
+            }
+            if (prefix) *p++ = prefix;
+            if ((sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO)) == MSML_FMT_F_ZERO) {
+                while (width-- > len) *p++ = '0';
+            }
+            q = msml__wint(p + 1, nd[ndhi]);
+            p[0] = p[1]; /* Put leading digit in the correct place. */
+            if ((prec | (sf & MSML_FMT_F_ALT))) {
+                /* Emit fractional part. */
+                p[1] = '.'; p += 2;
+                prec -= (size_t)(q - p); p = q; /* Account for digits already emitted. */
+                /* Then emit chunks of 9 digits (this may emit 8 digits too many). */
+                for (i = ndhi; (int32_t)prec > 0 && i != ndlo; prec -= 9) {
+                    i = (i - 1) & 0x3f;
+                    p = msml__wuint9(p, nd[i]);
+                }
+                if ((sf & MSML_FMT_T_FP_F) && !(sf & MSML_FMT_F_ALT)) {
+                    /* %g (and not %#g) - strip trailing zeroes. */
+                    p += (int32_t)prec & ((int32_t)prec >> 31);
+                    while (p[-1] == '0') p--;
+                    if (p[-1] == '.') p--;
+                } else {
+                    /* %e (or %#g) - emit trailing zeroes. */
+                    while ((int32_t)prec > 0) { *p++ = '0'; prec--; }
+                    p += (int32_t)prec;
+                }
+            } else {
+                p++;
+            }
+            *p++ = (sf & MSML_FMT_F_UPPER) ? 'E' : 'e';
+            *p++ = eprefix; /* + or - */
+            if (nde < 10) *p++ = '0'; /* Always at least two digits of exponent. */
+            p = msml__wint(p, nde);
+        } else {
+            /* %f (or, shortly, %g in %f style) */
+            if (prec < (size_t)(0x3f & -(int32_t)ndlo) * 9) {
+                /* Precision is sufficiently low as to maybe require rounding. */
+                ndhi = nd_add_m10e(nd, ndhi, 5, 0 - prec - 1);
+            }
+            g_format_like_f:
+            if ((sf & MSML_FMT_T_FP_E) && !(sf & MSML_FMT_F_ALT) && prec && width) {
+                /* Decrease precision in order to strip trailing zeroes. */
+                if (ndlo) {
+                    /* nd has a fractional part; we need to look at its digits. */
+                    char tail[9];
+                    uint32_t maxprec = (64 - ndlo) * 9;
+                    if (prec >= maxprec) prec = maxprec;
+                    else ndlo = 64 - (prec + 8) / 9;
+                    i = prec - ((63 - ndlo) * 9);
+                    msml__wuint9(tail, nd[ndlo]);
+                    while (prec && tail[--i] == '0') {
+                        prec--;
+                        if (!i) {
+                            if (ndlo == 63) { prec = 0; break; }
+                            msml__wuint9(tail, nd[++ndlo]);
+                            i = 9;
+                        }
+                    }
+                } else {
+                    /* nd has no fractional part, so precision goes straight to zero. */
+                    prec = 0;
+                }
+            }
+            len = ndhi * 9 + msml__ndigits_dec(nd[ndhi]) + prec + (prefix != 0)
+                  + ((prec | (sf & MSML_FMT_F_ALT)) != 0);
+            if (!(sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO))) {
+                while (width-- > len) *p++ = ' ';
+            }
+            if (prefix) *p++ = prefix;
+            if ((sf & (MSML_FMT_F_LEFT | MSML_FMT_F_ZERO)) == MSML_FMT_F_ZERO) {
+                while (width-- > len) *p++ = '0';
+            }
+            /* Emit integer part. */
+            p = msml__wint(p, nd[ndhi]);
+            i = ndhi;
+            while (i) p = msml__wuint9(p, nd[--i]);
+            if ((prec | (sf & MSML_FMT_F_ALT))) {
+                /* Emit fractional part. */
+                *p++ = '.';
+                /* Emit chunks of 9 digits (this may emit 8 digits too many). */
+                while ((int32_t)prec > 0 && i != ndlo) {
+                    i = (i - 1) & 0x3f;
+                    p = msml__wuint9(p, nd[i]);
+                    prec -= 9;
+                }
+                if ((sf & MSML_FMT_T_FP_E) && !(sf & MSML_FMT_F_ALT)) {
+                    /* %g (and not %#g) - strip trailing zeroes. */
+                    p += (int32_t)prec & ((int32_t)prec >> 31);
+                    while (p[-1] == '0') p--;
+                    if (p[-1] == '.') p--;
+                } else {
+                    /* %f (or %#g) - emit trailing zeroes. */
+                    while ((int32_t)prec > 0) { *p++ = '0'; prec--; }
+                    p += (int32_t)prec;
+                }
+            }
+        }
+    }
+    if ((sf & MSML_FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
+    return p;
 }
