@@ -2,6 +2,16 @@
 ** (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 ** MSML - Single file STB-style machine learning library in C99 with Python bindings.
 ** For license see LICENSE file.
+**
+**
+** ### To add a new operation:
+** 1. Add the operation to the msml_op_def macro, which defines all operations, with all information needed.
+** 2. Write a validation routine, or use an existing one (e.g. 'msml__validate_op_binary').
+** 3. Add the validation routine to the 'routines' table in 'msml__op_get_validator_routine', at the op index.
+** 4. Write a result tensor constructor routine or use an existing one (e.g. 'msml__result_constructor_routine_isomorph').
+** 5. Add the result tensor constructor routine to the 'routines' table in 'msml__op_get_result_constructor_routine', at the op index.
+** 6. Write a BLAS computation routine.
+** 7. Add the BLAS computation routine to the 'dispatch_lut' table in 'msml__blas_compute_dispatch_table_default', at the op index.
 */
 
 #define MSML_EXPORT_DLL
@@ -1353,6 +1363,7 @@ static bool (*msml__op_get_validator_routine(msml_op_t op))(msml_op_t, msml_tens
         [MSML_OP_CLONE] = &msml__validate_op_unary,
         [MSML_OP_VIEW] = &msml__validate_op_unary,
         [MSML_OP_TRANSPOSE] = &msml__validate_op_transpose,
+        [MSML_OP_PERMUTE] = &msml__validate_op_transpose,
         [MSML_OP_STEP] = &msml__validate_op_unary,
         [MSML_OP_SOFTMAX] = &msml__validate_op_unary,
         [MSML_OP_SOFTMAX_DV] = &msml__validate_op_unary,
@@ -1391,10 +1402,27 @@ static msml_tensor_t* msml__result_constructor_routine_view(msml_tensor_t** inpu
 }
 
 static msml_tensor_t* msml__result_constructor_routine_transposed(msml_tensor_t** inputs) {
-    msml_tensor_t* transposed = msml__result_constructor_routine_isomorph(inputs);
+    msml_tensor_t* transposed = msml__result_constructor_routine_view(inputs);
     msml_swap(int64_t, transposed->shape[0], transposed->shape[1]);
     msml_swap(int64_t, transposed->strides[0], transposed->strides[1]);
     return transposed;
+}
+
+static msml_tensor_t* msml__result_constructor_routine_permuted(msml_tensor_t** inputs) {
+    msml_tensor_t* permuted = msml__result_constructor_routine_view(inputs);
+    uint32_t axes[MSML_MAX_DIMS] = {0}; /* TODO: Get from op params, move validation elsewhere. */
+
+    /* Check that all axes are unique */
+    for (uint32_t i = 0; i < MSML_MAX_DIMS; ++i)
+        for (uint32_t j = i+1; j < MSML_MAX_DIMS; ++j)
+            msml__assert2(axes[i] != axes[j]);
+
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) {
+        msml__assert2(axes[i] >= 0 && axes[i] < MSML_MAX_DIMS);
+        permuted->shape[axes[i]] = inputs[0]->shape[i];
+        permuted->strides[axes[i]] = inputs[0]->strides[i];
+    }
+    return permuted;
 }
 
 static msml_tensor_t* msml__result_constructor_routine_matmul(msml_tensor_t** inputs) {
@@ -1410,6 +1438,7 @@ static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(m
         [MSML_OP_CLONE] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_VIEW] = &msml__result_constructor_routine_view,
         [MSML_OP_TRANSPOSE] = &msml__result_constructor_routine_transposed,
+        [MSML_OP_PERMUTE] = &msml__result_constructor_routine_permuted,
         [MSML_OP_STEP] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_SOFTMAX] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_SOFTMAX_DV] = &msml__result_constructor_routine_isomorph,
@@ -2418,7 +2447,8 @@ static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lu
     (*dispatch_lut)[MSML_OP_NOP] = &msml__blas_nop; /* No operation */
     (*dispatch_lut)[MSML_OP_CLONE] = &msml__blas_clone;
     (*dispatch_lut)[MSML_OP_VIEW] = &msml__blas_nop; /* View is a no-op */
-    (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_nop; /* Transpose is a no-op */
+    (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[MSML_OP_PERMUTE] = &msml__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[MSML_OP_STEP] = &msml__blas_step_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX] = &msml__blas_softmax_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;

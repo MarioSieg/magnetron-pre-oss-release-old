@@ -56,6 +56,7 @@ class Operation(Enum):
     CLONE = auto()
     VIEW = auto()
     TRANSPOSE = auto()
+    PERMUTE = auto()
     STEP = auto()
     SOFTMAX = auto()
     SOFTMAX_DV = auto()

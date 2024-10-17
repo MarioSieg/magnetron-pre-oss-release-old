@@ -120,6 +120,7 @@ typedef enum msml_desired_color_channels_t {
     _(CLONE,            "clone",            1)/* R = clone(X). */__\
     _(VIEW,             "view",             1)/* R = X[:]. */__\
     _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ. */__\
+    _(PERMUTE,          "permute",          1)/* R = permute(X). */__\
     _(STEP,             "step",             1)/* R = 1 if x >= 0 else 0. Heaviside step function */__\
     _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
     _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
