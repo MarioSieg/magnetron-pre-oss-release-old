@@ -1505,11 +1505,6 @@ static void msml__blas_compute_info_parallel(msml_ctx_t* ctx, msml__blas_compute
     };
 }
 
-static void msml__op_store_deferred(msml_tensor_t* R, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs) {
-    R->op = op;
-    memcpy(R->inputs, inputs, n_inputs * sizeof(*inputs));
-}
-
 static void MSML_AINLINE msml__op_execute(msml_tensor_t* R, msml_op_t op, const msml_tensor_t** inputs, const msml__blas_compute_info_t* bci) {
     void (**dispatch_lut)(const msml__blas_compute_info_t*, msml_tensor_t*, const msml_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
     (*(*(dispatch_lut+op)))(bci, R, inputs); /* Dispatch to operation. */
@@ -1521,12 +1516,14 @@ msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t
     bool (*validate_op)(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) = msml__op_get_validator_routine(op);
     msml_tensor_t* R = (*construct_result)(inputs);
     if (msml_unlikely(!(*validate_op)(op, R, inputs, n_inputs))) return NULL;
+    msml__assert2(R->op == MSML_OP_NOP);
+    R->op = op; /* Set operation for deferred execution mode. */
+    memcpy(R->inputs, inputs, n_inputs*sizeof(*inputs)); /* Copy input tensors */
     if (ctx->exec_mode == MSML_EXEC_MODE_EAGER) { /* In eager execution mode, we execute immediately. */
+        memcpy(R->inputs, inputs, n_inputs * sizeof(*inputs));
         msml__blas_compute_info_t bci;
         msml__blas_compute_info_sequential(ctx, &bci); /* Sequential eager execution. */
         msml__op_execute(R, op, (const msml_tensor_t**)inputs, &bci); /* Execute the operation immediately. */
-    } else { /* We just store op, execution happens later */
-        msml__op_store_deferred(R, op, inputs, n_inputs);
     }
     return R;
 }
