@@ -131,9 +131,9 @@ msml_static_assert(sizeof(0ull) == 8);
 #else
 #   define MSML_SRC_NAME __FILE__ ":" MSML_STRINGIZE(__LINE__)
 #endif
-#define msml_log_info(msg, ...) fprintf(stdout,  "[MSML] " MSML_SRC_NAME " " msg "\n", ## __VA_ARGS__)
-#define msml_log_warn(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
-#define msml_log_error(msg, ...) fprintf(stderr,  "[MSML] " MSML_SRC_NAME " " MSML_CCRED msg MSML_CCRESET "\n", ## __VA_ARGS__)
+#define msml_log_info(msg, ...) fprintf(stdout,   MSML_CCCYAN "[MSML] " MSML_CCRESET MSML_SRC_NAME " " msg "\n", ## __VA_ARGS__)
+#define msml_log_warn(msg, ...) fprintf(stderr,  MSML_CCCYAN "[MSML] " MSML_CCRESET MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
+#define msml_log_error(msg, ...) fprintf(stderr,  MSML_CCCYAN "[MSML] " MSML_CCRESET MSML_SRC_NAME " " MSML_CCRED msg MSML_CCRESET "\n", ## __VA_ARGS__)
 
 #if defined(__x86_64__) || defined(_M_X64)
 
@@ -937,7 +937,7 @@ static void msml__blas_compute_dispatch_table_install(msml_ctx_t* ctx); /* Insta
 #endif
 
 msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
-    puts("Creating MSML context...");
+    msml_log_info("Creating MSML context...");
     int64_t time_stamp_start = msml_hpc_clock_us();
 
     /* Print MSML version and compiler info. */
@@ -956,7 +956,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
         compiler_version_major = _MSC_VER / 100;
         compiler_version_minor = _MSC_VER % 100;
     #endif
-    printf("MSML v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d\n", msml_version_major(MSML_VERSION), msml_version_minor(MSML_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
+    msml_log_info("MSML v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d", msml_version_major(MSML_VERSION), msml_version_minor(MSML_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
 
     /* Enable fast math optimizations for x86-64 platforms. */
     #if MSML_CFG_X86_64_FAST_MATH && (defined(__x86_64__) || defined(_M_X64))
@@ -986,8 +986,8 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
 
     /* Query and print host system information. */
     msml__system_host_info_query(ctx);
-    printf("OS/Kernel: %s\n", ctx->sys.os_name);
-    printf("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u\n", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
+    msml_log_info("OS/Kernel: %s", ctx->sys.os_name);
+    msml_log_info("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
     #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
         printf("CPU Features:");
         for (unsigned i=0, k=0; i < MSML__X86_64_FEATURE__COUNT; ++i) {
@@ -1004,7 +1004,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     msml__humanize_memory_size(ctx->sys.phys_mem_free, &mem_free, &mem_unit_free);
     msml__humanize_memory_size((size_t)llabs((int64_t)ctx->sys.phys_mem_total-(int64_t)ctx->sys.phys_mem_free), &mem_used, &mem_unit_used);
     double mem_used_percent = fabs((double)(ctx->sys.phys_mem_total-ctx->sys.phys_mem_free))/(double)ctx->sys.phys_mem_total*100.0;
-    printf("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)\n", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
+    msml_log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 
     /* Prepare memory pool. */
     ctx->pool.chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
@@ -1021,7 +1021,7 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     msml__blas_compute_dispatch_table_install(ctx);
 
     /* Print context initialization time. */
-    printf("MSML context initialized in %.05f ms.\n", msml_hpc_clock_elapsed_ms(time_stamp_start));
+    msml_log_info("MSML context initialized in %.05f ms.", msml_hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
 }
 
@@ -1062,7 +1062,10 @@ size_t msml_ctx_total_allocated_pool_memory(const msml_ctx_t* ctx) {
 
 msml_exec_mode_t msml_ctx_get_exec_mode(const msml_ctx_t* ctx) { return ctx->exec_mode; }
 
-void msml_ctx_set_exec_mode(msml_ctx_t* ctx, msml_exec_mode_t mode) { ctx->exec_mode = mode; }
+void msml_ctx_set_exec_mode(msml_ctx_t* ctx, msml_exec_mode_t mode) {
+    ctx->exec_mode = mode;
+    msml_log_info("Execution mode set to: %s", mode == MSML_EXEC_MODE_EAGER ? "Eager" : "Deferred");
+}
 
 msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx) { return ctx->prng_algorithm; }
 
@@ -1094,8 +1097,8 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     const char* alloc_unit, *mapped_unit;
     msml__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
     msml__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
-    printf("Allocated in pool: %.03f %s, Mapped memory: %.03f %s\n", alloc_total, alloc_unit, mapped_total, mapped_unit);
-    puts("MSML context destroyed.");
+    msml_log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s", alloc_total, alloc_unit, mapped_total, mapped_unit);
+    msml_log_info("MSML context destroyed.");
 }
 
 #define msml__load_local_storage_group(xk, prefix, var) \
@@ -1169,7 +1172,7 @@ printf("SHORT ERROR DESCRIPTION"
 */
 
 static void MSML_COLDPROC msml__validate_print_separator(void) {
-    for (int i=0; i <= 128; ++i) fputc('=', stderr);
+    for (uint32_t i=0; i <= 128; ++i) fputc('=', stderr);
     fputc('\n', stderr);
 }
 
@@ -1183,6 +1186,7 @@ static bool msml__validate_inputs(msml_op_t op, msml_tensor_t** inputs, uint32_t
             msml_op_get_name(op), MSML_MAX_INPUT_TENSORS, n_inputs
         );
         msml__validate_print_separator();
+        fputc('\n', stderr);
         fflush(stderr);
         return false;
     }
@@ -1195,6 +1199,7 @@ static bool msml__validate_inputs(msml_op_t op, msml_tensor_t** inputs, uint32_t
             msml_op_get_name(op), msml_op_get_argcount(op), n_inputs
         );
         msml__validate_print_separator();
+        fputc('\n', stderr);
         fflush(stderr);
         return false;
     }
@@ -1208,6 +1213,7 @@ static bool msml__validate_inputs(msml_op_t op, msml_tensor_t** inputs, uint32_t
                 msml_op_get_name(op), i
             );
             msml__validate_print_separator();
+            fputc('\n', stderr);
             fflush(stderr);
             return false;
         }
@@ -1229,6 +1235,7 @@ static bool msml__validate_shape_eq(msml_op_t op, const msml_tensor_t* a, const 
         b->name, (size_t)b->shape[0], (size_t)b->shape[1], (size_t)b->shape[2], (size_t)b->shape[3]
     );
     msml__validate_print_separator();
+    fputc('\n', stderr);
     fflush(stderr);
     return false;
 }
@@ -1252,6 +1259,7 @@ static bool msml__validate_shape_broadcastable(msml_op_t op, const msml_tensor_t
         a->shape[3] % b->shape[3] == 0 ? "YES" : "NO"
     );
     msml__validate_print_separator();
+    fputc('\n', stderr);
     fflush(stderr);
     return false;
 }
@@ -1375,11 +1383,11 @@ static msml_tensor_t* msml__result_constructor_routine_nop(msml_tensor_t** input
 }
 
 static msml_tensor_t* msml__result_constructor_routine_isomorph(msml_tensor_t** inputs) {
-    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, inputs[0]->rank, NULL, 0);
+    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, MSML_MAX_DIMS, NULL, 0);
 }
 
 static msml_tensor_t* msml__result_constructor_routine_view(msml_tensor_t** inputs) {
-    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, inputs[0]->rank, inputs[0], 0);
+    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, MSML_MAX_DIMS, inputs[0], 0);
 }
 
 static msml_tensor_t* msml__result_constructor_routine_transposed(msml_tensor_t** inputs) {
@@ -1450,10 +1458,10 @@ static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, co
     tensor->exec_mode = ctx->exec_mode;
     tensor->view = view;
     tensor->view_offs = view_offs;
-    for (int i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
         tensor->shape[i] = i < rank ? msml_max(1, dims[i]) : 1;
     *tensor->strides = scalar_size;
-    for (int i=1; i < MSML_MAX_DIMS; ++i) /* Calculate strides and check for overflow. */
+    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i) /* Calculate strides and check for overflow. */
         msml__assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
     tensor->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(tensor + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return tensor;
@@ -1512,7 +1520,7 @@ msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t
     msml_tensor_t* (*construct_result)(msml_tensor_t**) = msml__op_get_result_constructor_routine(op);
     bool (*validate_op)(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) = msml__op_get_validator_routine(op);
     msml_tensor_t* R = (*construct_result)(inputs);
-    msml__assert((*validate_op)(op, R, inputs, n_inputs), "Invalid operation"); /* Verify op configuration. */
+    if (msml_unlikely(!(*validate_op)(op, R, inputs, n_inputs))) return NULL;
     if (ctx->exec_mode == MSML_EXEC_MODE_EAGER) { /* In eager execution mode, we execute immediately. */
         msml__blas_compute_info_t bci;
         msml__blas_compute_info_sequential(ctx, &bci); /* Sequential eager execution. */
@@ -1582,7 +1590,7 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
     double buf_size_cvt = 0.0;
     const char* buf_size_unit = NULL;
     msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
-    printf("Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s \n",
+    msml_log_info("Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s \n",
        tensor->name,
        msml_get_dtype_info(tensor->dtype)->name,
        (size_t)tensor->rank,
@@ -1679,28 +1687,28 @@ int64_t msml_tensor_num_cols(const msml_tensor_t* tensor) {
 }
 
 bool msml_tensor_is_scalar(const msml_tensor_t* tensor) {
-    for (int i=0; i < MSML_MAX_DIMS; ++i)
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
         if (tensor->shape[i] != 1)
             return false;
     return true;
 }
 
 bool msml_tensor_is_vector(const msml_tensor_t* tensor) {
-    for (int i=1; i < MSML_MAX_DIMS; ++i)
+    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i)
         if (tensor->shape[i] != 1)
             return false;
     return true;
 }
 
 bool msml_tensor_is_matrix(const msml_tensor_t* tensor) {
-    for (int i=2; i < MSML_MAX_DIMS; ++i)
+    for (uint32_t i=2; i < MSML_MAX_DIMS; ++i)
         if (tensor->shape[i] != 1)
             return false;
     return true;
 }
 
 bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor) {
-    for (int i=3; i < MSML_MAX_DIMS; ++i)
+    for (uint32_t i=3; i < MSML_MAX_DIMS; ++i)
         if (tensor->shape[i] != 1)
             return false;
     return true;
@@ -1715,7 +1723,7 @@ bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b) 
 }
 
 bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b) {
-    for (int i=0; i < MSML_MAX_DIMS; ++i)
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
         if ((b->shape[i] % a->shape[i]) != 0)
             return false;
     return true;
@@ -1735,7 +1743,7 @@ void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t 
 
 int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[MSML_MAX_DIMS]) {
     int64_t v_idx = 0;
-    for (int i=0; i < MSML_MAX_DIMS; ++i)
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
         v_idx += (*p_idx)[i] * tensor->strides[i];
     return v_idx;
 }
@@ -2438,7 +2446,7 @@ static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lu
 static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
     msml__blas_compute_dispatch_table_default(&ctx->blas_dispatch);
     /* TODO: Add support for custom implementations for host CPU arch. */
-    for (int i=MSML_OP_NOP; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
+    for (uint32_t i=MSML_OP_NOP; i < MSML_OP__COUNT; ++i) { /* Verify that all ops have a implementation, except NOP. */
         msml__assert(ctx->blas_dispatch[i] != NULL, "No default CPU implementation for op: %s", msml_op_get_name((msml_op_t)i));
     }
 }
@@ -2637,7 +2645,7 @@ void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gr
         }
     }
     fprintf(f, "}\n");
-    printf("dot -Tpng %s -o %s.png && open %s.png\n", file_name, file_name, file_name);
+    msml_log_info("dot -Tpng %s -o %s.png && open %s.png\n", file_name, file_name, file_name);
     fclose(f);
 }
 

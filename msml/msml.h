@@ -51,14 +51,14 @@ extern MSML_EXPORT void* msml_default_allocator_impl(void* blk, size_t size); /*
 #endif
 
 typedef enum msml_exec_mode_t {
-    MSML_EXEC_MODE_EAGER = 0, /* Execute operations immediately. (dynamic computation graph) */
-    MSML_EXEC_MODE_DEFERRED = 1 /* Build computation graph and execute later. (dynamic computation graph) */
+    MSML_EXEC_MODE_EAGER = 0, /* Execute operations immediately. (Dynamic computation graph, like PyTorch). */
+    MSML_EXEC_MODE_DEFERRED = 1 /* Build computation graph and execute later. (Static computation graph, like TensorFlow 1.0). */
 } msml_exec_mode_t;
 
 typedef enum msml_prng_algorithm_t {
     MSML_PRNG_MERSENNE_TWISTER = 0, /* Mersenne Twister PRNG */
     MSML_PRNG_PCG = 1, /* Permuted Congruential Generator PRNG */
-    MSML_PRNG_COUNT_                /* Total number of PRNG algorithms */
+    MSML_PRNG_COUNT_
 } msml_prng_algorithm_t;
 
 typedef struct msml_ctx_info_t {
@@ -167,7 +167,7 @@ extern MSML_EXPORT msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dt
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4); /* Create 4D tensor */
-extern MSML_EXPORT msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs); /* Set opcode and arguments for tensor, and return result computation node. */
+extern MSML_EXPORT msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
 
 extern MSML_EXPORT void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size); /* Copy data into tensor buffer */
 extern MSML_EXPORT void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
