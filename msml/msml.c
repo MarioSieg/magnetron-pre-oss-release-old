@@ -296,8 +296,9 @@ struct msml_tensor_t {
     void* buf;
     int64_t buf_size;
     msml_exec_mode_t exec_mode;
-    msml_op_t op; /* OpCode - Only used if exec_mode == DEFERRED */
-    msml_tensor_t* inputs[MSML_MAX_INPUT_TENSORS]; /* Inputs - only used if exec_mode == DEFERRED */
+    msml_op_t op;
+    msml_tensor_t* op_inputs[MSML_MAX_INPUT_TENSORS];
+    msml_op_param_t op_params[MSML_MAX_OP_PARAMS];
     msml_tensor_t* view;
     size_t view_offs;
     char name[MSML_MAX_TENSOR_NAME_LEN];
@@ -1111,6 +1112,22 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     msml_log_info("MSML context destroyed.");
 }
 
+static msml_op_param_t msml__op_param_pack(uint64_t x, msml_op_param_type_t tag) {
+    return x;
+}
+
+msml_op_param_t msml_op_param_int(uint64_t x) {
+    return msml__op_param_pack(x, MSML_OP_PARAM_INT);
+}
+
+bool msml_op_param_is_int(msml_op_param_t param) {
+    return true;
+}
+
+uint64_t msml_op_param_unpack_int(msml_op_param_t param) {
+    return param;
+}
+
 #define msml__load_local_storage_group(xk, prefix, var) \
     const int64_t prefix##0 = (xk)->var[0]; \
     const int64_t prefix##1 = (xk)->var[1]; \
@@ -1282,18 +1299,20 @@ static bool msml__validate_shape_broadcastable(msml_op_t op, const msml_tensor_t
         return false; \
     }
 
-static bool msml__validate_op_nop(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
-    (void)op, (void)result, (void)inputs, (void)n_inputs;
+static bool msml__validate_op_nop(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)op, (void)result, (void)inputs, (void)n_inputs, (void)params;
     return true;
 }
 
-static bool msml__validate_op_unary(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+static bool msml__validate_op_unary(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
     if (msml_unlikely(!msml__validate_shape_eq(op, result, inputs[0]))) return false;
     return true;
 }
 
-static bool msml__validate_op_binary(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+static bool msml__validate_op_binary(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
     if (msml_unlikely(!msml__validate_shape_eq(op, result, inputs[0]))) return false;
     if (msml_unlikely(!msml__validate_shape_broadcastable(op, inputs[0], inputs[1]))) return false;
@@ -1302,12 +1321,13 @@ static bool msml__validate_op_binary(msml_op_t op, msml_tensor_t* result, msml_t
     return true;
 }
 
-static bool msml__validate_op_transpose(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+static bool msml__validate_op_transpose(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
     return true;
 }
 
-static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs) {
+static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
 
     msml__validate_expr_gen(
@@ -1316,7 +1336,7 @@ static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_t
             "    - Result Tensor: '%s', Dimension [0] = %zu\n"
             "    - First Input Tensor: '%s', Dimension [1] = %zu\n"
             "    Hint: Ensure the second dimension of the first input tensor matches the first dimension of the result tensor.",
-            result->name, (size_t)result->shape[0], result->inputs[0]->name, (size_t)result->inputs[0]->shape[1]
+            result->name, (size_t)result->shape[0], result->op_inputs[0]->name, (size_t)result->op_inputs[0]->shape[1]
     );
 
     msml__validate_expr_gen(
@@ -1325,7 +1345,7 @@ static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_t
             "    - Result Tensor: '%s', Dimension [1] = %zu\n"
             "    - Second Input Tensor: '%s', Dimension [1] = %zu\n"
             "    Hint: Ensure the dimensions match for a valid multiplication.",
-            result->name, (size_t)result->shape[1], result->inputs[1]->name, (size_t)result->inputs[1]->shape[1]
+            result->name, (size_t)result->shape[1], result->op_inputs[1]->name, (size_t)result->op_inputs[1]->shape[1]
     );
 
     msml__validate_expr_gen(
@@ -1334,7 +1354,7 @@ static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_t
             "    - Result Tensor: '%s', Dimension [2] = %zu\n"
             "    - Second Input Tensor: '%s', Dimension [2] = %zu\n"
             "    Hint: The dimensions must match.",
-            result->name, (size_t)result->shape[2], result->inputs[1]->name, (size_t)result->inputs[1]->shape[2]
+            result->name, (size_t)result->shape[2], result->op_inputs[1]->name, (size_t)result->op_inputs[1]->shape[2]
     );
 
     msml__validate_expr_gen(
@@ -1343,7 +1363,7 @@ static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_t
             "    - Result Tensor: '%s', Dimension [3] = %zu\n"
             "    - Second Input Tensor: '%s', Dimension [3] = %zu\n"
             "    Hint: The dimensions must match.",
-            result->name, (size_t)result->shape[3], result->inputs[1]->name, (size_t)result->inputs[1]->shape[3]
+            result->name, (size_t)result->shape[3], result->op_inputs[1]->name, (size_t)result->op_inputs[1]->shape[3]
     );
 
     msml__validate_expr_gen(inputs[0]->strides[0] == msml_get_dtype_info(result->dtype)->size, "Both input tensors must be contiguous");
@@ -1357,8 +1377,8 @@ static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_t
     return true;
 }
 
-static bool (*msml__op_get_validator_routine(msml_op_t op))(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) {
-    static bool (*const routines[MSML_OP__COUNT])(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) = {
+static bool (*msml__op_get_validator_routine(msml_op_t op))(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) {
+    static bool (*const routines[MSML_OP__COUNT])(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) = {
         [MSML_OP_NOP] = &msml__validate_op_nop,
         [MSML_OP_CLONE] = &msml__validate_op_unary,
         [MSML_OP_VIEW] = &msml__validate_op_unary,
@@ -1389,35 +1409,39 @@ static bool (*msml__op_get_validator_routine(msml_op_t op))(msml_op_t, msml_tens
 
 static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs);
 
-static msml_tensor_t* msml__result_constructor_routine_nop(msml_tensor_t** inputs) {
+static msml_tensor_t* msml__result_constructor_routine_nop(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)inputs, (void)params;
     return NULL;
 }
 
-static msml_tensor_t* msml__result_constructor_routine_isomorph(msml_tensor_t** inputs) {
+static msml_tensor_t* msml__result_constructor_routine_isomorph(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
     return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, MSML_MAX_DIMS, NULL, 0);
 }
 
-static msml_tensor_t* msml__result_constructor_routine_view(msml_tensor_t** inputs) {
+static msml_tensor_t* msml__result_constructor_routine_view(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
     return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, MSML_MAX_DIMS, inputs[0], 0);
 }
 
-static msml_tensor_t* msml__result_constructor_routine_transposed(msml_tensor_t** inputs) {
-    msml_tensor_t* transposed = msml__result_constructor_routine_view(inputs);
+static msml_tensor_t* msml__result_constructor_routine_transposed(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    msml_tensor_t* transposed = msml__result_constructor_routine_view(inputs, params);
     msml_swap(int64_t, transposed->shape[0], transposed->shape[1]);
     msml_swap(int64_t, transposed->strides[0], transposed->strides[1]);
     return transposed;
 }
 
-static msml_tensor_t* msml__result_constructor_routine_permuted(msml_tensor_t** inputs) {
-    msml_tensor_t* permuted = msml__result_constructor_routine_view(inputs);
-    uint32_t axes[MSML_MAX_DIMS] = {0}; /* TODO: Get from op params, move validation elsewhere. */
-
-    /* Check that all axes are unique */
-    for (uint32_t i = 0; i < MSML_MAX_DIMS; ++i)
+static msml_tensor_t* msml__result_constructor_routine_permuted(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    msml__assert2(params != NULL); /* TODO */
+    msml_tensor_t* permuted = msml__result_constructor_routine_view(inputs, params);
+    uint32_t axes[MSML_MAX_DIMS];
+    for (uint32_t i = 0; i < MSML_MAX_DIMS; ++i) /* Unpack axes */
+        axes[i] = msml_op_param_unpack_int((*params)[i]);
+    for (uint32_t i = 0; i < MSML_MAX_DIMS; ++i) { /* Check that all axes are unique */
         for (uint32_t j = i+1; j < MSML_MAX_DIMS; ++j)
-            msml__assert2(axes[i] != axes[j]);
-
-    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) {
+            msml__assert(axes[i] != axes[j], "Axes must be unique: %zu != %zu", axes[i], axes[j]);
+    }
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) { /* Permute shape and strides */
         msml__assert2(axes[i] >= 0 && axes[i] < MSML_MAX_DIMS);
         permuted->shape[axes[i]] = inputs[0]->shape[i];
         permuted->strides[axes[i]] = inputs[0]->strides[i];
@@ -1425,15 +1449,16 @@ static msml_tensor_t* msml__result_constructor_routine_permuted(msml_tensor_t** 
     return permuted;
 }
 
-static msml_tensor_t* msml__result_constructor_routine_matmul(msml_tensor_t** inputs) {
+static msml_tensor_t* msml__result_constructor_routine_matmul(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
     int64_t shape[MSML_MAX_DIMS];
     *shape = inputs[0]->shape[1]; /* R = IN 0's rows. */
     memcpy(shape+1, inputs[1]->shape+1, 3*sizeof(*shape)); /* R = IN 1's cols, 3rd and 4th dims. */
-    return msml__tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, sizeof(shape) / sizeof(* shape), NULL, 0);
+    return msml__tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, sizeof(shape)/sizeof(*shape), NULL, 0);
 }
 
-static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(msml_tensor_t**) {
-    static msml_tensor_t* (*const routines[])(msml_tensor_t**) = {
+static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(msml_tensor_t**, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) {
+    static msml_tensor_t* (*const routines[])(msml_tensor_t**, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) = {
         [MSML_OP_NOP] = &msml__result_constructor_routine_nop,
         [MSML_OP_CLONE] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_VIEW] = &msml__result_constructor_routine_view,
@@ -1539,17 +1564,18 @@ static void MSML_AINLINE msml__op_execute(msml_tensor_t* R, msml_op_t op, const 
     (*(*(dispatch_lut+op)))(bci, R, inputs); /* Dispatch to operation. */
 }
 
-msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs) {
+msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     msml__assert2(op != MSML_OP_NOP);
-    msml_tensor_t* (*construct_result)(msml_tensor_t**) = msml__op_get_result_constructor_routine(op);
-    bool (*validate_op)(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t) = msml__op_get_validator_routine(op);
-    msml_tensor_t* R = (*construct_result)(inputs);
-    if (msml_unlikely(!(*validate_op)(op, R, inputs, n_inputs))) return NULL;
+    msml_tensor_t* (*construct_result)(msml_tensor_t**, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) = msml__op_get_result_constructor_routine(op);
+    bool (*validate_op)(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) = msml__op_get_validator_routine(op);
+    msml_tensor_t* R = (*construct_result)(inputs, params);
+    if (msml_unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;
     msml__assert2(R->op == MSML_OP_NOP);
     R->op = op; /* Set operation for deferred execution mode. */
-    memcpy(R->inputs, inputs, n_inputs*sizeof(*inputs)); /* Copy input tensors */
+    memcpy(R->op_inputs, inputs, n_inputs*sizeof(*inputs)); /* Copy input tensors */
+    if (params) memcpy(R->op_params, *params, sizeof(*params)); /* Copy operation parameters */
     if (ctx->exec_mode == MSML_EXEC_MODE_EAGER) { /* In eager execution mode, we execute immediately. */
-        memcpy(R->inputs, inputs, n_inputs * sizeof(*inputs));
+        memcpy(R->op_inputs, inputs, n_inputs*sizeof(*inputs));
         msml__blas_compute_info_t bci;
         msml__blas_compute_info_sequential(ctx, &bci); /* Sequential eager execution. */
         msml__op_execute(R, op, (const msml_tensor_t**)inputs, &bci); /* Execute the operation immediately. */
@@ -1559,13 +1585,13 @@ msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t
 
 msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
     msml__assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
-    return tensor->inputs[slot];
+    return tensor->op_inputs[slot];
 }
 
 void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg) {
     msml__assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
-    msml__assert(tensor->inputs[slot] == NULL, "Argument at slot #%zu already set", slot);
-    tensor->inputs[slot] = arg;
+    msml__assert(tensor->op_inputs[slot] == NULL, "Argument at slot #%zu already set", slot);
+    tensor->op_inputs[slot] = arg;
 }
 
 msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor) {
@@ -1757,6 +1783,13 @@ bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b) {
 
 bool msml_tensor_is_transposed(const msml_tensor_t* tensor) {
     return tensor->strides[0] > tensor->strides[1];
+}
+
+bool msml_tensor_is_permuted(const msml_tensor_t* tensor) {
+    return
+        tensor->strides[0] > tensor->strides[1]
+        || tensor->strides[1] > tensor->strides[2]
+        || tensor->strides[2] > tensor->strides[3];
 }
 
 void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
@@ -2480,7 +2513,7 @@ static void msml__blas_compute_dispatch_table_install(msml_ctx_t* const ctx) {
 
 static void msml__tensor_graph_visit_node(msml_tensor_t* node, void (*visitor)(msml_tensor_t*, void*), bool forward, void* ud) {
     if (msml_unlikely(!node)) return;
-    msml_tensor_t** parent_nodes = node->inputs;
+    msml_tensor_t** parent_nodes = node->op_inputs;
     uint32_t n = msml_op_get_argcount(node->op);
     for (uint32_t i=0; i < n; ++i) {
         uint32_t j = forward ? i : n-i-1; /* Left-to-right or right-to-left */
@@ -2517,12 +2550,12 @@ static void MSML_HOTPROC msml__compute_graph_coalescence_nodes_visitor(msml_tens
     if (node->op == MSML_OP_NOP) { /* Leaf node (constant, out of gradient flow) */
         gra->leaf_nodes[gra->num_leaf_nodes++] = node;
         for (uint32_t i=0; i < MSML_MAX_INPUT_TENSORS; ++i) { /* All inputs must be NULL for NOP node. */
-            msml__assert2(!node->inputs[i]);
+            msml__assert2(!node->op_inputs[i]);
         }
     } else { /* Non-leaf node */
         gra->internal_nodes[gra->num_internal_nodes++] = node;
         for (uint32_t i=0; i < msml_op_get_argcount(node->op); ++i) { /* All required inputs must be not NULL for operation node. */
-            msml__assert2(node->inputs[i]);
+            msml__assert2(node->op_inputs[i]);
         }
     }
 }
@@ -2567,7 +2600,7 @@ msml_tensor_t* MSML_HOTPROC msml_compute_graph_execute(msml_compute_graph_t* gra
     msml__blas_compute_info_sequential(gra->ctx, &bci);
     for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
         msml_tensor_t* R = nodes[i];
-        msml__op_execute(R, R->op, (const msml_tensor_t**)R->inputs, &bci);
+        msml__op_execute(R, R->op, (const msml_tensor_t**)R->op_inputs, &bci);
     }
     return root;
 }
@@ -2642,13 +2675,13 @@ void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gr
     for (size_t i=0; i < gra->num_internal_nodes; ++i) {
         const msml_tensor_t* node = gra->internal_nodes[i];
         for (size_t j=0; j < MSML_MAX_INPUT_TENSORS; ++j) {
-            if (node->inputs[j]) {
+            if (node->op_inputs[j]) {
                 char label[16];
                 snprintf(label, sizeof(label), "IN #%zu", j);
                 fprintf(
                     f,
                     "  \"%p\":x -> \"%p\":x [ arrowhead = none; style = solid; label = \"%s\"; ]\n",
-                    (void*)node->inputs[j],
+                    (void*)node->op_inputs[j],
                     (void*)node,
                     label
                 );
@@ -2658,15 +2691,15 @@ void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gr
     for (size_t i=0; i < gra->num_leaf_nodes; ++i) {
         const msml_tensor_t* node = gra->leaf_nodes[i];
         for (size_t j=0; j < MSML_MAX_INPUT_TENSORS; ++j) {
-            if (node->inputs[j]) {
+            if (node->op_inputs[j]) {
                 char label[16];
                 snprintf(label, sizeof(label), "IN #%zu", j);
                 fprintf(
-                    f,
-                    "  \"%p\":%s -> \"%p\":%s [ label = \"%s\"; ]\n",
-                    (void*)node->inputs[j], "x",
-                    (void*)node, "x",
-                    label
+                        f,
+                        "  \"%p\":%s -> \"%p\":%s [ label = \"%s\"; ]\n",
+                        (void*)node->op_inputs[j], "x",
+                        (void*)node, "x",
+                        label
                 );
             }
         }

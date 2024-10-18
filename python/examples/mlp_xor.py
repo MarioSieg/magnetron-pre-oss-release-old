@@ -1,3 +1,5 @@
+import sys
+
 from msml.core import *
 from mlp import MultilayerPerceptron
 
@@ -8,6 +10,11 @@ inputs = [
     Tensor.with_data([2], [1.0, 0.0], name='Input 3'),
     Tensor.with_data([2], [1.0, 1.0], name='Input 4')
 ]
+
+per = Tensor.full([8, 4, 2, 5], fill_value=0.0)
+print(per.shape)
+per2 = per.permute([3, 2, 1, 0])
+print(per2.shape)
 
 targets = [
     Tensor.with_data([1], [0.0], name='Target 1'),

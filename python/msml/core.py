@@ -19,6 +19,7 @@ ffi, C = load_native_msml_lib()  # Load the native MSML shared library
 # Define Python wrapper classes
 MAX_DIMS: int = 4
 MAX_ARG_TENSORS: int = 2
+MSML_MAX_OP_PARAMS: int = 4
 DIM_MAX: int = 0x7fffffffffffffff
 
 
@@ -50,7 +51,7 @@ class DesiredColorChannels(Enum):
     RGBA = auto()  # R32G32B32A32
 
 
-class Operation(Enum):
+class Op(Enum):
     """All supported tensor operations."""
     NOP = 0
     CLONE = auto()
@@ -101,6 +102,29 @@ class Operation(Enum):
     @property
     def is_binary(self) -> bool:
         return self.argument_count == 2
+
+
+class OpParam:
+    """Represents an operation parameter."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    @staticmethod
+    def int(x: int) -> 'OpParam':
+        """Creates an integer operation parameter."""
+        return OpParam(C.msml_op_param_int(x))
+
+    @property
+    def is_int(self) -> bool:
+        """Returns if the operation parameter is an integer."""
+        return C.msml_op_param_is_int(self.value)
+
+    @property
+    def unpack_int(self) -> int:
+        """Returns the integer value of the operation parameter."""
+        assert self.is_int
+        return C.msml_op_param_unpack_int(self.value)
 
 
 class GraphEvalOrder(Enum):
@@ -325,6 +349,11 @@ class Tensor:
         """Checks if the tensor is transposed."""
         return C.msml_tensor_is_transposed(self.tensor)
 
+    @property
+    def is_permuted(self) -> bool:
+        """Checks if the tensor is permuted."""
+        return C.msml_tensor_is_permuted(self.tensor)
+
     def is_shape_eq(self, other: 'Tensor') -> bool:
         """Checks if the shape is equal to another tensor."""
         return C.msml_tensor_is_shape_eq(self.tensor, other.tensor)
@@ -434,12 +463,14 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def zeros(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G, name: str | None = None) -> 'Tensor':
+    def zeros(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
+              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with zeros."""
         return Tensor.full(shape, 1.0, dtype, ctx, name)
 
     @staticmethod
-    def random(shape: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32, ctx: Context = Context.G,
+    def random(shape: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
+               ctx: Context = Context.G,
                name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
@@ -469,81 +500,99 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def _emit_op_tensor(op: Operation, *args) -> 'Tensor':
+    def _emit_op_tensor(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
+        _ffi_params: ffi.CData = ffi.NULL
+        ffi_params_ptr: ffi.CData = ffi.NULL
+        if params is not None:
+            assert 0 < len(params) <= MSML_MAX_OP_PARAMS, 'Invalid number of operation parameters'
+            _ffi_params = ffi.new(f'msml_op_param_t[{MSML_MAX_OP_PARAMS}]',
+                                  [OpParam.int(0).value for _ in range(MSML_MAX_OP_PARAMS)])
+            for i, param in enumerate(params):
+                _ffi_params[i] = param.value
+            ffi_params_ptr = ffi.new(f'msml_op_param_t(*)[{MSML_MAX_OP_PARAMS}]', _ffi_params)
         assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count}'
-        tensors = ffi.new(f'msml_tensor_t*[{len(args)}]')
+        tensors: ffi.CData = ffi.new(f'msml_tensor_t*[{len(args)}]')
         for i, arg in enumerate(args):
             assert isinstance(arg, Tensor), 'Argument must be a tensor'
             tensors[i] = arg.tensor
         ctx: ffi.CData = C.msml_tensor_get_ctx(args[0].tensor)
-        instance: ffi.CData = C.msml_tensor_operator(ctx, op.value, tensors, len(args))
+        instance: ffi.CData = C.msml_tensor_operator(ctx, op.value, tensors, len(args), ffi_params_ptr)
         if instance == ffi.NULL:
             raise RuntimeError('Operation not possible')
         return Tensor(instance)
 
     def clone(self) -> 'Tensor':
         """Create new tensor with same shape and data as input. (deep clone)"""
-        return self._emit_op_tensor(Operation.CLONE, self)
+        return self._emit_op_tensor(Op.CLONE, None, self)
 
     def view(self) -> 'Tensor':
         """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
-        return self._emit_op_tensor(Operation.VIEW, self)
+        return self._emit_op_tensor(Op.VIEW, None, self)
 
     def transpose(self) -> 'Tensor':
         """Transposes the tensor."""
-        return self._emit_op_tensor(Operation.TRANSPOSE, self)
+        return self._emit_op_tensor(Op.TRANSPOSE, None, self)
+
+    def permute(self, axes: list[int]) -> 'Tensor':
+        """Permutes the tensor according to the given axes."""
+        assert len(axes) == MAX_DIMS, f'Invalid number of axes: {axes}'
+        for i in range(MAX_DIMS):
+            assert 0 <= axes[i] < MAX_DIMS, f'Invalid axis: {axes[i]}'
+            for j in range(i + 1, MAX_DIMS):  # All axes must be unique
+                assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
+        return self._emit_op_tensor(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
 
     def step(self) -> 'Tensor':
         """Applies the heaviside step function to the tensor."""
-        return self._emit_op_tensor(Operation.STEP, self)
+        return self._emit_op_tensor(Op.STEP, None, self)
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """Applies the softmax function to the tensor."""
-        return self._emit_op_tensor(Operation.SOFTMAX_DV if derivative else Operation.SOFTMAX, self)
+        return self._emit_op_tensor(Op.SOFTMAX_DV if derivative else Op.SOFTMAX, None, self)
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """Applies the sigmoid function to the tensor."""
-        return self._emit_op_tensor(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
+        return self._emit_op_tensor(Op.SIGMOID_DV if derivative else Op.SIGMOID, None, self)
 
     def hard_sigmoid(self) -> 'Tensor':
         """Applies the hard sigmoid function to the tensor."""
-        return self._emit_op_tensor(Operation.HARD_SIGMOID, self)
+        return self._emit_op_tensor(Op.HARD_SIGMOID, None, self)
 
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
-        return self._emit_op_tensor(Operation.SILU_DV if derivative else Operation.SILU, self)
+        return self._emit_op_tensor(Op.SILU_DV if derivative else Op.SILU, None, self)
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """Applies the hyperbolic tangent function to the tensor."""
-        return self._emit_op_tensor(Operation.TANH_DV if derivative else Operation.TANH, self)
+        return self._emit_op_tensor(Op.TANH_DV if derivative else Op.TANH, None, self)
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
-        return self._emit_op_tensor(Operation.RELU_DV if derivative else Operation.RELU, self)
+        return self._emit_op_tensor(Op.RELU_DV if derivative else Op.RELU, None, self)
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""
-        return self._emit_op_tensor(Operation.GELU_DV if derivative else Operation.GELU, self)
+        return self._emit_op_tensor(Op.GELU_DV if derivative else Op.GELU, None, self)
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
         """Adds two tensors element-wise."""
-        return self._emit_op_tensor(Operation.ADD, self, other)
+        return self._emit_op_tensor(Op.ADD, None, self, other)
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
         """Subtracts two tensors element-wise."""
-        return self._emit_op_tensor(Operation.SUB, self, other)
+        return self._emit_op_tensor(Op.SUB, None, self, other)
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors element-wise. (Hadamard product)"""
-        return self._emit_op_tensor(Operation.MUL, self, other)
+        return self._emit_op_tensor(Op.MUL, None, self, other)
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
         """Divides two tensors element-wise."""
-        return self._emit_op_tensor(Operation.DIV, self, other)
+        return self._emit_op_tensor(Op.DIV, None, self, other)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors using transposed matrix multiplication. Computes Rᵀ = A x Bᵀ instead of 'normal' R = A x B."""
-        return self._emit_op_tensor(Operation.MATMUL, self, other)
+        return self._emit_op_tensor(Op.MATMUL, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:
         """Checks if two tensors are equal."""

@@ -16,6 +16,12 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+#define MSML_DEFAULT_CHUNK_SIZE (1ull<<30)  /* Default size of memory chunk in bytes. 1 GiB */
+#define MSML_DEFAULT_CHUNK_CAP 128          /* Default capacity of memory chunk */
+#define MSML_MAX_DIMS 4                     /* Maximum number of dimensions for a tensor */
+#define MSML_MAX_TENSOR_NAME_LEN 64         /* Maximum length for tensor name */
+#define MSML_MAX_OP_PARAMS 4                /* Maximum number of parameters for an operation */
+
 #ifndef MSML_EXPORT
 #   ifdef MSML_EXPORT_DLL
 #       ifdef _MSC_VER
@@ -37,10 +43,7 @@ extern "C" {
 #define msml_version_minor(version) ((version)&0xff)
 #define MSML_VERSION msml_version_pack(0, 1) /* MSML library version. */
 #define MSML_STORAGE_VERSION 1 /* MSML tensor storage file format version. */
-#define MSML_DEFAULT_CHUNK_SIZE (1ull<<30) /* Default size of memory chunk in bytes. 1 GiB */
-#define MSML_DEFAULT_CHUNK_CAP 128   /* Default capacity of memory chunk */
-#define MSML_MAX_DIMS 4                 /* Maximum number of dimensions for a tensor */
-#define MSML_MAX_TENSOR_NAME_LEN 64     /* Maximum length for tensor name */
+
 #define msml_assert_name2(name, line) name ## line
 #define msml_assert_name(line) msml_assert_name2(_assert_, line)
 #define msml_static_assert(expr) extern void msml_assert_name(__LINE__)(bool STATIC_ASSERTION_FAILED[((expr)?1:-1)])
@@ -151,6 +154,21 @@ msml_static_assert(MSML_OP_NOP == 0);
 msml_static_assert(MSML_OP_MATMUL+1 == MSML_OP__COUNT);
 msml_static_assert(MSML_OP__COUNT <= 0xff);
 
+typedef enum msml_op_param_type_t {     /* 2-bit Parameter type tag for operation parameter. */
+    MSML_OP_PARAM_FLOAT = 0,            /* 32-bit floating-point value */
+    MSML_OP_PARAM_INT = 1,              /* 32-bit signed/unsigned integer */
+} msml_op_param_type_t;
+
+/*
+** 64-bit Operation parameter. Each operation CAN have up to MSML_MAX_OP_PARAMS of those parameters. 2-bit tag and 62-bit value.
+** Not to be confused with operation inputs which are tensors (e.g. A + B <- here are A and B input tensors). Instead, this is for operation-specific parameters.
+*/
+typedef uint64_t msml_op_param_t;
+msml_static_assert(sizeof(msml_op_param_t) == 8);
+extern MSML_EXPORT msml_op_param_t msml_op_param_int(uint64_t x); /* Create an integer parameter */
+extern MSML_EXPORT bool msml_op_param_is_int(msml_op_param_t param); /* Check if parameter is integer */
+extern MSML_EXPORT uint64_t msml_op_param_unpack_int(msml_op_param_t param); /* Get integer value from parameter */
+
 typedef enum msml_graph_eval_order_t {
     MSML_GRAPH_EVAL_ORDER_FORWARD = 0, /* Evaluate graph from left to right */
     MSML_GRAPH_EVAL_ORDER_REVERSE = 1 /* Evaluate graph from right to left */
@@ -168,7 +186,8 @@ extern MSML_EXPORT msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dt
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4); /* Create 4D tensor */
-extern MSML_EXPORT msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
+
+extern MSML_EXPORT msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
 
 extern MSML_EXPORT void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size); /* Copy data into tensor buffer */
 extern MSML_EXPORT void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
@@ -197,6 +216,7 @@ extern MSML_EXPORT bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const ms
 extern MSML_EXPORT bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if a and b have the same strides. */
 extern MSML_EXPORT bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if b can be broadcasted into a. */
 extern MSML_EXPORT bool msml_tensor_is_transposed(const msml_tensor_t* tensor); /* Check if the tensor is transposed */
+extern MSML_EXPORT bool msml_tensor_is_permuted(const msml_tensor_t* tensor); /* Check if the tensor is permuted */
 extern MSML_EXPORT void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert virtual index to physical index */
 extern MSML_EXPORT int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert physical index to virtual index */
 extern MSML_EXPORT bool msml_tensor_is_contiguous(const msml_tensor_t* tensor); /* Check if the tensor memory is contiguous */

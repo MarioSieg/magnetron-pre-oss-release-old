@@ -20,6 +20,7 @@ def comment_replacer(match):
 macro_substitutions: dict[str, str] = {
     'MSML_EXPORT': ' ',
     'MSML_MAX_DIMS': str(4),
+    'MSML_MAX_OP_PARAMS': str(4)
 }
 
 enums_names: list[str] = []
@@ -37,6 +38,8 @@ def keep_line(line: str) -> bool:
     if line.startswith('typedef struct'):
         struct_names.append(line.split()[2])
         return False
+    if line.startswith('typedef'):
+        return True
     return False
 
 

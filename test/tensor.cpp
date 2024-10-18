@@ -228,6 +228,33 @@ TEST(msml_tensor_t, transpose) {
     ASSERT_FALSE(msml_tensor_is_contiguous(transposed));
 }
 
+TEST(msml_tensor_t, permute) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+    msml_tensor_t* origin = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 4, 1);
+    msml_tensor_fill_random(origin, -1.0f, 1.0f);
+    msml_op_param_t params[MSML_MAX_OP_PARAMS] {
+        msml_op_param_int(3),
+        msml_op_param_int(2),
+        msml_op_param_int(1),
+        msml_op_param_int(0)
+    };
+    msml_tensor_t* permuted = msml_tensor_operator(ctx, MSML_OP_PERMUTE, &origin, 1, &params);
+    ASSERT_FALSE(msml_tensor_is_transposed(origin));
+    ASSERT_FALSE(msml_tensor_is_transposed(permuted));
+    ASSERT_FALSE(msml_tensor_is_permuted(origin));
+    ASSERT_TRUE(msml_tensor_is_permuted(permuted));
+    ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(permuted)[3]);
+    ASSERT_EQ(msml_tensor_shape(origin)[1], msml_tensor_shape(permuted)[2]);
+    ASSERT_EQ(msml_tensor_shape(origin)[2], msml_tensor_shape(permuted)[1]);
+    ASSERT_EQ(msml_tensor_shape(origin)[3], msml_tensor_shape(permuted)[0]);
+    ASSERT_EQ(msml_tensor_buf_size(origin), msml_tensor_buf_size(permuted));
+    ASSERT_EQ(msml_tensor_buf_len(origin), msml_tensor_buf_len(permuted));
+    ASSERT_EQ(msml_tensor_num_cols(origin), msml_tensor_num_rows(permuted));
+    ASSERT_EQ(msml_tensor_num_rows(origin), msml_tensor_num_cols(permuted));
+    ASSERT_TRUE(msml_tensor_is_contiguous(origin));
+    ASSERT_FALSE(msml_tensor_is_contiguous(permuted));
+}
+
 TEST(msml_tensor_t, isclose) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 

@@ -159,7 +159,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
 
     // Create result tensor R for matrix multiplication
     msml_tensor_t* params[2] = {A, B};
-    msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2);
+    msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2, nullptr);
 
     auto* buf = msml_tensor_buf_f32(R);
 

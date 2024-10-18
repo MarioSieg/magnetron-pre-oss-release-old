@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-17 16:44:45.081828, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-18 14:03:52.699079, do NOT edit!
 
 __MSML_CDECLS: str = '''
 
@@ -13,6 +13,7 @@ typedef int msml_prng_algorithm_t;
 typedef int msml_dtype_t;
 typedef int msml_desired_color_channels_t;
 typedef int msml_op_t;
+typedef int msml_op_param_type_t;
 typedef int msml_graph_eval_order_t;
 
 extern   void* msml_default_allocator_impl(void* blk, size_t size);
@@ -35,6 +36,10 @@ extern   uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx);
 extern   bool msml_ctx_is_numa_system(const msml_ctx_t* ctx);
 extern   void msml_ctx_destroy(msml_ctx_t* ctx);
 extern   const msml_dtype_info_t* msml_get_dtype_info(msml_dtype_t type);
+typedef uint64_t msml_op_param_t;
+extern   msml_op_param_t msml_op_param_int(uint64_t x);
+extern   bool msml_op_param_is_int(msml_op_param_t param);
+extern   uint64_t msml_op_param_unpack_int(msml_op_param_t param);
 extern   const char* msml_op_get_name(msml_op_t op);
 extern   const char* msml_op_get_mnemonic(msml_op_t op);
 extern   uint8_t msml_op_get_argcount(msml_op_t op);
@@ -42,7 +47,7 @@ extern   msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type
 extern   msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern   msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
 extern   msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-extern   msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs);
+extern   msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[4]);
 extern   void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
 extern   void msml_tensor_fill(msml_tensor_t* tensor, float x);
 extern   void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max);
@@ -69,6 +74,7 @@ extern   bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_
 extern   bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b);
 extern   bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b);
 extern   bool msml_tensor_is_transposed(const msml_tensor_t* tensor);
+extern   bool msml_tensor_is_permuted(const msml_tensor_t* tensor);
 extern   void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[4]);
 extern   int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t(*p_idx)[4]);
 extern   bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);

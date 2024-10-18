@@ -13,5 +13,5 @@ inline auto msml_tensor_evaluate_static_graph(msml_tensor_t* root, msml_graph_ev
 template <typename... Args>
 [[nodiscard]] inline auto msml_tensor_emit_op_va(msml_ctx_t* ctx, msml_op_t op, Args&&... args) -> msml_tensor_t* {
     std::array<msml_tensor_t*, sizeof...(Args)> tensors {args...};
-    return msml_tensor_operator(ctx, op, tensors.data(), tensors.size());
+    return msml_tensor_operator(ctx, op, tensors.data(), tensors.size(), nullptr);
 }
