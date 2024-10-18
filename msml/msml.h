@@ -160,7 +160,8 @@ typedef enum msml_op_param_type_t {     /* 2-bit Parameter type tag for operatio
 } msml_op_param_type_t;
 
 /*
-** 64-bit Operation parameter. Each operation CAN have up to MSML_MAX_OP_PARAMS of those parameters. 2-bit tag and 62-bit value.
+** Operation parameter. Each operation CAN have up to MSML_MAX_OP_PARAMS of those parameters.
+** 2-bit discriminator/tag and 62-bit value. (Tag and value are packed into a single 64-bit integer and both truncated to their bit width.)
 ** Not to be confused with operation inputs which are tensors (e.g. A + B <- here are A and B input tensors). Instead, this is for operation-specific parameters.
 */
 typedef uint64_t msml_op_param_t;

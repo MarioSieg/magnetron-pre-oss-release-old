@@ -1112,21 +1112,26 @@ void msml_ctx_destroy(msml_ctx_t* ctx) {
     msml_log_info("MSML context destroyed.");
 }
 
-static msml_op_param_t msml__op_param_pack(uint64_t x, msml_op_param_type_t tag) {
-    return x;
-}
+#define msml__op_param_pack_u64(tag, x) ((msml_op_param_t)(((x)&((1ull<<(64-2))-1))|(((uint64_t)(tag)&3)<<(64-2))))
+#define msml__op_param_is_tag(param, tag) ((((param)>>(64-2))&3) == (tag))
+#define msml__op_param_unpack_u64(param) ((uint64_t)(param)&((1ull<<(64-2))-1))
 
 msml_op_param_t msml_op_param_int(uint64_t x) {
-    return msml__op_param_pack(x, MSML_OP_PARAM_INT);
+    return msml__op_param_pack_u64(MSML_OP_PARAM_INT, x);
 }
 
 bool msml_op_param_is_int(msml_op_param_t param) {
-    return true;
+    return msml__op_param_is_tag(param, MSML_OP_PARAM_INT);
 }
 
 uint64_t msml_op_param_unpack_int(msml_op_param_t param) {
-    return param;
+    msml__assert2(msml_op_param_is_int(param));
+    return msml__op_param_unpack_u64(param);
 }
+
+#undef msml__op_param_unpack_u64
+#undef msml__op_param_is_tag
+#undef msml__op_param_pack_u64
 
 #define msml__load_local_storage_group(xk, prefix, var) \
     const int64_t prefix##0 = (xk)->var[0]; \
