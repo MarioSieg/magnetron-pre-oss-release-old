@@ -32,7 +32,6 @@ TEST(graph_static, simple) {
         ASSERT_EQ(buf[i], 0.0f);
     }
 
-    msml_compute_graph_dump_to_dot(msml_compute_graph_compile(ctx, WXB, MSML_GRAPH_EVAL_ORDER_FORWARD, nullptr), "graph.dot");
     msml_tensor_evaluate_static_graph(WXB, MSML_GRAPH_EVAL_ORDER_FORWARD);
 
     for (std::int64_t i=0; i < msml_tensor_buf_len(WXB); ++i) { // op must already be executed
