@@ -480,7 +480,7 @@ class Tensor:
         return Tensor.full(shape, 1.0, dtype, ctx, name)
 
     @staticmethod
-    def random(shape: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
+    def random(shape: list[int], interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
                ctx: Context = Context.G,
                name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""

@@ -1334,51 +1334,7 @@ static bool msml__validate_op_transpose(msml_op_t op, msml_tensor_t* result, msm
 
 static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
-
-    msml__validate_expr_gen(
-            result->shape[0] == inputs[0]->shape[1],
-            "ERROR: Matmul operation failed due to shape mismatch.\n"
-            "    - Result Tensor: '%s', Dimension [0] = %zu\n"
-            "    - First Input Tensor: '%s', Dimension [1] = %zu\n"
-            "    Hint: Ensure the second dimension of the first input tensor matches the first dimension of the result tensor.",
-            result->name, (size_t)result->shape[0], result->op_inputs[0]->name, (size_t)result->op_inputs[0]->shape[1]
-    );
-
-    msml__validate_expr_gen(
-            result->shape[1] == inputs[1]->shape[1],
-            "ERROR: Matmul operation failed due to shape mismatch.\n"
-            "    - Result Tensor: '%s', Dimension [1] = %zu\n"
-            "    - Second Input Tensor: '%s', Dimension [1] = %zu\n"
-            "    Hint: Ensure the dimensions match for a valid multiplication.",
-            result->name, (size_t)result->shape[1], result->op_inputs[1]->name, (size_t)result->op_inputs[1]->shape[1]
-    );
-
-    msml__validate_expr_gen(
-            result->shape[2] == inputs[1]->shape[2],
-            "ERROR: Dimension mismatch.\n"
-            "    - Result Tensor: '%s', Dimension [2] = %zu\n"
-            "    - Second Input Tensor: '%s', Dimension [2] = %zu\n"
-            "    Hint: The dimensions must match.",
-            result->name, (size_t)result->shape[2], result->op_inputs[1]->name, (size_t)result->op_inputs[1]->shape[2]
-    );
-
-    msml__validate_expr_gen(
-            result->shape[3] == inputs[1]->shape[3],
-            "ERROR: Dimension mismatch.\n"
-            "    - Result Tensor: '%s', Dimension [3] = %zu\n"
-            "    - Second Input Tensor: '%s', Dimension [3] = %zu\n"
-            "    Hint: The dimensions must match.",
-            result->name, (size_t)result->shape[3], result->op_inputs[1]->name, (size_t)result->op_inputs[1]->shape[3]
-    );
-
-    msml__validate_expr_gen(inputs[0]->strides[0] == msml_get_dtype_info(result->dtype)->size, "Both input tensors must be contiguous");
-    msml__validate_expr_gen(inputs[1]->strides[0] == msml_get_dtype_info(result->dtype)->size, "Both input tensors must be contiguous");
-    msml__validate_expr_gen(result->strides[0] == msml_get_dtype_info(result->dtype)->size, "Result tensor must be contiguous");
-    msml__validate_expr_gen(result->strides[0] <= result->strides[1], "Result tensor cannot be permuted or transposed.");
-    msml__validate_expr_gen(result->strides[1] <= result->strides[2], "Result tensor cannot be permuted or transposed.");
-    msml__validate_expr_gen(result->strides[2] <= result->strides[3], "Result tensor cannot be permuted or transposed.");
-    msml__validate_expr_gen(inputs[1]->shape[2] % inputs[0]->shape[2] == 0, "Second input tensor must be broadcastable into first input tensor.");
-    msml__validate_expr_gen(inputs[1]->shape[3] % inputs[0]->shape[3] == 0, "Second input tensor must be broadcastable into first input tensor.");
+    msml__validate_expr_gen(inputs[0]->shape[1] == inputs[1]->shape[0], "FUCK")
     return true;
 }
 
@@ -1454,12 +1410,12 @@ static msml_tensor_t* msml__result_constructor_routine_permuted(msml_tensor_t** 
     return permuted;
 }
 
-static msml_tensor_t* msml__result_constructor_routine_matmul(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+static msml_tensor_t* msml__result_constructor_routine_matmul(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) { /* MxR = MxN * NxR */
     (void)params;
     int64_t shape[MSML_MAX_DIMS];
-    *shape = inputs[0]->shape[1]; /* R = IN 0's rows. */
-    memcpy(shape+1, inputs[1]->shape+1, 3*sizeof(*shape)); /* R = IN 1's cols, 3rd and 4th dims. */
-    return msml__tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, sizeof(shape)/sizeof(*shape), NULL, 0);
+    shape[0] = inputs[0]->shape[0]; /* M */
+    shape[1] = inputs[1]->shape[1]; /* R */
+    return msml__tensor_create(inputs[0]->ctx, MSML_DTYPE_F32, shape, 2, NULL, 0);
 }
 
 static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(msml_tensor_t**, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) {
@@ -2032,15 +1988,13 @@ static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 +
     }
 }
 
-static void MSML_HOTPROC msml__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> -(e^x / ((e^x + 1)^2)) */
+static void MSML_HOTPROC msml__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> x * (1-x) */
     const int64_t n,
     float* const o,
     const float* const x
 ) {
     for (int64_t i=0; i < n; ++i) {
-        const float e_x = expf(x[i]);
-        const float e_x1 = e_x + 1.0f;
-        o[i] = -(e_x / (e_x1*e_x1));
+        o[i] = x[i] * (1.0f - x[i]);
     }
 }
 
@@ -2389,10 +2343,45 @@ msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
 #define MSML_MATMUL_BLK_Y 16 /* Block size Y for matrix multiplication */
 #define MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE 1 /* Use temporary storage for matrix multiplication to reduce false sharing. See: https://en.wikipedia.org/wiki/False_sharing */
 
+#if 0 /* Naive matrix multiplication */
+static void MSML_HOTPROC msml__blas_matmul_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    const msml_tensor_t* const x = inputs[0];
+    const msml_tensor_t* const y = inputs[1];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    msml__load_local_storage_group(r, r_d, shape)
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_d, shape)
+    msml__load_local_storage_group(x, x_s, strides)
+    msml__load_local_storage_group(y, y_d, shape)
+    msml__load_local_storage_group(y, y_s, strides)
+    for (int64_t i3=0; i3 < r_d3; ++i3) {
+        for (int64_t i2=0; i2 < r_d2; ++i2) {
+            for (int64_t i1=0; i1 < r_d1; ++i1) {
+                for (int64_t i0=0; i0 < r_d1; ++i0) {
+                    double sum = 0.0;
+                    for (int64_t k=0; k < x_d0; ++k) {
+                        const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
+                        const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
+                        sum += (double)(*p_x**p_y);
+                    }
+                    float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
+                    *p_r = (float)sum;
+                }
+            }
+        }
+    }
+}
+#endif
+
 /*
 ** Matrix multiplication.
-** Mathematically, matmul is defined as R = A x B
-** For performance reasons, we compute: Rᵀ = A x Bᵀ.
+** R = A x B
 */
 static void MSML_HOTPROC msml__blas_matmul_f32(
     const msml__blas_compute_info_t* const bci,
@@ -2410,70 +2399,21 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
-    const int64_t ti = bci->thread_idx;
-    const int64_t tc = bci->n_threads;
-    const bool y_cont = msml_tensor_is_contiguous(y);
-    int64_t chunk = 0; /* TODO: Atomic sync */
-    //if (ti == 0) chunk = tc;
-    /* TODO: barrier */
-    const int64_t nr0 = r_d0;
-    const int64_t nr1 = r_d1*r_d2*r_d3;
-    const int64_t chunk_size = nr0 == 1 || nr1 == 1 ? 64 : 16;
-    int64_t nchunk0 = (nr0 + chunk_size-1) / chunk_size;
-    int64_t nchunk1 = (nr1 + chunk_size-1) / chunk_size;
-    if (nchunk0 * nchunk1 < (tc<<2) || msml_ctx_is_numa_system(x->ctx)) {
-        nchunk0 = nr0 > nr1 ? tc : 1;
-        nchunk1 = nr0 > nr1 ? 1 : tc;
-    }
-    const int64_t cr0 = (nr0 + nchunk0 - 1) / nchunk0;
-    const int64_t cr1 = (nr1 + nchunk1 - 1) / nchunk1;
-    const int64_t nchunks = nchunk0 * nchunk1;
-    int64_t current_chunk = ti;
-    while (current_chunk < nchunks)  /* TODO: Atomic sync */ {
-        const int64_t ci0 = current_chunk % nchunk0;
-        const int64_t ci1 = current_chunk / nchunk0;
-        const int64_t r0s = cr0 * ci0;
-        const int64_t r0e = msml_min(r0s + cr0, nr0);
-        const int64_t r1s = cr1 * ci1;
-        const int64_t r1e = msml_min(r1s + cr1, nr1);
-        const int64_t r2 = y_d2 / x_d2;
-        const int64_t r3 = y_d3 / x_d3;
-        if (msml_unlikely(r0s >= r0e || r1s >= r1e)) return; /* No work in this chunk */
-        const int64_t row_size = y_d0*sizeof(float);
-        #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE
-            float tmp[16];
-        #endif
-        for (int64_t i1 = r1s; i1 < r1e; i1 += MSML_MATMUL_BLK_Y) {
-            for (int64_t i0 = r0s; i0 < r0e; i0 += MSML_MATMUL_BLK_X) {
-                for (int64_t ri = i1; ri < i1 + MSML_MATMUL_BLK_Y && ri < r1e; ++ri) {
-                    const int64_t y_i3 = (ri/(y_d2*r_d1));
-                    const int64_t y_i2 = (ri - y_i3*y_d2*r_d1)/r_d1;
-                    const int64_t y_i1 = (ri - y_i3*y_d2*r_d1 - y_i2*r_d1);
-                    const int64_t x_i3 = y_i3 / r3;
-                    const int64_t x_i2 = y_i2 / r2;
-                    const int64_t r_i3 = y_i3;
-                    const int64_t r_i2 = y_i2;
-                    const int64_t r_i1 = y_i1;
-                    const uint8_t* const x_row = b_x + x_i2*x_s2 + x_i3*x_s3;
-                    const float* const y_col =
-                        (const float*)(b_y + (y_cont
-                        ? (y_i1 + y_i2*y_d1 + y_i3*y_d2*y_d1) * row_size
-                        : (y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3)));
-                    float* r_col = (float*)(b_r + r_i1*r_s1 + r_i2*r_s2 + r_i3*r_s3);
-                    #if MSML_MATMUL_USE_TMP_NON_SHARED_STORAGE /* Use temporary storage to reduce false sharing. */
-                        for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i)
-                            tmp[i-i0] = msml__vdot_f32(x_d0, (const float*)(x_row + i*x_s1), y_col);
-                        memcpy(r_col+i0, tmp, (msml_min(i0 + MSML_MATMUL_BLK_X, r0e) - i0)*sizeof(float)); /* Store to result buffer. */
-                    #else /* Store directly to result buffer. */
-                        for (int64_t i = i0; i < i0 + MSML_MATMUL_BLK_X && i < r0e; ++i) {
-                            r_col[i] = msml__vdot_f32(x_d0, (const float*)(x_row + i * x_s1), y_col);
-                        }
-                    #endif
+    for (int64_t i3=0; i3 < r_d3; ++i3) {
+        for (int64_t i2=0; i2 < r_d2; ++i2) {
+            for (int64_t i1=0; i1 < r_d1; ++i1) {
+                for (int64_t i0=0; i0 < r_d1; ++i0) {
+                    double sum = 0.0;
+                    for (int64_t k=0; k < x_d0; ++k) {
+                        const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
+                        const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
+                        sum += (double)(*p_x**p_y);
+                    }
+                    float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
+                    *p_r = (float)sum;
                 }
             }
         }
-        if (tc >= nchunks) break;
-        current_chunk = ++chunk;
     }
 }
 
