@@ -1,6 +1,4 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-# MSML - Single header STB-style machine learning library in C99.
-# MIT licensed.
 # Implements utility functions for MSML. Requires matplotlib and numpy.
 
 from msml.core import Tensor
