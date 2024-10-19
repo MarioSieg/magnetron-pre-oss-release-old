@@ -1,155 +1,33 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-# Implements the core functionality of the MSML Python bindings. Requires the MSML shared library.
 
 # To debug Python to C FFI calls:
 # $ cp examples/perceptron.py tmp.py && gdb -ex r --args python3 tmp.py
 # See also https://wiki.python.org/moin/DebuggingWithGdb
 
-import platform
 import random
 import faulthandler
+import weakref
 
-from cffi import FFI
+from msml._lib_loader import load_native_msml_lib
 from enum import Enum, auto
-from os.path import isfile
-from ctypes.util import find_library
 
 # Enable faulthandler for debugging
 faulthandler.enable()
 
-# Load shared library
-
-BUILD_DIR = 'debug'
-
-msml_lib_locations: list[str] = []
-
-if platform.system() == 'Windows':
-    msml_lib_locations.append(f'../bin/{BUILD_DIR}/msml.dll')
-elif platform.system() == 'Linux':
-    msml_lib_locations.append(f'../bin/{BUILD_DIR}/libmsml.so')
-elif platform.system() == 'Darwin':
-    msml_lib_locations.append(f'../bin/{BUILD_DIR}/libmsml.dylib')
-else:
-    raise RuntimeError('Unsupported platform')
-
-MSML_LIB_PATH: str | None = None
-for loc in msml_lib_locations:  # Try to find the shared library in the locations (mostly used for debug builds)
-    if isfile(loc):
-        MSML_LIB_PATH = loc
-        break
-    elif isfile(f'../{loc}'):  # Try to find the shared library in the parent directory
-        MSML_LIB_PATH = f'../{loc}'
-        break
-if MSML_LIB_PATH is None:  # If not found, try to find the shared library in the system paths
-    MSML_LIB_PATH = find_library('msml')
-assert MSML_LIB_PATH is not None, 'MSML shared library not found'
-
-ffi = FFI()
-ffi.dlopen('m')
-C = ffi.dlopen(MSML_LIB_PATH)
-
-# Define constants
-MAX_DIMS = 4
-MAX_ARG_TENSORS = 2
-DIM_MAX = 0x7fffffffffffffff
-
-# Define C types - keep in sync carefully with the C header file, only include what is needed
-ffi.cdef(f'''
-    typedef struct msml_ctx_info_t msml_ctx_info_t;
-    typedef struct msml_ctx_t msml_ctx_t;
-    
-    typedef int msml_prng_algorithm_t;
-    typedef int msml_dtype_t;
-    typedef int msml_desired_color_channels_t;
-    typedef int msml_op_t;
-    typedef int msml_graph_eval_order_t;
-    
-    typedef struct msml_tensor_t msml_tensor_t;
-
-    msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info);
-    msml_ctx_t* msml_ctx_create2(size_t pool_chunk_size);
-    size_t msml_ctx_total_allocated_pool_memory(const msml_ctx_t* ctx);
-    msml_prng_algorithm_t msml_ctx_get_prng_algorithm(const msml_ctx_t* ctx);
-    void msml_ctx_set_prng_algorithm(msml_ctx_t* ctx, msml_prng_algorithm_t algorithm, uint64_t seed);
-    const char* msml_ctx_get_os_name(const msml_ctx_t* ctx);
-    const char* msml_ctx_get_cpu_name(const msml_ctx_t* ctx);
-    uint32_t msml_ctx_get_cpu_virtual_cores(const msml_ctx_t* ctx);
-    uint32_t msml_ctx_get_cpu_physical_cores(const msml_ctx_t* ctx);
-    uint32_t msml_ctx_get_cpu_sockets(const msml_ctx_t* ctx);
-    uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx);
-    uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx);
-    void msml_ctx_destroy(msml_ctx_t* ctx);
-    
-    const char* msml_op_get_name(msml_op_t op);
-    const char* msml_op_get_mnemonic(msml_op_t op);
-    uint8_t msml_op_get_argcount(msml_op_t op);
-
-    msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs);
-    msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
-    msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
-    msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
-    msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-    msml_tensor_t* msml_tensor_emit_op(msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs);
-    msml_tensor_t* msml_tensor_isomorphic(msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_clone(msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_view(msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_transpose(msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot);
-    void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg);
-    msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor);
-    void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op);
-    void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size);
-    void msml_tensor_fill(msml_tensor_t* tensor, float x);
-    void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max);
-    size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor);
-    void msml_tensor_print(const msml_tensor_t* tensor, bool with_data);
-    void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
-    const char* msml_tensor_get_name(const msml_tensor_t* tensor);
-    int64_t msml_tensor_rank(const msml_tensor_t* tensor);
-    const int64_t* msml_tensor_shape(const msml_tensor_t* tensor);
-    const int64_t* msml_tensor_strides(const msml_tensor_t* tensor);
-    msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor);
-    void* msml_tensor_buf(const msml_tensor_t* tensor);
-    float* msml_tensor_buf_f32(const msml_tensor_t* tensor);
-    int64_t msml_tensor_buf_size(const msml_tensor_t* tensor);
-    int64_t msml_tensor_buf_len(const msml_tensor_t* tensor);
-    int64_t msml_tensor_num_rows(const msml_tensor_t* tensor);
-    int64_t msml_tensor_num_cols(const msml_tensor_t* tensor);
-    bool msml_tensor_is_scalar(const msml_tensor_t* tensor);
-    bool msml_tensor_is_vector(const msml_tensor_t* tensor);
-    bool msml_tensor_is_matrix(const msml_tensor_t* tensor);
-    bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor);
-    bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_t* b);
-    bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b);
-    bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b);
-    bool msml_tensor_is_transposed(const msml_tensor_t* tensor);
-    void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[{MAX_DIMS}]);
-    int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[{MAX_DIMS}]);
-    bool msml_tensor_is_contiguous(const msml_tensor_t* tensor);
-    float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3);
-    void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x);
-    float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx);
-    void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x);
-    bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
-    bool msml_tensor_isclose(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
-    bool msml_tensor_is_op_possible(const msml_tensor_t* tensor);
-    msml_tensor_t* msml_tensor_evaluate(msml_tensor_t* tensor, msml_graph_eval_order_t order);
-    
-    void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name);
-    msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
-    msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
-    void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path);
-''')
-
+ffi, C = load_native_msml_lib()  # Load the native MSML shared library
 
 # Define Python wrapper classes
+MAX_DIMS: int = 4
+MAX_ARG_TENSORS: int = 2
+MSML_MAX_OP_PARAMS: int = 4
+DIM_MAX: int = 0x7fffffffffffffff
+
 
 def humanize_memory_size(size: int) -> str:
     units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
     unit = 0
-    while size >= (1<<10) and unit < len(units) - 1:
-        size /= (1<<10)
+    while size >= (1 << 10) and unit < len(units) - 1:
+        size /= (1 << 10)
         unit += 1
     return f'{size:.2f} {units[unit]}'
 
@@ -158,22 +36,10 @@ class PRNGAlgorithm(Enum):
     MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
     PCG = auto()  # Permuted Congruential Generator
 
-    def __str__(self) -> str:
-        match self:
-            case PRNGAlgorithm.MERSENNE_TWISTER:
-                return 'Mersenne Twister'
-            case PRNGAlgorithm.PCG:
-                return 'Permuted Congruential Generator'
-
 
 class DType(Enum):
     """Enumerates the supported data types for tensors."""
     F32 = 0
-
-    def __str__(self) -> str:
-        match self:
-            case DType.F32:
-                return 'F32'
 
 
 class DesiredColorChannels(Enum):
@@ -184,32 +50,20 @@ class DesiredColorChannels(Enum):
     RGB = auto()  # R32G32B32
     RGBA = auto()  # R32G32B32A32
 
-    def __str__(self) -> str:
-        match self:
-            case DesiredColorChannels.AUTO:
-                return 'Auto'
-            case DesiredColorChannels.GRAY:
-                return 'Grayscale'
-            case DesiredColorChannels.GRAY_A:
-                return 'Grayscale with Alpha'
-            case DesiredColorChannels.RGB:
-                return 'RGB'
-            case DesiredColorChannels.RGBA:
-                return 'RGBA'
 
-
-class Operation(Enum):
-    """A"""
+class Op(Enum):
+    """All supported tensor operations."""
     NOP = 0
-    TRANSPOSE = auto()
     CLONE = auto()
+    VIEW = auto()
+    TRANSPOSE = auto()
+    PERMUTE = auto()
     STEP = auto()
     SOFTMAX = auto()
     SOFTMAX_DV = auto()
     SIGMOID = auto()
     SIGMOID_DV = auto()
     HARD_SIGMOID = auto()
-    HARD_SIGMOID_DV = auto()
     SILU = auto()
     SILU_DV = auto()
     TANH = auto()
@@ -250,29 +104,60 @@ class Operation(Enum):
         return self.argument_count == 2
 
 
+class OpParam:
+    """Represents an operation parameter."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    @staticmethod
+    def int(x: int) -> 'OpParam':
+        """Creates an integer operation parameter."""
+        return OpParam(C.msml_op_param_int(x))
+
+    @property
+    def is_int(self) -> bool:
+        """Returns if the operation parameter is an integer."""
+        return C.msml_op_param_is_int(self.value)
+
+    @property
+    def unpack_int(self) -> int:
+        """Returns the integer value of the operation parameter."""
+        assert self.is_int
+        return C.msml_op_param_unpack_int(self.value)
+
+
 class GraphEvalOrder(Enum):
     """Enumerates the order in which the graph should be evaluated."""
     FORWARD = 0  # Evaluate the graph in forward order (left-to-right)
     REVERSE = 1  # Evaluate the graph in reverse order (right-to-left)
 
-    def __str__(self) -> str:
-        match self:
-            case GraphEvalOrder.FORWARD:
-                return 'Forward'
-            case GraphEvalOrder.REVERSE:
-                return 'Reverse'
+
+class ExecutionMode(Enum):
+    """"""
+    EAGER = 0  # Execute operations immediately. (Dynamic computation graph, like PyTorch).
+    DEFERRED = 1  # Build computation graph and execute later. (Static computation graph, like TensorFlow 1.0).
 
 
-class Context: # TODO: Weakly reference tensors
+class Context:
     """Manages the MSML context and tensor lifecycles."""
 
-    def __init__(self, pool_chunk_size: int = 2 * (1 << 30)):  # Pool chunk size. Default: 2GiB
+    G: 'Context' = None  # Global context
+
+    def __init__(self, execution_mode: ExecutionMode = ExecutionMode.EAGER,
+                 pool_chunk_size: int = 1 << 30):  # Pool chunk size. Default: 2GiB
         self.ctx = C.msml_ctx_create2(pool_chunk_size)
+        self.execution_mode = execution_mode
 
     @property
-    def total_allocated_pool_memory(self) -> int:
-        """Returns the total memory allocated in the context in bytes."""
-        return C.msml_ctx_total_allocated_pool_memory(self.ctx)
+    def execution_mode(self) -> ExecutionMode:
+        """Returns the execution mode of the context."""
+        return ExecutionMode(C.msml_ctx_get_exec_mode(self.ctx))
+
+    @execution_mode.setter
+    def execution_mode(self, mode: ExecutionMode):
+        """Sets the execution mode of the context."""
+        C.msml_ctx_set_exec_mode(self.ctx, mode.value)
 
     @property
     def prng_algorithm(self) -> PRNGAlgorithm:
@@ -324,8 +209,21 @@ class Context: # TODO: Weakly reference tensors
         """Returns the used physical memory in bytes."""
         return abs(self.physical_memory_total - self.physical_memory_free)
 
+    @property
+    def is_numa_system(self) -> bool:
+        """Returns if the system is a NUMA system."""
+        return C.msml_ctx_is_numa_system(self.ctx)
+
+    @property
+    def total_allocated_pool_memory(self) -> int:
+        """Returns the total memory allocated in the context in bytes."""
+        return C.msml_ctx_total_allocated_pool_memory(self.ctx)
+
     def __del__(self):
         C.msml_ctx_destroy(self.ctx)
+
+
+Context.G = Context()  # Create the global context
 
 
 class Tensor:
@@ -333,7 +231,6 @@ class Tensor:
 
     def __init__(self, internal_instance: ffi.CData | None = None) -> None:
         self.tensor = internal_instance
-        #ctx.allocated_tensors.add(self)  # Add the tensor to the context's weakly referenced set
 
     def __del__(self) -> None:
         """Destructor to release tensor resources."""
@@ -345,21 +242,20 @@ class Tensor:
         assert 0 < len(shape) <= MAX_DIMS, 'Number of dimensions exceeds maximum'
         for dim in shape:
             assert DIM_MAX > dim > 0, 'Invalid dimension size'
-        self.tensor = C.msml_tensor_create(ctx.ctx, dtype.value, shape, len(shape), ffi.NULL, 0)
+        self.context_ref = weakref.ref(ctx)
+        match len(shape):
+            case 1:
+                self.tensor = C.msml_tensor_create_1d(ctx.ctx, dtype.value, shape[0])
+            case 2:
+                self.tensor = C.msml_tensor_create_2d(ctx.ctx, dtype.value, shape[0], shape[1])
+            case 3:
+                self.tensor = C.msml_tensor_create_3d(ctx.ctx, dtype.value, shape[0], shape[1], shape[2])
+            case 4:
+                self.tensor = C.msml_tensor_create_4d(ctx.ctx, dtype.value, shape[0], shape[1], shape[2], shape[3])
+            case _:
+                raise RuntimeError('Invalid number of dimensions')
         if name is not None:
             self.name = name
-
-    def get_arg(self, slot: int) -> 'Tensor':
-        return Tensor(C.msml_tensor_get_arg(self.tensor, slot))
-
-    def set_arg(self, slot: int, tensor: 'Tensor') -> None:
-        C.msml_tensor_set_arg(self.tensor, slot, tensor.tensor)
-
-    def get_op(self) -> Operation:
-        return Operation(C.msml_tensor_get_op(self.tensor))
-
-    def set_op(self, op: Operation) -> None:
-        C.msml_tensor_set_op(self.tensor, op.value)
 
     def fill(self, x: float) -> None:
         """Sets all elements of the tensor to x."""
@@ -453,6 +349,11 @@ class Tensor:
         """Checks if the tensor is transposed."""
         return C.msml_tensor_is_transposed(self.tensor)
 
+    @property
+    def is_permuted(self) -> bool:
+        """Checks if the tensor is permuted."""
+        return C.msml_tensor_is_permuted(self.tensor)
+
     def is_shape_eq(self, other: 'Tensor') -> bool:
         """Checks if the shape is equal to another tensor."""
         return C.msml_tensor_is_shape_eq(self.tensor, other.tensor)
@@ -515,7 +416,7 @@ class Tensor:
         """Checks if the tensor is close to another tensor within a given epsilon."""
         """Returns a tuple with a boolean indicating if the tensors are close and the percentage of equal elements."""
         percent_eq = ffi.new(f'double[1]')
-        is_eq: bool = C.msml_tensor_isclose(self.tensor, other.tensor, eps, percent_eq)
+        is_eq: bool = C.msml_tensor_is_close(self.tensor, other.tensor, eps, percent_eq)
         if print_eq_percent:
             print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
         return is_eq, percent_eq[0]
@@ -534,14 +435,16 @@ class Tensor:
         C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
-    def empty(ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+    def empty(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
+              name: str | None = None) -> 'Tensor':
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
         tensor._create_internal(ctx, shape, dtype, name)
         return tensor
 
     @staticmethod
-    def full(ctx: Context, shape: list[int], fill_value: float, dtype: DType = DType.F32,
+    def full(shape: list[int], fill_value: float, dtype: DType = DType.F32,
+             ctx: Context = Context.G,
              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
@@ -550,7 +453,7 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def with_data(ctx: Context, shape: list[int], data: list[float], dtype: DType = DType.F32,
+    def with_data(shape: list[int], data: list[float], dtype: DType = DType.F32, ctx: Context = Context.G,
                   name: str | None = None) -> 'Tensor':
         """Creates a tensor with the given data."""
         tensor = Tensor(None)
@@ -560,12 +463,14 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def zeros(ctx: Context, shape: list[int], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+    def zeros(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
+              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with zeros."""
-        return Tensor.full(ctx, shape, 1.0, dtype, name)
+        return Tensor.full(shape, 1.0, dtype, ctx, name)
 
     @staticmethod
-    def random(ctx: Context, shape: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
+    def random(shape: list[int], interval: (float, float) = (0.0, 1.0), dtype: DType = DType.F32,
+               ctx: Context = Context.G,
                name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
@@ -595,93 +500,103 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def _emit_op_tensor(op: Operation, *args) -> 'Tensor':
+    def _emit_op_tensor(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
+        _ffi_params: ffi.CData = ffi.NULL
+        ffi_params_ptr: ffi.CData = ffi.NULL
+        if params is not None:
+            assert 0 < len(params) <= MSML_MAX_OP_PARAMS, 'Invalid number of operation parameters'
+            _ffi_params = ffi.new(f'msml_op_param_t[{MSML_MAX_OP_PARAMS}]',
+                                  [OpParam.int(0).value for _ in range(MSML_MAX_OP_PARAMS)])
+            for i, param in enumerate(params):
+                _ffi_params[i] = param.value
+            ffi_params_ptr = ffi.new(f'msml_op_param_t(*)[{MSML_MAX_OP_PARAMS}]', _ffi_params)
         assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count}'
-        tensors = ffi.new(f'msml_tensor_t*[{len(args)}]')
+        tensors: ffi.CData = ffi.new(f'msml_tensor_t*[{len(args)}]')
         for i, arg in enumerate(args):
             assert isinstance(arg, Tensor), 'Argument must be a tensor'
             tensors[i] = arg.tensor
-        instance: ffi.CData = C.msml_tensor_emit_op(op.value, tensors, len(args))
+        ctx: ffi.CData = C.msml_tensor_get_ctx(args[0].tensor)
+        instance: ffi.CData = C.msml_tensor_operator(ctx, op.value, tensors, len(args), ffi_params_ptr)
         if instance == ffi.NULL:
             raise RuntimeError('Operation not possible')
         return Tensor(instance)
 
-    def isomorphic(self) -> 'Tensor':
-        """Create new empty tensor with same shape as input, but without cloning any data, data is unitialized."""
-        return Tensor(C.msml_tensor_isomorphic(self.tensor))
-
     def clone(self) -> 'Tensor':
         """Create new tensor with same shape and data as input. (deep clone)"""
-        return Tensor(C.msml_tensor_clone(self.tensor))
+        return self._emit_op_tensor(Op.CLONE, None, self)
 
     def view(self) -> 'Tensor':
         """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
-        return Tensor(C.msml_tensor_view(self.tensor))
+        return self._emit_op_tensor(Op.VIEW, None, self)
 
     def transpose(self) -> 'Tensor':
         """Transposes the tensor."""
-        return Tensor(C.msml_tensor_transpose(self.tensor))
+        return self._emit_op_tensor(Op.TRANSPOSE, None, self)
+
+    def permute(self, axes: list[int]) -> 'Tensor':
+        """Permutes the tensor according to the given axes."""
+        assert len(axes) == MAX_DIMS, f'Invalid number of axes: {axes}'
+        for i in range(MAX_DIMS):
+            assert 0 <= axes[i] < MAX_DIMS, f'Invalid axis: {axes[i]}'
+            for j in range(i + 1, MAX_DIMS):  # All axes must be unique
+                assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
+        return self._emit_op_tensor(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
 
     def step(self) -> 'Tensor':
         """Applies the heaviside step function to the tensor."""
-        return self._emit_op_tensor(Operation.STEP, self)
+        return self._emit_op_tensor(Op.STEP, None, self)
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """Applies the softmax function to the tensor."""
-        return self._emit_op_tensor(Operation.SOFTMAX_DV if derivative else Operation.SOFTMAX, self)
+        return self._emit_op_tensor(Op.SOFTMAX_DV if derivative else Op.SOFTMAX, None, self)
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """Applies the sigmoid function to the tensor."""
-        return self._emit_op_tensor(Operation.SIGMOID_DV if derivative else Operation.SIGMOID, self)
+        return self._emit_op_tensor(Op.SIGMOID_DV if derivative else Op.SIGMOID, None, self)
 
-    def hard_sigmoid(self, derivative: bool = False) -> 'Tensor':
+    def hard_sigmoid(self) -> 'Tensor':
         """Applies the hard sigmoid function to the tensor."""
-        return self._emit_op_tensor(Operation.HARD_SIGMOID_DV if derivative else Operation.HARD_SIGMOID, self)
+        return self._emit_op_tensor(Op.HARD_SIGMOID, None, self)
 
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
-        return self._emit_op_tensor(Operation.SILU_DV if derivative else Operation.SILU, self)
+        return self._emit_op_tensor(Op.SILU_DV if derivative else Op.SILU, None, self)
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """Applies the hyperbolic tangent function to the tensor."""
-        return self._emit_op_tensor(Operation.TANH_DV if derivative else Operation.TANH, self)
+        return self._emit_op_tensor(Op.TANH_DV if derivative else Op.TANH, None, self)
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
-        return self._emit_op_tensor(Operation.RELU_DV if derivative else Operation.RELU, self)
+        return self._emit_op_tensor(Op.RELU_DV if derivative else Op.RELU, None, self)
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""
-        return self._emit_op_tensor(Operation.GELU_DV if derivative else Operation.GELU, self)
+        return self._emit_op_tensor(Op.GELU_DV if derivative else Op.GELU, None, self)
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
         """Adds two tensors element-wise."""
-        return self._emit_op_tensor(Operation.ADD, self, other)
+        return self._emit_op_tensor(Op.ADD, None, self, other)
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
         """Subtracts two tensors element-wise."""
-        return self._emit_op_tensor(Operation.SUB, self, other)
+        return self._emit_op_tensor(Op.SUB, None, self, other)
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors element-wise. (Hadamard product)"""
-        return self._emit_op_tensor(Operation.MUL, self, other)
+        return self._emit_op_tensor(Op.MUL, None, self, other)
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
         """Divides two tensors element-wise."""
-        return self._emit_op_tensor(Operation.DIV, self, other)
+        return self._emit_op_tensor(Op.DIV, None, self, other)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors using transposed matrix multiplication. Computes Rᵀ = A x Bᵀ instead of 'normal' R = A x B."""
-        return self._emit_op_tensor(Operation.MATMUL, self, other)
+        return self._emit_op_tensor(Op.MATMUL, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:
         """Checks if two tensors are equal."""
         return C.msml_tensor_eq(self.tensor, other.tensor)
-
-    def __call__(self, *args, **kwargs)-> 'Tensor':
-        order: GraphEvalOrder = kwargs['order'] if 'order' in kwargs else GraphEvalOrder.FORWARD
-        C.msml_tensor_evaluate(self.tensor, order.value)
-        return self
 
     def __str__(self) -> str:
         #fmt: str = f'Tensor {"?" if self.name == "" else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'

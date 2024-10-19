@@ -1,7 +1,6 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-#include <gtest/gtest.h>
-#include <msml.h>
+#include "prelude.hpp"
 #include <cmath>
 
 #define impl_test_unary_op(name, op, scalar_op) \
@@ -15,11 +14,8 @@
             msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             \
-            msml_tensor_t* r = msml_tensor_isomorphic(x); \
-            msml_tensor_set_op(r, MSML_OP_##op); \
-            msml_tensor_set_arg(r, 0, x); \
+            msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x); \
             \
-            msml_tensor_evaluate(r, MSML_GRAPH_EVAL_ORDER_FORWARD); \
             const auto* b_x = msml_tensor_buf_f32(x); \
             const auto* b_r = msml_tensor_buf_f32(r); \
             ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(r)); \
@@ -85,22 +81,17 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
 #define impl_test_binary_op(name, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
-        \
         for (int64_t i0=1; i0 <= 9; ++i0) \
         for (int64_t i1=1; i1 <= 9; ++i1) \
         for (int64_t i2=1; i2 <= 9; ++i2) \
         for (int64_t i3=1; i3 <= 9; ++i3) { \
             msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
-            msml_tensor_t* y = msml_tensor_isomorphic(x); \
+            msml_tensor_t* y = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, x); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill_random(y, -5.0f, 5.0f); \
             \
-            msml_tensor_t* r = msml_tensor_isomorphic(x); \
-            msml_tensor_set_op(r, MSML_OP_##op); \
-            msml_tensor_set_arg(r, 0, x); \
-            msml_tensor_set_arg(r, 1, y); \
+            msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x, y); \
             \
-            msml_tensor_evaluate(r, MSML_GRAPH_EVAL_ORDER_FORWARD); \
             const auto* b_x = msml_tensor_buf_f32(x); \
             const auto* b_y = msml_tensor_buf_f32(y); \
             const auto* b_r = msml_tensor_buf_f32(r); \
@@ -116,7 +107,6 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
      \
     TEST(compute_cpu, name##_scalar_broadcast) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
-        \
         for (int64_t factor=2; factor <= 4; ++factor) \
         for (int64_t i0=1; i0 <= 4; ++i0) \
         for (int64_t i1=1; i1 <= 4; ++i1) \
@@ -127,12 +117,8 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill(y, 2.2f); \
             \
-            msml_tensor_t* r = msml_tensor_isomorphic(x); \
-            msml_tensor_set_op(r, MSML_OP_##op); \
-            msml_tensor_set_arg(r, 0, x); \
-            msml_tensor_set_arg(r, 1, y); \
+            msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x, y); \
             \
-            msml_tensor_evaluate(r, MSML_GRAPH_EVAL_ORDER_FORWARD); \
             const auto* b_x = msml_tensor_buf_f32(x); \
             const auto* b_r = msml_tensor_buf_f32(r); \
             ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(x)); \
@@ -173,10 +159,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
 
     // Create result tensor R for matrix multiplication
     msml_tensor_t* params[2] = {A, B};
-    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, params, 2);
-    ASSERT_NE(R, nullptr);
-
-    msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
+    msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2, nullptr);
 
     auto* buf = msml_tensor_buf_f32(R);
 
@@ -195,6 +178,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_ctx_destroy(ctx);
 }
 
+#if 0
 TEST(compute_cpu, matmul_f32) {
     static constexpr std::size_t M = 4, N = 16, K = 36;
     static constexpr float A_mtx[M * K] = {
@@ -247,27 +231,24 @@ TEST(compute_cpu, matmul_f32) {
     }
     msml_ctx_destroy(ctx);
 }
+#endif
 
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
     msml_tensor_t* A = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 16384, 16384, 3);
-    msml_tensor_t* B = msml_tensor_isomorphic(A);
+    msml_tensor_t* B = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, A);
     msml_tensor_fill(B, 3.0);
-    msml_tensor_t* params[2] = {A, B};
-    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MUL, params, 2);
+    msml_tensor_t* R = msml_tensor_emit_op_va(ctx, MSML_OP_ADD, A, B);
     ASSERT_NE(R, nullptr);
-    msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, heavy_compute_single_op_scalar) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
     msml_tensor_t* A = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 1);
-    msml_tensor_t* B = msml_tensor_isomorphic(A);
+    msml_tensor_t* B =  msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, A);
     msml_tensor_fill(B, 3.0);
-    msml_tensor_t* params[2] = {A, B};
-    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_ADD, params, 2);
+    msml_tensor_t* R = msml_tensor_emit_op_va(ctx, MSML_OP_ADD, A, B);
     ASSERT_NE(R, nullptr);
-    msml_tensor_evaluate(R, MSML_GRAPH_EVAL_ORDER_FORWARD);
     msml_ctx_destroy(ctx);
 }

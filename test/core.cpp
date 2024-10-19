@@ -1,7 +1,13 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-#include <gtest/gtest.h>
+#include "prelude.hpp"
 #include <cstring>
+
+TEST(core, op_param_int) {
+    msml_op_param_t p = msml_op_param_int(1234);
+    ASSERT_TRUE(msml_op_param_is_int(p));
+    ASSERT_EQ(msml_op_param_unpack_int(p), 1234);
+}
 
 #if 0
 TEST(core, crc32) {

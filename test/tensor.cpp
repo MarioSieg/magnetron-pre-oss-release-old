@@ -1,7 +1,6 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-#include <gtest/gtest.h>
-#include <msml.h>
+#include "prelude.hpp"
 #include <array>
 #include <cstring>
 #include <unordered_set>
@@ -139,54 +138,12 @@ TEST(msml_tensor_t, name) {
     msml_ctx_destroy(ctx);
 }
 
-TEST(msml_tensor_t, op) {
-    msml_ctx_t* ctx = msml_ctx_create(nullptr);
-
-    msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
-    msml_tensor_set_op(tensor, MSML_OP_MATMUL);
-    ASSERT_EQ(msml_tensor_get_op(tensor), MSML_OP_MATMUL);
-
-    msml_ctx_destroy(ctx);
-}
-
-TEST(msml_tensor_t, arg_getset) {
-    msml_ctx_t* ctx = msml_ctx_create(nullptr);
-    msml_tensor_t* arg1 = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 10);
-
-    msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
-    msml_tensor_set_arg(tensor, 0, arg1);
-    ASSERT_EQ(msml_tensor_get_arg(tensor, 0), arg1);
-
-    msml_ctx_destroy(ctx);
-}
-
-TEST(msml_tensor_t, arg_invalid_slot) {
-    msml_ctx_t* ctx = msml_ctx_create(nullptr);
-    [[maybe_unused]] msml_tensor_t* arg1 = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 10);
-    [[maybe_unused]] msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
-
-    //ASSERT_DEATH_IF_SUPPORTED(msml_tensor_set_arg(tensor, 128, arg1), {});
-
-    msml_ctx_destroy(ctx);
-}
-
-TEST(msml_tensor_t, arg_slot_used) {
-    msml_ctx_t* ctx = msml_ctx_create(nullptr);
-    msml_tensor_t* arg1 = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 10);
-    msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
-
-    msml_tensor_set_arg(tensor, 0, arg1);
-    //ASSERT_DEATH_IF_SUPPORTED(msml_tensor_set_arg(tensor, 0, arg1), {});
-
-    msml_ctx_destroy(ctx);
-}
-
 TEST(msml_tensor_t, deep_clone) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_clone(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
+    msml_tensor_t* clone = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, origin);
     ASSERT_NE(origin, clone);
     ASSERT_EQ(msml_tensor_rank(origin), msml_tensor_rank(clone));
     ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(clone)[0]);
@@ -212,44 +169,13 @@ TEST(msml_tensor_t, deep_clone) {
     msml_ctx_destroy(ctx);
 }
 
-TEST(msml_tensor_t, isomorphic_clone) {
-    msml_ctx_t* ctx = msml_ctx_create(nullptr);
-
-    msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
-    msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_isomorphic(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
-    ASSERT_NE(origin, clone);
-    ASSERT_EQ(msml_tensor_rank(origin), msml_tensor_rank(clone));
-    ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(clone)[0]);
-    ASSERT_EQ(msml_tensor_shape(origin)[1], msml_tensor_shape(clone)[1]);
-    ASSERT_EQ(msml_tensor_shape(origin)[2], msml_tensor_shape(clone)[2]);
-    ASSERT_EQ(msml_tensor_shape(origin)[3], msml_tensor_shape(clone)[3]);
-    ASSERT_EQ(msml_tensor_buf_size(origin), msml_tensor_buf_size(clone));
-    ASSERT_EQ(msml_tensor_buf_len(origin), msml_tensor_buf_len(clone));
-    ASSERT_EQ(msml_tensor_num_cols(origin), msml_tensor_num_cols(clone));
-    ASSERT_EQ(msml_tensor_num_rows(origin), msml_tensor_num_rows(clone));
-    ASSERT_EQ(msml_tensor_strides(origin)[0], msml_tensor_strides(clone)[0]);
-    ASSERT_EQ(msml_tensor_strides(origin)[1], msml_tensor_strides(clone)[1]);
-    ASSERT_EQ(msml_tensor_strides(origin)[2], msml_tensor_strides(clone)[2]);
-    ASSERT_EQ(msml_tensor_strides(origin)[3], msml_tensor_strides(clone)[3]);
-    ASSERT_TRUE(msml_tensor_is_shape_eq(origin, clone));
-    ASSERT_TRUE(msml_tensor_are_strides_eq(origin, clone));
-
-    const void* a = msml_tensor_buf(origin);
-    const void* b = msml_tensor_buf(clone);
-    ASSERT_NE(a, b);
-    ASSERT_NE(0, std::memcmp(a, b, msml_tensor_buf_size(origin)));
-
-    msml_ctx_destroy(ctx);
-}
-
 TEST(msml_tensor_t, equals) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_clone(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
-    msml_tensor_t* clone2 = msml_tensor_isomorphic(origin);
+    msml_tensor_t* clone = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, origin);
+    msml_tensor_t* clone2 = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, origin);
     msml_tensor_fill_random(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(msml_tensor_eq(origin, clone));
     ASSERT_FALSE(msml_tensor_eq(origin, clone2));
@@ -264,7 +190,7 @@ TEST(msml_tensor_t, view) {
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill(origin, 2.0f);
     int64_t slice_dims[] = {10, 4, 2, 5};
-    msml_tensor_t* slice1 = msml_tensor_create(ctx, MSML_DTYPE_F32, slice_dims, 4, origin, 0);
+    msml_tensor_t* slice1 = msml_tensor_emit_op_va(ctx, MSML_OP_VIEW, origin);
     ASSERT_EQ(msml_tensor_buf(slice1), msml_tensor_buf(origin));
     ASSERT_EQ(msml_tensor_buf_size(slice1), msml_tensor_buf_size(origin));
     ASSERT_EQ(msml_tensor_buf_len(slice1), msml_tensor_buf_len(origin));
@@ -272,10 +198,10 @@ TEST(msml_tensor_t, view) {
     for (int64_t i=0; i < msml_tensor_buf_len(slice1); ++i) {
         ASSERT_FLOAT_EQ(buf[i], 2.0f);
     }
-    msml_tensor_t* slice2 = msml_tensor_create(ctx, MSML_DTYPE_F32, slice_dims, 2, origin, sizeof(float) * 10);
-    ASSERT_EQ(msml_tensor_buf(slice2), static_cast<std::uint8_t*>(msml_tensor_buf(origin)) + sizeof(float)*10);
-    ASSERT_EQ(msml_tensor_buf_size(slice2), 10*4*sizeof(float));
-    ASSERT_EQ(msml_tensor_buf_len(slice2), 10*4);
+    msml_tensor_t* slice2 = msml_tensor_emit_op_va(ctx, MSML_OP_VIEW, origin);
+    ASSERT_EQ(msml_tensor_buf(slice2), static_cast<std::uint8_t*>(msml_tensor_buf(origin)));
+    ASSERT_EQ(msml_tensor_buf_size(slice2), 10*4*2*5*sizeof(float));
+    ASSERT_EQ(msml_tensor_buf_len(slice2), 10*4*2*5);
     auto* buf_slice2 = msml_tensor_buf_f32(slice2);
     for (int64_t i = 0; i < msml_tensor_buf_len(slice2); ++i) {
         ASSERT_FLOAT_EQ(buf_slice2[i], 2.0f);
@@ -289,7 +215,7 @@ TEST(msml_tensor_t, transpose) {
 
     msml_tensor_t* origin = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 4, 1);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* transposed = msml_tensor_evaluate(msml_tensor_transpose(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
+    msml_tensor_t* transposed = msml_tensor_emit_op_va(ctx, MSML_OP_TRANSPOSE, origin);
     ASSERT_FALSE(msml_tensor_is_transposed(origin));
     ASSERT_TRUE(msml_tensor_is_transposed(transposed));
     ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(transposed)[1]);
@@ -302,24 +228,51 @@ TEST(msml_tensor_t, transpose) {
     ASSERT_FALSE(msml_tensor_is_contiguous(transposed));
 }
 
+TEST(msml_tensor_t, permute) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+    msml_tensor_t* origin = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 4, 1);
+    msml_tensor_fill_random(origin, -1.0f, 1.0f);
+    msml_op_param_t params[MSML_MAX_OP_PARAMS] {
+        msml_op_param_int(3),
+        msml_op_param_int(2),
+        msml_op_param_int(1),
+        msml_op_param_int(0)
+    };
+    msml_tensor_t* permuted = msml_tensor_operator(ctx, MSML_OP_PERMUTE, &origin, 1, &params);
+    ASSERT_FALSE(msml_tensor_is_transposed(origin));
+    ASSERT_FALSE(msml_tensor_is_transposed(permuted));
+    ASSERT_FALSE(msml_tensor_is_permuted(origin));
+    ASSERT_TRUE(msml_tensor_is_permuted(permuted));
+    ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(permuted)[3]);
+    ASSERT_EQ(msml_tensor_shape(origin)[1], msml_tensor_shape(permuted)[2]);
+    ASSERT_EQ(msml_tensor_shape(origin)[2], msml_tensor_shape(permuted)[1]);
+    ASSERT_EQ(msml_tensor_shape(origin)[3], msml_tensor_shape(permuted)[0]);
+    ASSERT_EQ(msml_tensor_buf_size(origin), msml_tensor_buf_size(permuted));
+    ASSERT_EQ(msml_tensor_buf_len(origin), msml_tensor_buf_len(permuted));
+    ASSERT_EQ(msml_tensor_num_cols(origin), msml_tensor_num_rows(permuted));
+    ASSERT_EQ(msml_tensor_num_rows(origin), msml_tensor_num_cols(permuted));
+    ASSERT_TRUE(msml_tensor_is_contiguous(origin));
+    ASSERT_FALSE(msml_tensor_is_contiguous(permuted));
+}
+
 TEST(msml_tensor_t, isclose) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
     msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
-    msml_tensor_t* clone = msml_tensor_evaluate(msml_tensor_clone(origin), MSML_GRAPH_EVAL_ORDER_FORWARD);
-    msml_tensor_t* clone2 = msml_tensor_isomorphic(origin);
+    msml_tensor_t* clone = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, origin);
+    msml_tensor_t* clone2 = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, origin);
     msml_tensor_fill_random(clone2, 0.0f, 1.0f);
-    ASSERT_TRUE(msml_tensor_isclose(origin, clone, FLT_EPSILON, nullptr));
-    ASSERT_FALSE(msml_tensor_isclose(origin, clone2, FLT_EPSILON, nullptr));
-    ASSERT_FALSE(msml_tensor_isclose(clone, clone2, FLT_EPSILON, nullptr));
+    ASSERT_TRUE(msml_tensor_is_close(origin, clone, FLT_EPSILON, nullptr));
+    ASSERT_FALSE(msml_tensor_is_close(origin, clone2, FLT_EPSILON, nullptr));
+    ASSERT_FALSE(msml_tensor_is_close(clone, clone2, FLT_EPSILON, nullptr));
     msml_tensor_fill(clone, 0.0f);
     msml_tensor_fill(clone2, 0.0f);
     double percent = 0.0;
-    ASSERT_TRUE(msml_tensor_isclose(clone, clone2, FLT_EPSILON, &percent));
+    ASSERT_TRUE(msml_tensor_is_close(clone, clone2, FLT_EPSILON, & percent));
     ASSERT_DOUBLE_EQ(percent, 100.0);
     msml_tensor_fill(clone2, 1.0f);
-    ASSERT_FALSE(msml_tensor_isclose(clone, clone2, FLT_EPSILON, &percent));
+    ASSERT_FALSE(msml_tensor_is_close(clone, clone2, FLT_EPSILON, & percent));
     ASSERT_DOUBLE_EQ(percent, 0.0);
 
     msml_ctx_destroy(ctx);
