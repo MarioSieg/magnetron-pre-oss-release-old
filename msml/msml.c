@@ -1918,8 +1918,7 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
         const __m512 res = _mm512_scalef_ps(j, n);
         if (_mm512_kortestz(d, d)) return res;
         const __m512 zero = _mm512_setzero_ps();
-        const __m512 alt = _mm512_mask_blend_ps(
-        _mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
+        const __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
         return _mm512_mask_blend_ps(d, res, alt);
     }
 #elif defined(__AVX2__) && defined(__FMA__)
@@ -2165,7 +2164,7 @@ static void MSML_HOTPROC msml__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |->
             _mm_storeu_ps(o+i, msml__simd_expf(_mm_loadu_ps(x+i)));
         }
     #endif
-    for (; i < n; ++i) o[i] = expf(x[i]);
+    for (; i < n; ++i) o[i] = expf(x[i]); /* Process leftovers scalar-wise */
 }
 
 static void MSML_HOTPROC msml__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (0, ∞), x |-> e^x */
@@ -2181,9 +2180,43 @@ static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 +
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
-        o[i] = 1.0f / (1.0f + expf(-x[i]));
-    }
+    int64_t i=0;
+    #if defined(__ARM_NEON) && defined(__aarch64__)
+        for (; i+3 < n; i += 4) {
+            vst1q_f32(o+i, msml__simd_expf(vld1q_f32(x+i)));
+        }
+    #elif defined(__AVX512F__) && defined(__AVX512DQ__)
+        for (; i+15 < n; i += 16) {
+            const __m512 xx = _mm512_loadu_ps(x+i);
+            const __m512 one = _mm512_set1_ps(1.0f);
+            const __m512 zero = _mm512_setzero_ps();
+            const __m512 neg_x = _mm512_sub_ps(zero, xx);
+            const __m512 exp_neg_x = msml__simd_expf(neg_x);
+            const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
+            _mm512_storeu_ps(o+i, _mm512_div_ps(one, one_plus_exp_neg_x));
+        }
+    #elif defined(__AVX2__) && defined(__FMA__)
+        for (; i+7 < n; i += 8) {
+            const __m256 xx = _mm256_loadu_ps(x+i);
+            const __m256 one = _mm256_set1_ps(1.0f);
+            const __m256 zero = _mm256_setzero_ps();
+            const __m256 neg_x = _mm256_sub_ps(zero, xx);
+            const __m256 exp_neg_x = msml__simd_expf(neg_x);
+            const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
+            _mm256_storeu_ps(o+i, _mm256_div_ps(one, one_plus_exp_neg_x));
+        }
+    #elif defined(__SSE2__)
+        for (; i+3 < n; i += 4) {
+            const __m128 xx = _mm_loadu_ps(x+i);
+            const __m128 one = _mm_set1_ps(1.0f);
+            const __m128 zero = _mm_setzero_ps();
+            const __m128 neg_x = _mm_sub_ps(zero, xx);
+            const __m128 exp_neg_x = msml__simd_expf(neg_x);
+            const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
+            _mm_storeu_ps(o+i, _mm_div_ps(one, one_plus_exp_neg_x));
+        }
+    #endif
+    for (; i < n; ++i) o[i] = 1.0f / (1.0f + expf(-x[i])); /* Process leftovers scalar-wise */
 }
 
 static void MSML_HOTPROC msml__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> x * (1-x) */
