@@ -1616,19 +1616,19 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
     const char* buf_size_unit = NULL;
     msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
     msml_log_info("Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s \n",
-                  tensor->name,
-                  msml_dtype_info_of(tensor->dtype)->name,
-                  (size_t)tensor->rank,
-                  (size_t)tensor->shape[0],
-                  (size_t)tensor->shape[1],
-                  (size_t)tensor->shape[2],
-                  (size_t)tensor->shape[3],
-                  (size_t)tensor->strides[0],
-                  (size_t)tensor->strides[1],
-                  (size_t)tensor->strides[2],
-                  (size_t)tensor->strides[3],
-                  buf_size_cvt,
-                  buf_size_unit
+        tensor->name,
+        msml_dtype_info_of(tensor->dtype)->name,
+        (size_t)tensor->rank,
+        (size_t)tensor->shape[0],
+        (size_t)tensor->shape[1],
+        (size_t)tensor->shape[2],
+        (size_t)tensor->shape[3],
+        (size_t)tensor->strides[0],
+        (size_t)tensor->strides[1],
+        (size_t)tensor->strides[2],
+        (size_t)tensor->strides[3],
+        buf_size_cvt,
+        buf_size_unit
     );
     if (with_data) {
         printf("[\n");
@@ -1847,8 +1847,7 @@ bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b) {
                 }
             }
         } break;
-        default:
-            msml__panic("Unsupported data type: %s", msml_dtype_info_of(a->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(a->dtype)->name);
     }
     return true;
 }
@@ -1868,8 +1867,7 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
             for (int64_t i = 0; i < n; ++i)  /* |x - y| <= ε     ∀ x, y ∈ A, B */
                 if (fabsf(buf_a[i] - buf_b[i]) <= eps) ++n_eq;
         } break;
-        default:
-            msml__panic("Unsupported data type: %s", msml_dtype_info_of(a->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(a->dtype)->name);
     }
     if (percent_eq) *percent_eq = (double)n_eq / (double)n * 100.0;
     return n_eq == n;
@@ -1883,7 +1881,7 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
 #define MSML__GELU_COEFF 0.044715f
 
 #if defined(__aarch64__) && defined(__ARM_NEON)
-    static float32x4_t msml__simd_expf(float32x4_t x) { /* e^x , adapted from ARM limited optimized routine. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+    static float32x4_t msml__simd_expf(float32x4_t x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
         const float32x4_t r = vdupq_n_f32(0x1.8p23f);
         const float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
         const float32x4_t n = vsubq_f32(z, r);
@@ -2029,12 +2027,18 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
         float32x4_t vx[4];
         float32x4_t vy[4];
         for (int64_t i=0; i < k; i += 16) { /* Process STEP elements at a time */
-            #pragma GCC unroll 4
-            for (int64_t j=0; j < 4; ++j) { /* Unrolled inner loop */
-                vx[j] = vld1q_f32(x+i+(j<<2));
-                vy[j] = vld1q_f32(y+i+(j<<2));
-                acc[j] = vfmaq_f32(acc[j], vx[j], vy[j]); /* (FMA) Fused multiply-accumulate */
-            }
+            vx[0] = vld1q_f32(x+i+(0<<2));
+            vy[0] = vld1q_f32(y+i+(0<<2));
+            acc[0] = vfmaq_f32(acc[0], vx[0], vy[0]);
+            vx[1] = vld1q_f32(x+i+(1<<2));
+            vy[1] = vld1q_f32(y+i+(1<<2));
+            acc[1] = vfmaq_f32(acc[1], vx[1], vy[1]);
+            vx[2] = vld1q_f32(x+i+(2<<2));
+            vy[2] = vld1q_f32(y+i+(2<<2));
+            acc[2] = vfmaq_f32(acc[2], vx[2], vy[2]);
+            vx[3] = vld1q_f32(x+i+(3<<2));
+            vy[3] = vld1q_f32(y+i+(3<<2));
+            acc[3] = vfmaq_f32(acc[3], vx[3], vy[3]);
         }
         acc[1] = vaddq_f32(acc[1], acc[3]); /* Fold acc[1] += acc[3] */
         *acc = vaddq_f32(*acc, acc[2]);     /* Fold acc[0] += acc[2] */
@@ -2126,8 +2130,7 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
         return sum;
     #else
         double r = 0.0;
-        for (int64_t i=0; i < n; ++i)
-            r += (double)x[i] * (double)y[i];
+        for (int64_t i=0; i < n; ++i) r += (double)x[i] * (double)y[i];
         return (float)r;
     #endif
 }
@@ -2183,7 +2186,13 @@ static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 +
     int64_t i=0;
     #if defined(__ARM_NEON) && defined(__aarch64__)
         for (; i+3 < n; i += 4) {
-            vst1q_f32(o+i, msml__simd_expf(vld1q_f32(x+i)));
+            const float32x4_t xx = vld1q_f32(x+i);
+            const float32x4_t one = vdupq_n_f32(1.0f);
+            const float32x4_t zero = vdupq_n_f32(0.0f);
+            const float32x4_t neg_x = vsubq_f32(zero, xx);
+            const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
+            const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
+            vst1q_f32(o+i, vdivq_f32(one, one_plus_exp_neg_x));
         }
     #elif defined(__AVX512F__) && defined(__AVX512DQ__)
         for (; i+15 < n; i += 16) {
