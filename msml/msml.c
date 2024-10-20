@@ -480,13 +480,11 @@ static double msml_hpc_clock_elapsed_ms(int64_t start) { /* High precision clock
 
 typedef uint32_t msml_bitset_t;
 msml_static_assert(sizeof(msml_bitset_t) == 4);
-#define MSML_BITSET_SIZE (sizeof(msml_bitset_t)*8)
-#define MSML_BITSET_MASK (MSML_BITSET_SIZE-1)
-#define msml_bitset_size(n) (((n)+MSML_BITSET_MASK)>>5)
-#define msml_bitset_get(sets, i) (!!(sets[(i)>>5]&(1u<<((i)&MSML_BITSET_MASK))))
-#define msml_bitset_set(sets, i) (sets[(i)>>5]|=(1u<<((i)&MSML_BITSET_MASK)))
-#define msml_bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&MSML_BITSET_MASK)))
-#define msml_bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&MSML_BITSET_MASK)))
+#define msml_bitset_size(n) (((n)+((4<<3)-1))>>5)
+#define msml_bitset_get(sets, i) (!!(sets[(i)>>5]&(1u<<((i)&((4<<3)-1)))))
+#define msml_bitset_set(sets, i) (sets[(i)>>5]|=(1u<<((i)&((4<<3)-1))))
+#define msml_bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&((4<<3)-1))))
+#define msml_bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&((4<<3)-1))))
 
 static uint32_t MSML_AINLINE msml__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
@@ -2027,12 +2025,11 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
     const float* const y
 ) {
     #ifdef __ARM_NEON
-        #define STEP 16ll
-        const int64_t k = n & -STEP;
+        const int64_t k = n & -16;
         float32x4_t acc[4] = {vdupq_n_f32(0)};
         float32x4_t vx[4];
         float32x4_t vy[4];
-        for (int64_t i=0; i < k; i += STEP) { /* Process STEP elements at a time */
+        for (int64_t i=0; i < k; i += 16) { /* Process STEP elements at a time */
             #pragma GCC unroll 4
             for (int64_t j=0; j < 4; ++j) { /* Unrolled inner loop */
                 vx[j] = vld1q_f32(x+i+(j<<2));
@@ -2048,7 +2045,86 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
             sum += x[i]*y[i];
         }
         return sum;
-        #undef STEP
+    #elif defined(__AVX512F__) && defined(__FMA__)
+        const int64_t k = n & -64;
+        __m512 acc[4] = {_mm512_setzero_ps()};
+        __m512 vx[4];
+        __m512 vy[4];
+        for (int64_t i=0; i < k; i += 64) {
+            vx[0] = _mm512_loadu_ps(x+i+(0<<4));
+            vy[0] = _mm512_loadu_ps(y+i+(0<<4));
+            acc[0] = _mm512_fmadd_ps(vx[0], vy[0], acc[0]);
+            vx[1] = _mm512_loadu_ps(x+i+(1<<4));
+            vy[1] = _mm512_loadu_ps(y+i+(1<<4));
+            acc[1] = _mm512_fmadd_ps(vx[1], vy[1], acc[1]);
+            vx[2] = _mm512_loadu_ps(x+i+(2<<4));
+            vy[2] = _mm512_loadu_ps(y+i+(2<<4));
+            acc[2] = _mm512_fmadd_ps(vx[2], vy[2], acc[2]);
+            vx[3] = _mm512_loadu_ps(x+i+(3<<4));
+            vy[3] = _mm512_loadu_ps(y+i+(3<<4));
+            acc[3] = _mm512_fmadd_ps(vx[3], vy[3], acc[3]);
+        }
+        acc[1] = _mm512_add_ps(acc[1], acc[3]);
+        *acc = _mm512_add_ps(*acc, acc[2]);
+        *acc = _mm512_add_ps(*acc, acc[1]);
+        float sum = _mm512_reduce_add_ps(*acc);
+        for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
+        return sum;
+    #elif defined(__AVX__) && defined(__FMA__)
+        const int64_t k = n & -32;
+        __m256 acc[4] = {_mm256_setzero_ps()};
+        __m256 vx[4];
+        __m256 vy[4];
+        for (int64_t i=0; i < k; i += 32) {
+            vx[0] = _mm256_loadu_ps(x+i+(0<<3));
+            vy[0] = _mm256_loadu_ps(y+i+(0<<3));
+            acc[0] = _mm256_fmadd_ps(vx[0], vy[0], acc[0]);
+            vx[1] = _mm256_loadu_ps(x+i+(1<<3));
+            vy[1] = _mm256_loadu_ps(y+i+(1<<3));
+            acc[1] = _mm256_fmadd_ps(vx[1], vy[1], acc[1]);
+            vx[2] = _mm256_loadu_ps(x+i+(2<<3));
+            vy[2] = _mm256_loadu_ps(y+i+(2<<3));
+            acc[2] = _mm256_fmadd_ps(vx[2], vy[2], acc[2]);
+            vx[3] = _mm256_loadu_ps(x+i+(3<<3));
+            vy[3] = _mm256_loadu_ps(y+i+(3<<3));
+            acc[3] = _mm256_fmadd_ps(vx[3], vy[3], acc[3]);
+        }
+        acc[1] = _mm256_add_ps(acc[1], acc[3]);
+        *acc = _mm256_add_ps(*acc, acc[2]);
+        *acc = _mm256_add_ps(*acc, acc[1]);
+        __m128 v0 = _mm_add_ps(_mm256_castps256_ps128(*acc), _mm256_extractf128_ps(*acc, 1));
+        v0 = _mm_hadd_ps(v0, v0);
+        v0 = _mm_hadd_ps(v0, v0);
+        float sum = _mm_cvtss_f32(v0);
+        for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
+        return sum;
+    #elif defined(__SSE2__)
+        const int64_t k = n & -16;
+        __m128 acc[4] = {_mm_setzero_ps()};
+        __m128 vx[4];
+        __m128 vy[4];
+        for (int64_t i=0; i < k; i += 16) {
+            vx[0] = _mm_loadu_ps(x+i+(0<<2));
+            vy[0] = _mm_loadu_ps(y+i+(0<<2));
+            acc[0] = _mm_add_ps(acc[0], _mm_mul_ps(vx[0], vy[0]));
+            vx[1] = _mm_loadu_ps(x+i+(1<<2));
+            vy[1] = _mm_loadu_ps(y+i+(1<<2));
+            acc[1] = _mm_add_ps(acc[1], _mm_mul_ps(vx[1], vy[1]));
+            vx[2] = _mm_loadu_ps(x+i+(2<<2));
+            vy[2] = _mm_loadu_ps(y+i+(2<<2));
+            acc[2] = _mm_add_ps(acc[2], _mm_mul_ps(vx[2], vy[2]));
+            vx[3] = _mm_loadu_ps(x+i+(3<<2));
+            vy[3] = _mm_loadu_ps(y+i+(3<<2));
+            acc[3] = _mm_add_ps(acc[3], _mm_mul_ps(vx[3], vy[3]));
+        }
+        acc[1] = _mm_add_ps(acc[1], acc[3]);
+        *acc = _mm_add_ps(*acc, acc[2]);
+        *acc = _mm_add_ps(*acc, acc[1]);
+        *acc = _mm_hadd_ps(*acc, *acc);
+        *acc = _mm_hadd_ps(*acc, *acc);
+        float sum = _mm_cvtss_f32(*acc);
+        for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
+        return sum;
     #else
         double r = 0.0;
         for (int64_t i=0; i < n; ++i)
@@ -2162,7 +2238,7 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
             const __m512 one = _mm512_set1_ps(1);
             const __m512 zero = _mm512_setzero_ps();
             const __m512 neg_x = _mm512_sub_ps(zero, xx);
-            const __m512 exp_neg_x = ggml_v_expf(neg_x);
+            const __m512 exp_neg_x = msml__simd_expf(neg_x);
             const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
             _mm512_storeu_ps(o+i, _mm512_div_ps(xx, one_plus_exp_neg_x));
         }
