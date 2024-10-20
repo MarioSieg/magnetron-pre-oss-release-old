@@ -1,7 +1,5 @@
 /*
 ** (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-** MSML - Single file STB-style machine learning library in C99 with Python bindings.
-** For license see LICENSE file.
 */
 
 #ifndef MSML_INCLUDE_MSML_H
@@ -20,6 +18,7 @@
 #define MSML_DEFAULT_CHUNK_CAP 128          /* Default capacity of memory chunk */
 #define MSML_MAX_DIMS 4                     /* Maximum number of dimensions for a tensor */
 #define MSML_MAX_TENSOR_NAME_LEN 64         /* Maximum length for tensor name */
+#define MSML_MAX_INPUT_TENSORS 2            /* Maximum number of input tensors for an operation */
 #define MSML_MAX_OP_PARAMS 4                /* Maximum number of parameters for an operation */
 
 #ifndef MSML_EXPORT
@@ -60,8 +59,7 @@ typedef enum msml_exec_mode_t {
 
 typedef enum msml_prng_algorithm_t {
     MSML_PRNG_MERSENNE_TWISTER = 0, /* Mersenne Twister PRNG */
-    MSML_PRNG_PCG = 1, /* Permuted Congruential Generator PRNG */
-    MSML_PRNG_COUNT_
+    MSML_PRNG_PCG = 1 /* Permuted Congruential Generator PRNG */
 } msml_prng_algorithm_t;
 
 typedef struct msml_ctx_info_t {
@@ -106,7 +104,7 @@ typedef struct msml_dtype_info_t {
     int64_t size;         /* Size of the data type in bytes */
     const char* name;    /* Name of the data type */
 } msml_dtype_info_t;
-extern MSML_EXPORT const msml_dtype_info_t* msml_get_dtype_info(msml_dtype_t type);
+extern MSML_EXPORT const msml_dtype_info_t* msml_dtype_info_of(msml_dtype_t type);
 
 typedef enum msml_desired_color_channels_t {
     MSML_COLOR_CHANNELS_AUTO,  /* Automatically detect number of color channels */
@@ -116,7 +114,6 @@ typedef enum msml_desired_color_channels_t {
     MSML_COLOR_CHANNELS_RGBA   /* R32G32B32A32 */
 } msml_desired_color_channels_t;
 
-#define MSML_MAX_INPUT_TENSORS 2
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
     _(NOP,              "nop",              0)/* No Operation. */__\

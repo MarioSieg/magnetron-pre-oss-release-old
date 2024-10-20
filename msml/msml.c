@@ -1,7 +1,8 @@
 /*
 ** (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-** MSML - Single file STB-style machine learning library in C99 with Python bindings.
-** For license see LICENSE file.
+*/
+
+/*
 **
 **
 ** ### To add a new operation:
@@ -1166,7 +1167,7 @@ uint64_t msml_op_param_unpack_int(msml_op_param_t param) {
 #define msml__resolve_physical_ptr(tensor, d0, d1, d2, d3) \
     (((uint8_t*)(tensor)->buf) + msml__dot4_unrolled_var_arr((tensor)->strides, d0, d1, d2, d3))
 
-const msml_dtype_info_t* msml_get_dtype_info(msml_dtype_t type) {
+const msml_dtype_info_t* msml_dtype_info_of(msml_dtype_t type) {
     static const msml_dtype_info_t infos[MSML_DTYPE_COUNT_] = {
         [MSML_DTYPE_F32] = {
             sizeof(float),
@@ -1333,8 +1334,8 @@ static bool msml__validate_op_binary(msml_op_t op, msml_tensor_t* result, msml_t
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
     if (msml_unlikely(!msml__validate_shape_eq(op, result, inputs[0]))) return false;
     if (msml_unlikely(!msml__validate_shape_broadcastable(op, inputs[0], inputs[1]))) return false;
-    msml__validate_expr_gen(result->strides[0] == msml_get_dtype_info(result->dtype)->size, "Result must be contiguous.");
-    msml__validate_expr_gen(inputs[0]->strides[0] == msml_get_dtype_info(result->dtype)->size, "First tensor must be contiguous.");
+    msml__validate_expr_gen(result->strides[0] == msml_dtype_info_of(result->dtype)->size, "Result must be contiguous.");
+    msml__validate_expr_gen(inputs[0]->strides[0] == msml_dtype_info_of(result->dtype)->size, "First tensor must be contiguous.");
     return true;
 }
 
@@ -1469,7 +1470,7 @@ static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, co
         view_offs += view->view_offs;
         view = view->view;
     }
-    int64_t scalar_size = msml_get_dtype_info(type)->size;
+    int64_t scalar_size = msml_dtype_info_of(type)->size;
     int64_t buf_size = scalar_size;
     for (int64_t i=0; i < rank; ++i) { /* Calculate buffer size and check for overflow. */
         msml__assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
@@ -1616,19 +1617,19 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
     const char* buf_size_unit = NULL;
     msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
     msml_log_info("Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s \n",
-       tensor->name,
-       msml_get_dtype_info(tensor->dtype)->name,
-       (size_t)tensor->rank,
-       (size_t)tensor->shape[0],
-       (size_t)tensor->shape[1],
-       (size_t)tensor->shape[2],
-       (size_t)tensor->shape[3],
-       (size_t)tensor->strides[0],
-       (size_t)tensor->strides[1],
-       (size_t)tensor->strides[2],
-       (size_t)tensor->strides[3],
-       buf_size_cvt,
-       buf_size_unit
+                  tensor->name,
+                  msml_dtype_info_of(tensor->dtype)->name,
+                  (size_t)tensor->rank,
+                  (size_t)tensor->shape[0],
+                  (size_t)tensor->shape[1],
+                  (size_t)tensor->shape[2],
+                  (size_t)tensor->shape[3],
+                  (size_t)tensor->strides[0],
+                  (size_t)tensor->strides[1],
+                  (size_t)tensor->strides[2],
+                  (size_t)tensor->strides[3],
+                  buf_size_cvt,
+                  buf_size_unit
     );
     if (with_data) {
         printf("[\n");
@@ -1688,7 +1689,8 @@ void* msml_tensor_buf(const msml_tensor_t* tensor) {
 }
 
 float* msml_tensor_buf_f32(const msml_tensor_t* tensor) {
-    msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor data type must be F32, not %s", msml_get_dtype_info(tensor->dtype)->name);
+    msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor data type must be F32, not %s",
+                 msml_dtype_info_of(tensor->dtype)->name);
     return (float*)tensor->buf;
 }
 
@@ -1697,7 +1699,7 @@ int64_t msml_tensor_buf_size(const msml_tensor_t* tensor) {
 }
 
 int64_t msml_tensor_buf_len(const msml_tensor_t* tensor) {
-    return tensor->buf_size / msml_get_dtype_info(tensor->dtype)->size;
+    return tensor->buf_size / msml_dtype_info_of(tensor->dtype)->size;
 }
 
 int64_t msml_tensor_num_rows(const msml_tensor_t* tensor) {
@@ -1781,14 +1783,14 @@ int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const
 }
 
 bool msml_tensor_is_contiguous(const msml_tensor_t* tensor) {
-    return *tensor->strides == msml_get_dtype_info(tensor->dtype)->size;
+    return *tensor->strides == msml_dtype_info_of(tensor->dtype)->size;
 }
 
 float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
     const uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: return *(float*)dst;
-        default: msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
     }
 }
 
@@ -1796,7 +1798,7 @@ void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, in
     uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
     switch (tensor->dtype) {
         case MSML_DTYPE_F32: *(float*)dst = x; break;
-        default: msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
     }
 }
 
@@ -1810,7 +1812,7 @@ float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t 
         case MSML_DTYPE_F32:
             return ((const float*)tensor->buf)[v_idx];
         default:
-            msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
     }
 }
 
@@ -1826,7 +1828,7 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, 
             ((float*)tensor->buf)[v_idx] = x;
             break;
         default:
-            msml__panic("Unsupported data type: %s", msml_get_dtype_info(tensor->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
     }
 }
 
@@ -1847,7 +1849,7 @@ bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b) {
             }
         } break;
         default:
-            msml__panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_dtype_info_of(a->dtype)->name);
     }
     return true;
 }
@@ -1868,7 +1870,7 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
                 if (fabsf(buf_a[i] - buf_b[i]) <= eps) ++n_eq;
         } break;
         default:
-            msml__panic("Unsupported data type: %s", msml_get_dtype_info(a->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_dtype_info_of(a->dtype)->name);
     }
     if (percent_eq) *percent_eq = (double)n_eq / (double)n * 100.0;
     return n_eq == n;
@@ -2639,8 +2641,8 @@ void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gr
             (void*)node,
             color
         );
-        if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_get_dtype_info(node->dtype)->name);
-        else fprintf(f, "(%s)|", msml_get_dtype_info(node->dtype)->name);
+        if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_dtype_info_of(node->dtype)->name);
+        else fprintf(f, "(%s)|", msml_dtype_info_of(node->dtype)->name);
         if (msml_tensor_is_matrix(node)) fprintf(f, "OP #%zu [%zu, %zu] | <x>%s", i, (size_t)node->shape[0], (size_t)node->shape[1], msml_op_get_name(node->op));
         else fprintf(f, "OP #%zu [%zu, %zu, %zu] | <x>%s", i, (size_t)node->shape[0], (size_t)node->shape[1], (size_t)node->shape[2], msml_op_get_name(node->op));
         fprintf(f, "\"; ]\n");
@@ -2656,8 +2658,8 @@ void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gr
             (void*)node,
             color
         );
-        if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_get_dtype_info(node->dtype)->name);
-        else fprintf(f, "(%s)|", msml_get_dtype_info(node->dtype)->name);
+        if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_dtype_info_of(node->dtype)->name);
+        else fprintf(f, "(%s)|", msml_dtype_info_of(node->dtype)->name);
         fprintf(f, "IN #%zu [%zu, %zu]", i, (size_t)node->shape[0], (size_t)node->shape[1]);
         size_t n = msml_tensor_buf_len(node);
         if (n < 4) {
