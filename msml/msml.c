@@ -1873,9 +1873,7 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
     return n_eq == n;
 }
 
-msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
-    return tensor->ctx;
-}
+msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) { return tensor->ctx; }
 
 /* CPU BLAS impl */
 #define MSML__GELU_COEFF 0.044715f
