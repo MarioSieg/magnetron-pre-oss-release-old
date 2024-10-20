@@ -12,14 +12,14 @@
 static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(msml_ctx_t* ctx) -> msml_tensor_t*>&& callback) -> void;
 
 auto main() -> int {
-    ankerl::nanobench::Bench b {};
-    b.title("Matmul")
+    ankerl::nanobench::Bench matmul_bench {};
+    matmul_bench.title("Matmul")
             .unit("matmul")
             .warmup(100)
             .relative(true);
-    b.performanceCounters(true);
+    matmul_bench.performanceCounters(true);
 
-    run_bench(b, "Matmul Large", [](msml_ctx_t* ctx) -> msml_tensor_t* {
+    run_bench(matmul_bench, "Matmul Large", [](msml_ctx_t* ctx) -> msml_tensor_t* {
         constexpr std::int64_t N = 16384;
 
         msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, N, N);
@@ -29,6 +29,23 @@ auto main() -> int {
 
         std::array<msml_tensor_t*, 2> in {A, B};
         msml_tensor_t* C = msml_tensor_operator(ctx, MSML_OP_ADD, in.data(), in.size(), nullptr);
+        return C;
+    });
+
+    ankerl::nanobench::Bench softmax_bench {};
+    matmul_bench.title("Softmax")
+        .unit("softmax")
+        .warmup(100)
+        .relative(true);
+    matmul_bench.performanceCounters(true);
+
+    run_bench(matmul_bench, "Softmax Large", [](msml_ctx_t* ctx) -> msml_tensor_t* {
+        constexpr std::int64_t N = 16384;
+
+        msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, N, N);
+        msml_tensor_fill(A, 1.0f);
+
+        msml_tensor_t* C = msml_tensor_operator(ctx, MSML_OP_SOFTMAX, &A, 1, nullptr);
         return C;
     });
 }
