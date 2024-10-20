@@ -580,7 +580,8 @@ class Tensor:
         return self._new_op(Op.DIV, None, self, other)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
-        """Multiplies two tensors using transposed matrix multiplication. Computes Rᵀ = A x Bᵀ instead of 'normal' R = A x B."""
+        """Multiplies two tensors using matrix multiplication."""
+        print(f'{self.shape} @ {other.shape}')
         return self._new_op(Op.MATMUL, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:

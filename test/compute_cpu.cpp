@@ -138,6 +138,39 @@ impl_test_binary_op(div_f32, DIV, /)
 
 #undef impl_test_binary_op
 
+static void msml__inner_matmul_naive(
+        const float* A,
+        const float* B,
+        float* C,
+        const int64_t M,
+        const int64_t N,
+        const int64_t K
+) {
+    for (int64_t i = 0; i < M * N; ++i) C[i] = 0.0f;
+    for (int64_t i = 0; i < M; ++i) {       // Rows of A and C
+        for (int64_t k = 0; k < K; ++k) {   // Columns of A, Rows of B
+            float a_ik = A[i * K + k];      // Access A[i][k]
+            for (int64_t j = 0; j < N; ++j) { // Columns of B and C
+                C[i * N + j] += a_ik * B[k * N + j]; // C[i][j] += A[i][k] * B[k][j]
+            }
+        }
+    }
+}
+
+TEST(compute_cpu, matmul_inner_naive) {
+    static constexpr  float A[6] = {
+        1.0f, 2.0f,
+        3.0f, 4.0f,
+        5.0f, 6.0f
+    };
+    static constexpr float B[2] = {0.5f, -1.0f};
+    float C[3];
+    msml__inner_matmul_naive(A, B, C, 3, 1, 2);
+    ASSERT_FLOAT_EQ(C[0], 1.0*0.5 + 2.0*-1.0);
+    ASSERT_FLOAT_EQ(C[1], 3.0*0.5 + 4.0*-1.0);
+    ASSERT_FLOAT_EQ(C[2], 5.0*0.5 + 6.0*-1.0);
+}
+
 TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
