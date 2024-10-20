@@ -142,7 +142,7 @@ typedef enum msml_desired_color_channels_t {
     _(SUB,              "-",                2)/* R = X-Y */__\
     _(MUL,              "*",                2)/* R = X*Y (Hadamard product) */__\
     _(DIV,              "/",                2)/* R = X/Y. */__\
-    _(MATMUL,           "@",                2)/* Rᵀ = A x Bᵀ. (Matmul with transposed B and R) */__
+    _(MATMUL,           "@",                2)/* R = A x B.*/__
 
 #define _(enumerator, mnemonic, argcount) MSML_OP_##enumerator
 typedef enum msml_op_t {
