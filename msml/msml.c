@@ -22,6 +22,7 @@
 #include <math.h>
 #include <time.h>
 #include <float.h>
+#include <ctype.h>
 
 #ifdef _MSC_VER
 #   include <intrin.h>
@@ -49,10 +50,6 @@
 #else
 #   include <unistd.h>
 #endif
-
-#include <ctype.h>
-#include <time.h>
-#include <errno.h>
 
 msml_static_assert(sizeof(0u) == 4);
 msml_static_assert(sizeof(0ull) == 8);
@@ -144,6 +141,25 @@ msml_static_assert(sizeof(0ull) == 8);
 #define msml_log_info(msg, ...) fprintf(stdout,   MSML_CCCYAN "[MSML] " MSML_CCRESET MSML_SRC_NAME " " msg "\n", ## __VA_ARGS__)
 #define msml_log_warn(msg, ...) fprintf(stderr,  MSML_CCCYAN "[MSML] " MSML_CCRESET MSML_SRC_NAME " " MSML_CCYELLOW msg MSML_CCRESET "\n", ## __VA_ARGS__)
 #define msml_log_error(msg, ...) fprintf(stderr,  MSML_CCCYAN "[MSML] " MSML_CCRESET MSML_SRC_NAME " " MSML_CCRED msg MSML_CCRESET "\n", ## __VA_ARGS__)
+
+static MSML_NORET MSML_COLDPROC void msml__panic(const char* msg, ...) {
+    fprintf(stderr, "%s", MSML_CCRED);
+    va_list args;
+    va_start(args, msg);
+    vfprintf(stderr, msg, args);
+    va_end(args);
+    fprintf(stderr, "%s", MSML_CCRESET);
+    fputc('\n', stderr);
+    fflush(stderr);
+    fflush(stdout);
+    abort();
+}
+
+#define msml__assert(expr, msg, ...) \
+    if (msml_unlikely(!(expr))) { \
+        msml__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
+    }
+#define msml__assert2(expr) msml__assert(expr, "")
 
 #if defined(__x86_64__) || defined(_M_X64)
 
@@ -305,23 +321,15 @@ struct msml_tensor_t {
     void* ud; /* User data. */
 };
 
-static MSML_NORET void msml__panic(const char* msg, ...) {
-    fprintf(stderr, "%s", MSML_CCRED);
-    va_list args;
-    va_start(args, msg);
-    vfprintf(stderr, msg, args);
-    va_end(args);
-    fprintf(stderr, "%s", MSML_CCRESET);
-    fputc('\n', stderr);
-    fflush(stderr);
-    abort();
+#ifdef NDEBUG
+#define msml__bnd_chk(ptr, base, n)
+#else
+static void MSML_AINLINE msml__bnd_chk(const void* ptr, const void* base, size_t n) {
+    const uintptr_t p = (uintptr_t)ptr;
+    const uintptr_t b = (uintptr_t)base;
+    msml__assert(p >= b && p < b + n, "Out of bounds access: %p not in [%p, %p)", ptr, base, (void*)(b + n));
 }
-
-#define msml__assert(expr, msg, ...) \
-    if (msml_unlikely(!(expr))) { \
-        msml__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
-    }
-#define msml__assert2(expr) msml__assert(expr, "")
+#endif
 
 void* msml_default_allocator_impl(void* blk, size_t size) {
     if (!size) {
@@ -2248,33 +2256,13 @@ static void msml__blas_clone(
         const int64_t rc = msml_tensor_num_rows(x); \
         const int64_t cc = msml_tensor_num_cols(x); \
         for (int64_t ri=0; ri < rc; ++ri) { \
-            vec_op(cc, (T*)(b_r + ri*r_s1), (const T*)(b_x + ri*x_s1)); \
+            T* const p_r = (T*)(b_r + ri*r_s1); \
+            const T* const p_x = (const T*)(b_x + ri*x_s1); \
+            msml__bnd_chk(p_r, b_r, r->buf_size); \
+            msml__bnd_chk(p_x, b_x, x->buf_size); \
+            vec_op(cc, p_r, p_x); \
         } \
     }
-
-msml__blas_impl_unary_op(step_f32, float, msml__vstep_f32)
-msml__blas_impl_unary_op(softmax_f32, float, msml__vsoftmax_f32)
-msml__blas_impl_unary_op(softmax_dv_f32, float, msml__vsoftmax_dv_f32)
-msml__blas_impl_unary_op(sigmoid_f32, float, msml__vsigmoid_f32)
-msml__blas_impl_unary_op(sigmoid_dv_f32, float, msml__vsigmoid_dv_f32)
-msml__blas_impl_unary_op(hard_sigmoid_f32, float, msml__vhard_sigmoid_f32)
-msml__blas_impl_unary_op(hard_sigmoid_dv_f32, float, msml__vhard_sigmoid_dv_f32)
-msml__blas_impl_unary_op(silu_f32, float, msml__vsilu_f32)
-msml__blas_impl_unary_op(silu_dv_f32, float, msml__vsilu_dv_f32)
-msml__blas_impl_unary_op(tanh_f32, float, msml__vtanh_f32)
-msml__blas_impl_unary_op(tanh_dv_f32, float, msml__vtanh_dv_f32)
-msml__blas_impl_unary_op(relu_f32, float, msml__vrelu_f32)
-msml__blas_impl_unary_op(relu_dv_f32, float, msml__vrelu_dv_f32)
-msml__blas_impl_unary_op(gelu_f32, float, msml__vgelu_f32)
-msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
-
-#undef msml__blas_impl_unary_op
-
-/*
-** const int64_t x_i3 = ri / (x_d2 * x_d1);
-** const int64_t x_i2 = (ri / x_d1) % x_d2;
-** const int64_t x_i1 = ri % x_d1;
-*/
 
 #define msml__blas_impl_binary_op(name, T, vec_op, scalar_op) \
     static void MSML_HOTPROC msml__blas_##name( \
@@ -2310,9 +2298,16 @@ msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
                 T* const p_r = (T*)(b_r + x_i3*r_s3 + x_i2*r_s2 + x_i1*r_s1); \
                 const T* const p_x = (const T*)(b_x + x_i3*x_s3 + x_i2*x_s2 + x_i1*x_s1); \
                 const T* const p_y = (const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1); \
+                msml__bnd_chk(p_r, b_r, r->buf_size); \
+                msml__bnd_chk(p_x, b_x, x->buf_size); \
+                msml__bnd_chk(p_y, b_y, y->buf_size); \
                 const int64_t pa = x_d0 / y_d0; \
                 for (int64_t i=0; i < pa; ++i) { \
-                    vec_op(y_d0, p_r + i*y_d0, p_x + i*y_d0, p_y); \
+                    T* const pp_r = p_r + i*y_d0; \
+                    const T* const pp_x = p_x + i*y_d0; \
+                    msml__bnd_chk(pp_r, b_r, r->buf_size); \
+                    msml__bnd_chk(pp_x, b_x, x->buf_size); \
+                    vec_op(y_d0, pp_r, pp_x, p_y); \
                 } \
             } \
         } else { \
@@ -2325,12 +2320,34 @@ msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
                 const int64_t y_i1 = x_i1 % y_d1; \
                 T* const p_r = (T*)(b_r + x_i3*r_s3 + x_i2*r_s2 + x_i1*r_s1); \
                 const T* const p_x = (const T*)(b_x + x_i3*x_s3 + x_i2*x_s2 + x_i1*x_s1); \
+                msml__bnd_chk(p_r, b_r, r->buf_size); \
+                msml__bnd_chk(p_x, b_x, x->buf_size); \
                 for (int64_t i=0; i < r_d0; ++i) { \
-                    p_r[i] = p_x[i] scalar_op *(const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1 + i%y_d0*y_s0); \
+                    const T* const p_y = (const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1 + i%y_d0*y_s0); \
+                    msml__bnd_chk(p_r+i, b_r, r->buf_size); \
+                    msml__bnd_chk(p_x+i, b_x, x->buf_size); \
+                    msml__bnd_chk(p_y, b_y, y->buf_size); \
+                    p_r[i] = p_x[i] scalar_op *p_y; \
                 } \
             } \
         } \
     }
+
+msml__blas_impl_unary_op(step_f32, float, msml__vstep_f32)
+msml__blas_impl_unary_op(softmax_f32, float, msml__vsoftmax_f32)
+msml__blas_impl_unary_op(softmax_dv_f32, float, msml__vsoftmax_dv_f32)
+msml__blas_impl_unary_op(sigmoid_f32, float, msml__vsigmoid_f32)
+msml__blas_impl_unary_op(sigmoid_dv_f32, float, msml__vsigmoid_dv_f32)
+msml__blas_impl_unary_op(hard_sigmoid_f32, float, msml__vhard_sigmoid_f32)
+msml__blas_impl_unary_op(hard_sigmoid_dv_f32, float, msml__vhard_sigmoid_dv_f32)
+msml__blas_impl_unary_op(silu_f32, float, msml__vsilu_f32)
+msml__blas_impl_unary_op(silu_dv_f32, float, msml__vsilu_dv_f32)
+msml__blas_impl_unary_op(tanh_f32, float, msml__vtanh_f32)
+msml__blas_impl_unary_op(tanh_dv_f32, float, msml__vtanh_dv_f32)
+msml__blas_impl_unary_op(relu_f32, float, msml__vrelu_f32)
+msml__blas_impl_unary_op(relu_dv_f32, float, msml__vrelu_dv_f32)
+msml__blas_impl_unary_op(gelu_f32, float, msml__vgelu_f32)
+msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
 
 msml__blas_impl_binary_op(add_f32, float, msml__vadd_f32, +)
 msml__blas_impl_binary_op(sub_f32, float, msml__vsub_f32, -)
@@ -2338,6 +2355,7 @@ msml__blas_impl_binary_op(mul_f32, float, msml__vmul_f32, *)
 msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
 
 #undef msml__blas_impl_binary_op
+#undef msml__blas_impl_unary_op
 
 #define MSML_MATMUL_BLK_X 16 /* Block size X for matrix multiplication */
 #define MSML_MATMUL_BLK_Y 16 /* Block size Y for matrix multiplication */
@@ -2407,9 +2425,12 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                     for (int64_t k=0; k < x_d0; ++k) {
                         const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
                         const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
+                        msml__bnd_chk(p_x, b_x, x->buf_size);
+                        msml__bnd_chk(p_y, b_y, y->buf_size);
                         sum += (double)(*p_x**p_y);
                     }
                     float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
+                    msml__bnd_chk(p_r, b_r, r->buf_size);
                     *p_r = (float)sum;
                 }
             }
