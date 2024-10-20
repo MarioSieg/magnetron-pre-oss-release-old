@@ -1881,6 +1881,29 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
 /* CPU BLAS impl */
 #define MSML__GELU_COEFF 0.044715f
 
+#if defined(__aarch64__) && defined(__ARM_NEON)
+    static float32x4_t msml__simd_expf(float32x4_t x) { /* e^x , adapted from ARM limited optimized routine. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+        const float32x4_t r = vdupq_n_f32(0x1.8p23f);
+        const float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
+        const float32x4_t n = vsubq_f32(z, r);
+        const float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n, vdupq_n_f32(0x1.7f7d1cp-20f));
+        const uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
+        const float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
+        const uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
+        const float32x4_t u = vmulq_f32(b, b);
+        const float32x4_t j = vfmaq_f32(
+            vmulq_f32(vdupq_n_f32(0x1.ffffecp-1f), b),
+            vfmaq_f32(vfmaq_f32(vdupq_n_f32(0x1.fffdb6p-2f), vdupq_n_f32(0x1.555e66p-3f), b),
+            vfmaq_f32(vdupq_n_f32(0x1.573e2ep-5f), vdupq_n_f32(0x1.0e4020p-7f), b), u), u);
+        if (!vpaddd_u64(vreinterpretq_u64_u32(c))) return vfmaq_f32(k, j, k);
+        const uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
+        const float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
+        const float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
+        return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
+               vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
+    }
+#endif
+
 static void MSML_HOTPROC msml__vadd_f32(
     const int64_t n,
     float* const o,
@@ -1955,9 +1978,8 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
         #undef STEP
     #else
         double r = 0.0;
-        for (int64_t i=0; i < n; ++i) {
-            r += x[i] * y[i];
-        }
+        for (int64_t i=0; i < n; ++i)
+            r += (double)x[i] * (double)y[i];
         return (float)r;
     #endif
 }
@@ -1967,9 +1989,8 @@ static void MSML_HOTPROC msml__vstep_f32( /* Heaviside step function. */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
+    for (int64_t i=0; i < n; ++i)
         o[i] = x[i] >= 0.0f ? 1.0f : 0.0f;
-    }
 }
 
 static void MSML_HOTPROC msml__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^x */
@@ -1977,9 +1998,12 @@ static void MSML_HOTPROC msml__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |->
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
-        o[i] = expf(x[i]); /* e^x */
-    }
+    int64_t i=0;
+    #if defined(__ARM_NEON) && defined(__aarch64__)
+        for (; i+3 < n; i += 4)
+            vst1q_f32(o+i, msml__simd_expf(vld1q_f32(x+i)));
+    #endif
+    for (; i < n; ++i) o[i] = expf(x[i]);
 }
 
 static void MSML_HOTPROC msml__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (0, ∞), x |-> e^x */
@@ -2035,7 +2059,19 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
+    int64_t i=0;
+    #if defined(__ARM_NEON) && defined(__aarch64__)
+        for (; i+3 < n; i += 4) {
+            const float32x4_t xx = vld1q_f32(x+i);
+            const float32x4_t one = vdupq_n_f32(1.0f);
+            const float32x4_t zero = vdupq_n_f32(0.0f);
+            const float32x4_t neg_x = vsubq_f32(zero, xx);
+            const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
+            const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
+            vst1q_f32(o+i, vdivq_f32(xx, one_plus_exp_neg_x));
+        }
+    #endif
+    for (; i < n; ++i) {
         o[i] = x[i] / (1.0f + expf(-x[i]));
     }
 }
