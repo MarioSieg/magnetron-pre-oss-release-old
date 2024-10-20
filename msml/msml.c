@@ -24,6 +24,7 @@
 #include <time.h>
 #include <float.h>
 #include <ctype.h>
+#include <errno.h>
 
 #ifdef _MSC_VER
 #   include <intrin.h>
@@ -1904,6 +1905,76 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) {
         return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
                vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
     }
+#elif defined(__AVX512F__) && defined(__AVX512DQ__)
+    static __m512 msml__simd_expf(const __m512 x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+        const __m512 r = _mm512_set1_ps(0x1.8p23f);
+        const __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
+        const __m512 n = _mm512_sub_ps(z, r);
+        const __m512 b = _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.7f7d1cp-20f), _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.62e4p-1f), x));
+        const __mmask16 d = _mm512_cmp_ps_mask(_mm512_abs_ps(n), _mm512_set1_ps(192), _CMP_GT_OQ);
+        const __m512 u = _mm512_mul_ps(b, b);
+        const __m512 j = _mm512_fmadd_ps(
+            _mm512_fmadd_ps(_mm512_fmadd_ps(_mm512_set1_ps(0x1.0e4020p-7f), b, _mm512_set1_ps(0x1.573e2ep-5f)), u,
+            _mm512_fmadd_ps(_mm512_set1_ps(0x1.555e66p-3f), b, _mm512_set1_ps(0x1.fffdb6p-2f))), u, _mm512_fmadd_ps(_mm512_set1_ps(0x1.ffffecp-1f), b, _mm512_set1_ps(1.0F))
+        );
+        const __m512 res = _mm512_scalef_ps(j, n);
+        if (_mm512_kortestz(d, d)) return res;
+        const __m512 zero = _mm512_setzero_ps();
+        const __m512 alt = _mm512_mask_blend_ps(
+        _mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
+        return _mm512_mask_blend_ps(d, res, alt);
+    }
+#elif defined(__AVX2__) && defined(__FMA__)
+    static __m256 msml__simd_expf(const __m256 x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+        const __m256 r = _mm256_set1_ps(0x1.8p23f);
+        const __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
+        const __m256 n = _mm256_sub_ps(z, r);
+        const __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
+        const __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
+        const __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
+        const __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n),_mm256_set1_ps(126), _CMP_GT_OQ));
+        const __m256 u = _mm256_mul_ps(b, b);
+        const __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
+        if (!_mm256_movemask_ps(_mm256_castsi256_ps(c))) return _mm256_fmadd_ps(j, k, k);
+        const __m256i g = _mm256_and_si256(_mm256_castps_si256(_mm256_cmp_ps(n, _mm256_setzero_ps(), _CMP_LE_OQ)),_mm256_set1_epi32(0x82000000u));
+        const __m256 s1 = _mm256_castsi256_ps(_mm256_add_epi32(g, _mm256_set1_epi32(0x7f000000u)));
+        const __m256 s2 = _mm256_castsi256_ps(_mm256_sub_epi32(e, g));
+        const __m256i d = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(192), _CMP_GT_OQ));
+        return _mm256_or_ps(
+            _mm256_and_ps(_mm256_castsi256_ps(d), _mm256_mul_ps(s1, s1)),
+            _mm256_andnot_ps(
+            _mm256_castsi256_ps(d),
+            _mm256_or_ps(
+            _mm256_and_ps(_mm256_castsi256_ps(c),
+            _mm256_mul_ps(_mm256_fmadd_ps(s2, j, s2), s1)),
+            _mm256_andnot_ps(_mm256_castsi256_ps(c), _mm256_fmadd_ps(k, j, k))))
+        );
+    }
+#elif defined(__SSE2__)
+    static __m128 msml__simd_expf(const __m128 x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+        const __m128 r = _mm_set1_ps(0x1.8p23f);
+        const __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
+        const __m128 n = _mm_sub_ps(z, r);
+        const __m128 b = _mm_sub_ps(_mm_sub_ps(x, _mm_mul_ps(n, _mm_set1_ps(0x1.62e4p-1f))), _mm_mul_ps(n, _mm_set1_ps(0x1.7f7d1cp-20f)));
+        const __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
+        const __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
+        const __m128i c = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
+        const __m128 u = _mm_mul_ps(b, b);
+        const __m128 j = _mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.0e4020p-7f), b), _mm_set1_ps(0x1.573e2ep-5f)),u),
+        _mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.555e66p-3f), b), _mm_set1_ps(0x1.fffdb6p-2f))), u),
+        _mm_mul_ps(_mm_set1_ps(0x1.ffffecp-1f), b));
+        if (!_mm_movemask_epi8(c)) return _mm_add_ps(_mm_mul_ps(j, k), k);
+        const __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),_mm_set1_epi32(0x82000000u));
+        const __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
+        const __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
+        const __m128i d = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
+        return _mm_or_ps(
+            _mm_and_ps(_mm_castsi128_ps(d), _mm_mul_ps(s1, s1)),
+            _mm_andnot_ps(_mm_castsi128_ps(d),
+            _mm_or_ps(_mm_and_ps(_mm_castsi128_ps(c), _mm_mul_ps(_mm_add_ps(_mm_mul_ps(s2, j), s2), s1)),
+            _mm_andnot_ps(_mm_castsi128_ps(c), _mm_add_ps(_mm_mul_ps(k, j), k))))
+        );
+    }
 #endif
 
 static void MSML_HOTPROC msml__vadd_f32(
@@ -2002,8 +2073,21 @@ static void MSML_HOTPROC msml__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |->
 ) {
     int64_t i=0;
     #if defined(__ARM_NEON) && defined(__aarch64__)
-        for (; i+3 < n; i += 4)
+        for (; i+3 < n; i += 4) {
             vst1q_f32(o+i, msml__simd_expf(vld1q_f32(x+i)));
+        }
+    #elif defined(__AVX512F__) && defined(__AVX512DQ__)
+        for (; i+15 < n; i += 16) {
+            _mm512_storeu_ps(o+i, msml__simd_expf(_mm512_loadu_ps(x+i)));
+        }
+    #elif defined(__AVX2__) && defined(__FMA__)
+        for (; i+7 < n; i += 8) {
+            _mm256_storeu_ps(o+i, msml__simd_expf(_mm256_loadu_ps(x+i)));
+        }
+    #elif defined(__SSE2__)
+        for (; i+3 < n; i += 4) {
+            _mm_storeu_ps(o+i, msml__simd_expf(_mm_loadu_ps(x+i)));
+        }
     #endif
     for (; i < n; ++i) o[i] = expf(x[i]);
 }
@@ -2071,6 +2155,36 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
             const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
             const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
             vst1q_f32(o+i, vdivq_f32(xx, one_plus_exp_neg_x));
+        }
+    #elif defined(__AVX512F__) && defined(__AVX512DQ__)
+        for (; i+15 < n; i += 16) {
+            const __m512 xx = _mm512_loadu_ps(x+i);
+            const __m512 one = _mm512_set1_ps(1);
+            const __m512 zero = _mm512_setzero_ps();
+            const __m512 neg_x = _mm512_sub_ps(zero, xx);
+            const __m512 exp_neg_x = ggml_v_expf(neg_x);
+            const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
+            _mm512_storeu_ps(o+i, _mm512_div_ps(xx, one_plus_exp_neg_x));
+        }
+    #elif defined(__AVX2__) && defined(__FMA__)
+        for (; i+7 < n; i += 8) {
+            const __m256 xx = _mm256_loadu_ps(x+i);
+            __m256 one = _mm256_set1_ps(1);
+            __m256 zero = _mm256_setzero_ps();
+            __m256 neg_x = _mm256_sub_ps(zero, xx);
+            __m256 exp_neg_x = msml__simd_expf(neg_x);
+            __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
+            _mm256_storeu_ps(o+i, _mm256_div_ps(xx, one_plus_exp_neg_x));
+        }
+    #elif defined(__SSE2__)
+        for (; i+3 < n; i += 4) {
+            const __m128 xx = _mm_loadu_ps(x+i);
+            const __m128 one = _mm_set1_ps(1);
+            const __m128 zero = _mm_setzero_ps();
+            const __m128 neg_x = _mm_sub_ps(zero, xx);
+            const __m128 exp_neg_x = msml__simd_expf(neg_x);
+            const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
+            _mm_storeu_ps(o+i, _mm_div_ps(xx, one_plus_exp_neg_x));
         }
     #endif
     for (; i < n; ++i) {

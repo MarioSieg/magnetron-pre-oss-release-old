@@ -105,12 +105,20 @@ namespace msml {
         rgba = MSML_COLOR_CHANNELS_RGBA /* Convert to RGBA. */
     };
 
-#define _(enumerator, mnemonic, argcount) enumerator
-    enum class op : std::underlying_type_t<msml_op_t> {
-        msml_op_def(_, MSML_SEP)
-        count_ = MSML_OP__COUNT
+    struct op final {
+        #define _(enumerator, mnemonic, argcount) enumerator
+            enum $ : std::underlying_type_t<msml_op_t> {
+                msml_op_def(_, MSML_SEP)
+                count_ = MSML_OP__COUNT
+            };
+        #undef _
+        $ value;
+        [[nodiscard]] inline auto name() const noexcept -> std::string_view { return msml_op_get_name(static_cast<msml_op_t>(value)); }
+        [[nodiscard]] inline auto mnemonic() const noexcept -> std::string_view { return msml_op_get_mnemonic(static_cast<msml_op_t>(value)); }
+        [[nodiscard]] inline auto argcount() const noexcept -> std::uint8_t { return msml_op_get_argcount(static_cast<msml_op_t>(value)); }
+        [[nodiscard]] inline auto is_unary() const noexcept -> bool { return 1 == argcount(); }
+        [[nodiscard]] inline auto is_binary() const noexcept -> bool { return 2 == argcount(); }
     };
-#undef _
 
     enum class param_type : std::underlying_type_t<msml_op_param_type_t> {
         float_param = MSML_OP_PARAM_FLOAT,

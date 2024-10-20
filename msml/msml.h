@@ -150,6 +150,11 @@ typedef enum msml_op_t {
 msml_static_assert(MSML_OP_NOP == 0);
 msml_static_assert(MSML_OP_MATMUL+1 == MSML_OP__COUNT);
 msml_static_assert(MSML_OP__COUNT <= 0xff);
+extern MSML_EXPORT const char* msml_op_get_name(msml_op_t op);
+extern MSML_EXPORT const char* msml_op_get_mnemonic(msml_op_t op);
+extern MSML_EXPORT uint8_t msml_op_get_argcount(msml_op_t op);
+#define msml_op_is_unary(op) (msml_op_get_argcount(op) == 1)
+#define msml_op_is_binary(op) (msml_op_get_argcount(op) == 2)
 
 typedef enum msml_op_param_type_t {     /* 2-bit Parameter type tag for operation parameter. */
     MSML_OP_PARAM_FLOAT = 0,            /* 32-bit floating-point value */
@@ -171,12 +176,6 @@ typedef enum msml_graph_eval_order_t {
     MSML_GRAPH_EVAL_ORDER_FORWARD = 0, /* Evaluate graph from left to right */
     MSML_GRAPH_EVAL_ORDER_REVERSE = 1 /* Evaluate graph from right to left */
 } msml_graph_eval_order_t;
-
-extern MSML_EXPORT const char* msml_op_get_name(msml_op_t op);
-extern MSML_EXPORT const char* msml_op_get_mnemonic(msml_op_t op);
-extern MSML_EXPORT uint8_t msml_op_get_argcount(msml_op_t op);
-#define msml_op_is_unary(op) (msml_op_get_argcount(op) == 1)
-#define msml_op_is_binary(op) (msml_op_get_argcount(op) == 2)
 
 typedef struct msml_tensor_t msml_tensor_t; /* Opaque type representing a tensor */
 
