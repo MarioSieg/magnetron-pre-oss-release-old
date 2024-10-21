@@ -323,18 +323,18 @@ struct msml_tensor_t {
     void* ud; /* User data. */
 };
 
-#ifdef NDEBUG
-#define msml__bnd_chk(ptr, base, n)
-#else
+#if MSML_BOUNDS_CHECK
 #define msml__bnd_chk(ptr, base, n) \
     msml__assert((uintptr_t)(ptr) >= (uintptr_t)(base) && (uintptr_t)(ptr) < (uintptr_t)(base) + (n), \
-        "Bound check failed: %p not in [%p, %p), base+%zu, end+%zu", \
+        "\nBound check failed: %p not in [%p, %p), base+%zu, end+%zu", \
         (void*)(ptr), \
         (void*)(base), \
         (void*)((uintptr_t)(base)+(n)), \
         (size_t)llabs((long long)((int64_t)(ptr)-(int64_t)(base))), \
         (size_t)llabs((long long)(((int64_t)(base)+(n))-(int64_t)(ptr))) \
     )
+#else
+#define msml__bnd_chk(ptr, base, n)
 #endif
 
 void* msml_default_allocator_impl(void* blk, size_t size) {
@@ -2712,9 +2712,12 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                     for (int64_t k=0; k < x_d0; ++k) {
                         const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
                         const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
+                        msml__bnd_chk(p_x, b_x, x->buf_size);
+                        msml__bnd_chk(p_y, b_y, y->buf_size);
                         sum += (double)(*p_x**p_y);
                     }
                     float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
+                    msml__bnd_chk(p_r, b_r, r->buf_size);
                     *p_r = (float)sum;
                 }
             }
@@ -2743,27 +2746,21 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
-    for (int64_t i3 = 0; i3 < r_d3; ++i3) {
-        for (int64_t i2 = 0; i2 < r_d2; ++i2) {
-            const float* const p_x = (const float*)(b_x+i2 * x_s2+i3 * x_s3);
-            const float* const p_y = (const float*)(b_y+i2 * y_s2+i3 * y_s3);
-            float* const p_r = (float*)(b_r+i2 * r_s2+i3 * r_s3);
-            msml__bnd_chk(p_x, b_x, x->buf_size);
-            msml__bnd_chk(p_y, b_y, y->buf_size);
-            msml__bnd_chk(p_r, b_r, r->buf_size);
-            for (int64_t i = 0; i < r_d1 * r_d0; ++i) {
-                msml__bnd_chk(p_r+i, b_r, r->buf_size);
-                p_r[i] = 0.0f;
-            }
-            for (int64_t i = 0; i < r_d1; ++i) {
-                for (int64_t k = 0; k < x_d0; ++k) {
-                    msml__bnd_chk(p_x+(i*x_d0+k), b_x, x->buf_size);
-                    float a_ik = p_x[i * x_d0 + k];
-                    for (int64_t j = 0; j < r_d0; ++j) {
-                        msml__bnd_chk(p_y+(k*r_d0 + j), b_y, y->buf_size);
-                        msml__bnd_chk(p_r+(i*r_d0 + j), b_r, r->buf_size);
-                        p_r[i*r_d0 + j] += a_ik * p_y[k*r_d0 + j];
+    for (int64_t i3=0; i3 < r_d3; ++i3) {
+        for (int64_t i2=0; i2 < r_d2; ++i2) {
+            for (int64_t i0=0; i0 < r_d0; ++i0) {  // Row
+                for (int64_t i1=0; i1 < r_d1; ++i1) {  // Columns
+                    double sum = 0.0;
+                    for (int64_t k=0; k < x_d1; ++k) {  // Shared dimension
+                        const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
+                        const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
+                        msml__bnd_chk(p_x, b_x, x->buf_size);
+                        msml__bnd_chk(p_y, b_y, y->buf_size);
+                        sum += (double)*p_x * (double)*p_y;
                     }
+                    float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
+                    msml__bnd_chk(p_r, b_r, r->buf_size);
+                    *p_r = (float)sum;
                 }
             }
         }

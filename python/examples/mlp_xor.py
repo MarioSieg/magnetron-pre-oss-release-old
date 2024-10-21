@@ -19,7 +19,7 @@ targets = [
 ]
 
 mlp = MultilayerPerceptron(layout=[2, 3, 1])
-mlp.train(inputs, targets, epochs=10000, learning_rate=0.1)
+mlp.train(inputs, targets, epochs=10000, learning_rate=0.5)
 for input_tensor in inputs:
     output: float = mlp.forward(input_tensor).f32_data()[0]
     print(f'Output: {output}')

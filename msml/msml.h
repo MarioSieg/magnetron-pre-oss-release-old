@@ -8,6 +8,7 @@
 /* Compile time config macros */
 #define MSML_CFG_X86_64_FAST_MATH 1 /* Use fast math for x86_64 by setting mxcsr control register. */
 #define MSML_INTRIN 1 /* Use platform and compiler specific intrinsics for performance. */
+#define MSML_BOUNDS_CHECK 1 /* Enable bounds checking for BLAS routines. */
 
 #include <string.h>
 #include <stdlib.h>

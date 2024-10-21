@@ -29,11 +29,13 @@ class MultilayerPerceptron:
             self.weights[i] = self.weights[i] - (delta @ self.cache[i].transpose()) * rate
             self.biases[i] = self.biases[i] - delta * rate
             if i != 0:
-                delta = (self.weights[i].transpose() @ delta) * self.cache[i].relu(derivative=True)
+                delta = (self.weights[i].transpose() @ delta) * self.cache[i].sigmoid(derivative=True)
 
     def train(self, inputs: list[Tensor], targets: list[Tensor], epochs: int, learning_rate: float):
         assert len(inputs) == len(targets)
         rate = Tensor.full([1], fill_value=learning_rate)
-        for _ in range(1, epochs+1):
+        for e in range(1, epochs+1):
+            if e % 1000 == 0:
+                print(f'Epoch: {e}')
             for i in range(0, len(inputs)):
                 self.backward(self.forward(inputs[i]), targets[i], rate)

@@ -2,10 +2,16 @@
 
 import numpy as np
 
-M = 4
-N = 8
-A = np.random.randn(M, N).astype(dtype=np.float32)
-B = np.random.randn(N, M).astype(dtype=np.float32)
-print(A)
-print(B)
-print((A @ B).shape)
+data1 = [
+    [1.6354027, -1.3607267],
+    [1.8556793, 1.1689897]
+]
+
+data2 = [
+    [-0.6105532, 0.10695228],
+    [-1.0069681, -0.40955952]
+]
+
+A = np.array(data1, dtype=np.float32)
+B = np.array(data2, dtype=np.float32)
+print(np.matmul(A, B))
