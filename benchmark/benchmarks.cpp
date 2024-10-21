@@ -33,19 +33,19 @@ auto main() -> int {
     });
 
     ankerl::nanobench::Bench softmax_bench {};
-    matmul_bench.title("Softmax")
-        .unit("softmax")
+    matmul_bench.title("GeLU")
+        .unit("gelu")
         .warmup(100)
         .relative(true);
     matmul_bench.performanceCounters(true);
 
-    run_bench(matmul_bench, "Softmax Large", [](msml_ctx_t* ctx) -> msml_tensor_t* {
-        constexpr std::int64_t N = 16384;
+    run_bench(matmul_bench, "GeLU Large", [](msml_ctx_t* ctx) -> msml_tensor_t* {
+        constexpr std::int64_t N = 512;
 
         msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, N, N);
         msml_tensor_fill(A, 1.0f);
 
-        msml_tensor_t* C = msml_tensor_operator(ctx, MSML_OP_SOFTMAX, &A, 1, nullptr);
+        msml_tensor_t* C = msml_tensor_operator(ctx, MSML_OP_GELU, &A, 1, nullptr);
         return C;
     });
 }

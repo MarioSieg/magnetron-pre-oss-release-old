@@ -569,7 +569,7 @@ static MSML_AINLINE void* msml__pincr(void** p, size_t sz, size_t align) {
 static uint32_t msml__crc32c(const void* buffer, size_t size) { /* Compute CRC32 checksum with CRC32c polynomial. */
     if (msml_unlikely(!buffer || !size)) return 0;
     const uint8_t* buf = (const uint8_t*)buffer;
-    #ifdef __aarch64__
+    #if MSML_INTRIN && defined(__aarch64__)
         uint32_t crc = ~0;
         for (; size && ((uintptr_t)buf & 7); --size) crc = __crc32cb(crc, *buf++);
         if (((uintptr_t)buf & 8) && size >= 8) {
@@ -634,7 +634,7 @@ static uint32_t msml__crc32c(const void* buffer, size_t size) { /* Compute CRC32
         for (; size >= 8; buf += 8, size -= 8) crc = __crc32cd(crc, *(const uint64_t*)buf);
         for (; size; --size) crc = __crc32cb(crc, *buf++);
         return ~crc;
-    #elif defined(__x86_64__) || defined(_M_X64)
+    #elif MSML_INTRIN && (defined(__x86_64__) || defined(_M_X64))
         uint32_t crc = ~0;
         for (; size && ((uintptr_t)buf & 7); --size) crc = _mm_crc32_u8(crc, *buf++);
         if (size >= 32) {
@@ -1878,8 +1878,8 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) { return tensor->ct
 /* CPU BLAS impl */
 #define MSML__GELU_COEFF 0.044715f
 
-#if defined(__aarch64__) && defined(__ARM_NEON)
-    static float32x4_t msml__simd_expf(float32x4_t x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
+#if MSML_INTRIN && defined(__aarch64__) && defined(__ARM_NEON)
+    static float32x4_t msml__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
         const float32x4_t r = vdupq_n_f32(0x1.8p23f);
         const float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
         const float32x4_t n = vsubq_f32(z, r);
@@ -1899,8 +1899,22 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) { return tensor->ct
         return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
                vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
     }
-#elif defined(__AVX512F__) && defined(__AVX512DQ__)
-    static __m512 msml__simd_expf(const __m512 x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+
+    static float32x4_t msml__simd_tanh(float32x4_t x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+        const float32x4_t one = vdupq_n_f32(1.0f);
+        const float32x4_t neg_one = vdupq_n_f32(-1.0f);
+        const float32x4_t two = vdupq_n_f32(2.0f);
+        const float32x4_t neg_two = vdupq_n_f32(-2.0f);
+        const float32x4_t a = vmulq_f32(neg_two, x);
+        const float32x4_t b = msml__simd_expf(a);
+        const float32x4_t c = vaddq_f32(one, b);
+        float32x4_t inv = vrecpeq_f32(c);
+        inv = vmulq_f32(vrecpsq_f32(c, inv), inv);
+        inv = vmulq_f32(vrecpsq_f32(c, inv), inv);
+        return vaddq_f32(neg_one, vmulq_f32(two, inv));
+    }
+#elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+    static __m512 msml__simd_expf(const __m512 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
         const __m512 r = _mm512_set1_ps(0x1.8p23f);
         const __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
         const __m512 n = _mm512_sub_ps(z, r);
@@ -1917,8 +1931,12 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) { return tensor->ct
         const __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
         return _mm512_mask_blend_ps(d, res, alt);
     }
-#elif defined(__AVX2__) && defined(__FMA__)
-    static __m256 msml__simd_expf(const __m256 x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+
+    static __m512 msml__simd_tanh(__m512 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+
+    }
+#elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
+    static __m256 msml__simd_expf(const __m256 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
         const __m256 r = _mm256_set1_ps(0x1.8p23f);
         const __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
         const __m256 n = _mm256_sub_ps(z, r);
@@ -1943,8 +1961,12 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) { return tensor->ct
             _mm256_andnot_ps(_mm256_castsi256_ps(c), _mm256_fmadd_ps(k, j, k))))
         );
     }
-#elif defined(__SSE2__)
-    static __m128 msml__simd_expf(const __m128 x) { /* e^x  Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+
+    static __m256 msml__simd_tanh(__m256 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+
+    }
+#elif MSML_INTRIN && defined(__SSE2__)
+    static __m128 msml__simd_expf(const __m128 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
         const __m128 r = _mm_set1_ps(0x1.8p23f);
         const __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
         const __m128 n = _mm_sub_ps(z, r);
@@ -1967,6 +1989,10 @@ msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) { return tensor->ct
             _mm_or_ps(_mm_and_ps(_mm_castsi128_ps(c), _mm_mul_ps(_mm_add_ps(_mm_mul_ps(s2, j), s2), s1)),
             _mm_andnot_ps(_mm_castsi128_ps(c), _mm_add_ps(_mm_mul_ps(k, j), k))))
         );
+    }
+
+    static __m128 msml__simd_tanh(__m128 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+
     }
 #endif
 
@@ -2019,7 +2045,7 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
     const float* const x,
     const float* const y
 ) {
-    #ifdef __ARM_NEON
+    #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
         const int64_t k = n & -16;
         float32x4_t acc[4] = {vdupq_n_f32(0)};
         float32x4_t vx[4];
@@ -2046,7 +2072,7 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
             sum += x[i]*y[i];
         }
         return sum;
-    #elif defined(__AVX512F__) && defined(__FMA__)
+    #elif MSML_INTRIN && defined(__AVX512F__) && defined(__FMA__)
         const int64_t k = n & -64;
         __m512 acc[4] = {_mm512_setzero_ps()};
         __m512 vx[4];
@@ -2071,7 +2097,7 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
         float sum = _mm512_reduce_add_ps(*acc);
         for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
         return sum;
-    #elif defined(__AVX__) && defined(__FMA__)
+    #elif MSML_INTRIN && defined(__AVX__) && defined(__FMA__)
         const int64_t k = n & -32;
         __m256 acc[4] = {_mm256_setzero_ps()};
         __m256 vx[4];
@@ -2099,7 +2125,7 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
         float sum = _mm_cvtss_f32(v0);
         for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
         return sum;
-    #elif defined(__SSE2__)
+    #elif MSML_INTRIN && defined(__SSE2__)
         const int64_t k = n & -16;
         __m128 acc[4] = {_mm_setzero_ps()};
         __m128 vx[4];
@@ -2148,19 +2174,19 @@ static void MSML_HOTPROC msml__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |->
     const float* const x
 ) {
     int64_t i=0;
-    #if defined(__ARM_NEON) && defined(__aarch64__)
+    #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
         for (; i+3 < n; i += 4) {
             vst1q_f32(o+i, msml__simd_expf(vld1q_f32(x+i)));
         }
-    #elif defined(__AVX512F__) && defined(__AVX512DQ__)
+    #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
         for (; i+15 < n; i += 16) {
             _mm512_storeu_ps(o+i, msml__simd_expf(_mm512_loadu_ps(x+i)));
         }
-    #elif defined(__AVX2__) && defined(__FMA__)
+    #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
         for (; i+7 < n; i += 8) {
             _mm256_storeu_ps(o+i, msml__simd_expf(_mm256_loadu_ps(x+i)));
         }
-    #elif defined(__SSE2__)
+    #elif MSML_INTRIN && defined(__SSE2__)
         for (; i+3 < n; i += 4) {
             _mm_storeu_ps(o+i, msml__simd_expf(_mm_loadu_ps(x+i)));
         }
@@ -2182,41 +2208,41 @@ static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 +
     const float* const x
 ) {
     int64_t i=0;
-    #if defined(__ARM_NEON) && defined(__aarch64__)
+    #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+        const float32x4_t one = vdupq_n_f32(1.0f);
+        const float32x4_t zero = vdupq_n_f32(0.0f);
         for (; i+3 < n; i += 4) {
             const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t one = vdupq_n_f32(1.0f);
-            const float32x4_t zero = vdupq_n_f32(0.0f);
             const float32x4_t neg_x = vsubq_f32(zero, xx);
             const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
             const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
             vst1q_f32(o+i, vdivq_f32(one, one_plus_exp_neg_x));
         }
-    #elif defined(__AVX512F__) && defined(__AVX512DQ__)
+    #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+        const __m512 one = _mm512_set1_ps(1.0f);
+        const __m512 zero = _mm512_setzero_ps();
         for (; i+15 < n; i += 16) {
             const __m512 xx = _mm512_loadu_ps(x+i);
-            const __m512 one = _mm512_set1_ps(1.0f);
-            const __m512 zero = _mm512_setzero_ps();
             const __m512 neg_x = _mm512_sub_ps(zero, xx);
             const __m512 exp_neg_x = msml__simd_expf(neg_x);
             const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
             _mm512_storeu_ps(o+i, _mm512_div_ps(one, one_plus_exp_neg_x));
         }
-    #elif defined(__AVX2__) && defined(__FMA__)
+    #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
+        const __m256 one = _mm256_set1_ps(1.0f);
+        const __m256 zero = _mm256_setzero_ps();
         for (; i+7 < n; i += 8) {
             const __m256 xx = _mm256_loadu_ps(x+i);
-            const __m256 one = _mm256_set1_ps(1.0f);
-            const __m256 zero = _mm256_setzero_ps();
             const __m256 neg_x = _mm256_sub_ps(zero, xx);
             const __m256 exp_neg_x = msml__simd_expf(neg_x);
             const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
             _mm256_storeu_ps(o+i, _mm256_div_ps(one, one_plus_exp_neg_x));
         }
-    #elif defined(__SSE2__)
+    #elif MSML_INTRIN && defined(__SSE2__)
+        const __m128 one = _mm_set1_ps(1.0f);
+        const __m128 zero = _mm_setzero_ps();
         for (; i+3 < n; i += 4) {
             const __m128 xx = _mm_loadu_ps(x+i);
-            const __m128 one = _mm_set1_ps(1.0f);
-            const __m128 zero = _mm_setzero_ps();
             const __m128 neg_x = _mm_sub_ps(zero, xx);
             const __m128 exp_neg_x = msml__simd_expf(neg_x);
             const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
@@ -2262,41 +2288,41 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
     const float* const x
 ) {
     int64_t i=0;
-    #if defined(__ARM_NEON) && defined(__aarch64__)
+    #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+        const float32x4_t one = vdupq_n_f32(1.0f);
+        const float32x4_t zero = vdupq_n_f32(0.0f);
         for (; i+3 < n; i += 4) {
             const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t one = vdupq_n_f32(1.0f);
-            const float32x4_t zero = vdupq_n_f32(0.0f);
             const float32x4_t neg_x = vsubq_f32(zero, xx);
             const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
             const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
             vst1q_f32(o+i, vdivq_f32(xx, one_plus_exp_neg_x));
         }
-    #elif defined(__AVX512F__) && defined(__AVX512DQ__)
+    #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+        const __m512 one = _mm512_set1_ps(1);
+        const __m512 zero = _mm512_setzero_ps();
         for (; i+15 < n; i += 16) {
             const __m512 xx = _mm512_loadu_ps(x+i);
-            const __m512 one = _mm512_set1_ps(1);
-            const __m512 zero = _mm512_setzero_ps();
             const __m512 neg_x = _mm512_sub_ps(zero, xx);
             const __m512 exp_neg_x = msml__simd_expf(neg_x);
             const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
             _mm512_storeu_ps(o+i, _mm512_div_ps(xx, one_plus_exp_neg_x));
         }
-    #elif defined(__AVX2__) && defined(__FMA__)
+    #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
+        __m256 one = _mm256_set1_ps(1);
+        __m256 zero = _mm256_setzero_ps();
         for (; i+7 < n; i += 8) {
             const __m256 xx = _mm256_loadu_ps(x+i);
-            __m256 one = _mm256_set1_ps(1);
-            __m256 zero = _mm256_setzero_ps();
             __m256 neg_x = _mm256_sub_ps(zero, xx);
             __m256 exp_neg_x = msml__simd_expf(neg_x);
             __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
             _mm256_storeu_ps(o+i, _mm256_div_ps(xx, one_plus_exp_neg_x));
         }
-    #elif defined(__SSE2__)
+    #elif MSML_INTRIN && defined(__SSE2__)
+        const __m128 one = _mm_set1_ps(1);
+        const __m128 zero = _mm_setzero_ps();
         for (; i+3 < n; i += 4) {
             const __m128 xx = _mm_loadu_ps(x+i);
-            const __m128 one = _mm_set1_ps(1);
-            const __m128 zero = _mm_setzero_ps();
             const __m128 neg_x = _mm_sub_ps(zero, xx);
             const __m128 exp_neg_x = msml__simd_expf(neg_x);
             const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
@@ -2323,7 +2349,19 @@ static void MSML_HOTPROC msml__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
+    int64_t i=0;
+    #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+        for (; i+3 < n; i += 4) {
+            vst1q_f32(o+i, msml__simd_tanh(vld1q_f32(x+i)));
+        }
+    #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+        #error TODO
+    #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
+        #error TODO
+    #elif MSML_INTRIN && defined(__SSE2__)
+        #error TODO
+    #endif
+    for (; i < n; ++i) {
         o[i] = tanhf(x[i]);
     }
 }
@@ -2364,7 +2402,27 @@ static void MSML_HOTPROC msml__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
+    int64_t i=0;
+    #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+        const float32x4_t half = vdupq_n_f32(0.5f);
+        const float32x4_t one = vdupq_n_f32(1.0f);
+        const float32x4_t coeff1 = vdupq_n_f32(0.79788456080286535587989211986876f);
+        const float32x4_t coeff2 = vdupq_n_f32(MSML__GELU_COEFF);
+        for (; i+3 < n; i += 4) {
+            const float32x4_t xx = vld1q_f32(x+i);
+            const float32x4_t a = vaddq_f32(one, vmulq_f32(coeff2, vmulq_f32(xx, xx)));
+            const float32x4_t b = vaddq_f32(one, msml__simd_tanh(vmulq_f32(coeff1, vmulq_f32(xx, a))));
+            const float32x4_t c = vmulq_f32(half, vmulq_f32(xx, b));
+            vst1q_f32(o+i, c);
+        }
+    #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+        #error TODO
+    #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
+        #error TODO
+    #elif MSML_INTRIN && defined(__SSE2__)
+        #error TODO
+    #endif
+    for (; i < n; ++i) {
         o[i] = 0.5f*x[i]*(1.0f + tanhf(0.79788456080286535587989211986876f*x[i]*(1.0f + MSML__GELU_COEFF*x[i]*x[i])));
     }
 }
