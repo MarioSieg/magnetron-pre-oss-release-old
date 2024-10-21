@@ -1346,7 +1346,9 @@ static bool msml__validate_op_transpose(msml_op_t op, msml_tensor_t* result, msm
 
 static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
-    msml__validate_expr_gen(inputs[0]->shape[1] == inputs[1]->shape[0], "FUCK")
+    msml__validate_expr_gen(inputs[0]->shape[1] == inputs[1]->shape[0], "Input tensor shapes must be compatible for matrix multiplication.");
+    msml__validate_expr_gen(inputs[1]->shape[2] % inputs[0]->shape[2] == 0, "Result tensor shape mismatch.");
+    msml__validate_expr_gen(inputs[1]->shape[3] % inputs[0]->shape[3] == 0, "Result tensor shape mismatch.");
     return true;
 }
 
