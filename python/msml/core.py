@@ -281,7 +281,7 @@ class Tensor:
 
     def print(self, print_header: bool=False, print_data: bool=True) -> None:
         """Prints the tensor metadata and optionally its data."""
-        C.msml_tensor_print(self.tensor, print_header, with_data)
+        C.msml_tensor_print(self.tensor, print_header, print_data)
 
     @property
     def name(self) -> str:
