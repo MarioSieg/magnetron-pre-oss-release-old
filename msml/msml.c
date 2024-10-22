@@ -2771,29 +2771,22 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
-    const int64_t r2 = y_d2 / x_d2; // brodcast factor // brodcast factor
-    const int64_t r3 = y_d3 / x_d3; // brodcast factor
-    for (int64_t i1 = 0; i1 < r_d1*r_d2*r_d3; i1 += 1) {
-        for (int64_t i0 = 0; i0 < r_d0; i0 += 1) {
-            for (int64_t ri = 0; ri < i1; ++ri) {
-                const int64_t y_i3 = (ri / (y_d2 * r_d1));
-                const int64_t y_i2 = (ri - y_i3*y_d2*r_d1) / r_d1;
-                const int64_t y_i1 = (ri - y_i3*y_d2*r_d1 - y_i2*r_d1);
-                const int64_t x_i3 = y_i3 / r3;
-                const int64_t x_i2 = y_i2 / r2;
-                const float* const x_row = (const float*)(b_x + x_i2 * x_s2 + x_i3 * x_s3);
-                const float* const y_col = (const float*)(b_y + y_i1 * y_s1 + y_i2 * y_s2 + y_i3 * y_s3);
-                float* r_col = (float*)(b_r + y_i1 * y_s1 + y_i2 * y_s2 + y_i3 * y_s3);
-                msml__bnd_chk(r_col, b_r, r->buf_size);
-                msml__bnd_chk(y_col, b_y, y->buf_size);
-                msml__bnd_chk(x_row, b_x, x->buf_size);
-                float sum = 0.0f;
-                for (int64_t k = 0; k < x_d0; ++k) {
-                    float x_val = x_row[k * x_d0];
-                    float y_val = y_col[k * y_d0];
-                    sum += x_val * y_val;
+    for (int64_t i3=0; i3 < r_d3; ++i3) {
+        for (int64_t i2=0; i2 < r_d2; ++i2) {
+            for (int64_t i0=0; i0 < r_d0; ++i0) {  // Row
+                for (int64_t i1=0; i1 < r_d1; ++i1) {  // Columns
+                    double sum = 0.0;
+                    for (int64_t k=0; k < x_d1; ++k) {  // Shared dimension
+                        const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
+                        const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
+                        msml__bnd_chk(p_x, b_x, x->buf_size);
+                        msml__bnd_chk(p_y, b_y, y->buf_size);
+                        sum += (double)*p_x * (double)*p_y;
+                    }
+                    float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
+                    msml__bnd_chk(p_r, b_r, r->buf_size);
+                    *p_r = (float)sum;
                 }
-                *r_col = sum;
             }
         }
     }
