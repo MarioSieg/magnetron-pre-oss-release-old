@@ -428,7 +428,7 @@ class Tensor:
     def is_close(self, other: 'Tensor', eps: float = -1.0, print_eq_percent: bool = False) -> (bool, float):
         """Checks if the tensor is close to another tensor within a given epsilon."""
         """Returns a tuple with a boolean indicating if the tensors are close and the percentage of equal elements."""
-        percent_eq: ffi.CData = ffi.new(f'double[1]')
+        percent_eq: ffi.CData = ffi.new('double[1]')
         is_eq: bool = C.msml_tensor_is_close(self.tensor, other.tensor, eps, percent_eq)
         if print_eq_percent:
             print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
@@ -589,7 +589,5 @@ class Tensor:
         return C.msml_tensor_eq(self.tensor, other.tensor)
 
     def __str__(self) -> str:
-        #fmt: str = f'Tensor {"?" if self.name == "" else self.name}, DType: {self.dtype}, Rank: {self.rank}, Shape: {self.shape}, Strides: {self.shape}, Mem: {humanize_memory_size(self.buf_size)}'
-        #return fmt
         self.print(True)
         return ''
