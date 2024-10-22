@@ -184,6 +184,21 @@ TEST(msml_tensor_t, equals) {
     msml_ctx_destroy(ctx);
 }
 
+TEST(msml_tensor_t, buffer_linearly) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    msml_tensor_t* origin = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 1, 2, 3, 4);
+    msml_tensor_fill(origin, 0.0f);
+    msml_tensor_buf_f32(origin)[0] = 1.0f;
+    msml_tensor_buf_f32(origin)[msml_tensor_buf_len(origin)-1] = -1.0f;
+    for (int64_t i=0; i < msml_tensor_buf_len(origin); ++i) {
+        std::cout << msml_tensor_buf_f32(origin)[i] << " ";
+    }
+    std::cout << std::endl;
+
+    msml_ctx_destroy(ctx);
+}
+
 TEST(msml_tensor_t, view) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
