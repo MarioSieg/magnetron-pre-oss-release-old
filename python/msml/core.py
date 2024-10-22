@@ -20,7 +20,7 @@ ffi, C = load_native_msml_lib()  # Load the native MSML shared library
 MAX_DIMS: int = 4
 MAX_ARG_TENSORS: int = 2
 MSML_MAX_OP_PARAMS: int = 4
-DIM_MAX: int = ((1<<64)-1)>>1
+DIM_MAX: int = ((1 << 64) - 1) >> 1
 
 
 def humanize_memory_size(size: int) -> str:
@@ -258,7 +258,8 @@ class Tensor:
         c_para_ptr: ffi.CData = ffi.NULL
         if params is not None:
             assert 0 < len(params) <= MSML_MAX_OP_PARAMS, f'Invalid number of operation parameters: {len(params)}'
-            param_vals = [param.value & ((1<<64)-1) for param in params] + [OpParam.int(0)] * (MSML_MAX_OP_PARAMS - len(params))
+            param_vals = [param.value & ((1 << 64) - 1) for param in params] + [OpParam.int(0)] * (
+                        MSML_MAX_OP_PARAMS - len(params))
             c_para = ffi.new(f'msml_op_param_t[{MSML_MAX_OP_PARAMS}]', param_vals)
             c_para_ptr = ffi.new(f'msml_op_param_t(*)[{MSML_MAX_OP_PARAMS}]', c_para)
         assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count}'
@@ -581,7 +582,6 @@ class Tensor:
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors using matrix multiplication."""
-        print(f'{self.shape} @ {other.shape}')
         return self._new_op(Op.MATMUL, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:

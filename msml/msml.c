@@ -1616,6 +1616,8 @@ size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor) {
 
 void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
     msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor must be F32");
+    msml__load_local_storage_group(tensor, x_d, shape)
+    msml__load_local_storage_group(tensor, x_s, strides)
     double buf_size_cvt = 0.0;
     const char* buf_size_unit = NULL;
     msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
@@ -1623,26 +1625,26 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
         tensor->name,
         msml_dtype_info_of(tensor->dtype)->name,
         (size_t)tensor->rank,
-        (size_t)tensor->shape[0],
-        (size_t)tensor->shape[1],
-        (size_t)tensor->shape[2],
-        (size_t)tensor->shape[3],
-        (size_t)tensor->strides[0],
-        (size_t)tensor->strides[1],
-        (size_t)tensor->strides[2],
-        (size_t)tensor->strides[3],
+        (size_t)x_d0,
+        (size_t)x_d1,
+        (size_t)x_d2,
+        (size_t)x_d3,
+        (size_t)x_s0,
+        (size_t)x_s1,
+        (size_t)x_s2,
+        (size_t)x_s3,
         buf_size_cvt,
         buf_size_unit
     );
     if (with_data) {
         printf("[\n");
         const float* buf = (const float*)tensor->buf;
-        for (int64_t i3=0; i3 < tensor->shape[2]; ++i3) { // TODO: d4
+        for (int64_t i3=0; i3 < x_d2; ++i3) {
             printf("[\n");
-            for (int64_t i2=0; i2 < tensor->shape[1]; ++i2) {
+            for (int64_t i2=0; i2 < x_d1; ++i2) {
                 putchar('\t');
-                for (int64_t i1=0; i1 < tensor->shape[0]; ++i1) {
-                    float x = buf[i3 * tensor->shape[1] * tensor->shape[0] + i2 * tensor->shape[0] + i1];
+                for (int64_t i1=0; i1 < x_d0; ++i1) {
+                    float x = buf[i3*x_s1*x_s0 + i2*x_s0 + i1];
                     char fmt_buf[128];
                     *msml__fmt_f64(MSML_FMT_G14, x, fmt_buf) = '\0';
                     printf("%s ", fmt_buf);
