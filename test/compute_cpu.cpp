@@ -208,6 +208,43 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_ctx_destroy(ctx);
 }
 
+TEST(compute_cpu, matmul_f32_different_shape_2x2) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    static constexpr float A_values[3][2] = {
+        {0.35099377, 0.67163079},
+        {0.26191634, 0.37668009},
+        {0.77688311, 0.94348209}
+    };
+    static constexpr float B_values[2] = {
+        0.34950885, 0.2928188
+    };
+
+    // Manually set known values for A and B
+    msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 3, 2);
+    msml_tensor_copy_buffer_from(A, A_values, sizeof(A_values));
+
+    msml_tensor_t* B = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 2);
+    msml_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
+
+    // Create result tensor R for matrix multiplication
+    msml_tensor_t* params[2] = {A, B};
+    msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2, nullptr);
+    ASSERT_EQ(msml_tensor_rank(R), 1);
+    ASSERT_EQ(msml_tensor_shape(R)[0], 3);
+    auto* buf = msml_tensor_buf_f32(R);
+
+    static constexpr float expected[3] = {
+        0.31934155, 0.20184109, 0.54779681
+    };
+
+    for (int i = 0; i < 2*2; ++i) {
+        ASSERT_FLOAT_EQ(buf[i], expected[i]);
+    }
+
+    msml_ctx_destroy(ctx);
+}
+
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
     msml_tensor_t* A = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 16384, 16384, 3);
