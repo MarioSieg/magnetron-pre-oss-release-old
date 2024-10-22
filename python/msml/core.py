@@ -279,9 +279,9 @@ class Tensor:
             interval = (interval[1], interval[0])
         C.msml_tensor_fill_random(self.tensor, interval[0], interval[1])
 
-    def print(self, with_data: bool) -> None:
+    def print(self, print_header: bool=False, print_data: bool=True) -> None:
         """Prints the tensor metadata and optionally its data."""
-        C.msml_tensor_print(self.tensor, with_data)
+        C.msml_tensor_print(self.tensor, print_header, with_data)
 
     @property
     def name(self) -> str:

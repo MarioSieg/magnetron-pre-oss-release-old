@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-18 14:03:52.699079, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-22 15:46:01.744111, do NOT edit!
 
 __MSML_CDECLS: str = '''
 
@@ -35,14 +35,14 @@ extern   uint64_t msml_ctx_get_physical_memory_total(const msml_ctx_t* ctx);
 extern   uint64_t msml_ctx_get_physical_memory_free(const msml_ctx_t* ctx);
 extern   bool msml_ctx_is_numa_system(const msml_ctx_t* ctx);
 extern   void msml_ctx_destroy(msml_ctx_t* ctx);
-extern   const msml_dtype_info_t* msml_get_dtype_info(msml_dtype_t type);
+extern   const msml_dtype_info_t* msml_dtype_info_of(msml_dtype_t type);
+extern   const char* msml_op_get_name(msml_op_t op);
+extern   const char* msml_op_get_mnemonic(msml_op_t op);
+extern   uint8_t msml_op_get_argcount(msml_op_t op);
 typedef uint64_t msml_op_param_t;
 extern   msml_op_param_t msml_op_param_int(uint64_t x);
 extern   bool msml_op_param_is_int(msml_op_param_t param);
 extern   uint64_t msml_op_param_unpack_int(msml_op_param_t param);
-extern   const char* msml_op_get_name(msml_op_t op);
-extern   const char* msml_op_get_mnemonic(msml_op_t op);
-extern   uint8_t msml_op_get_argcount(msml_op_t op);
 extern   msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
 extern   msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern   msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
@@ -52,7 +52,7 @@ extern   void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* da
 extern   void msml_tensor_fill(msml_tensor_t* tensor, float x);
 extern   void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max);
 extern   size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor);
-extern   void msml_tensor_print(const msml_tensor_t* tensor, bool with_data);
+extern   void msml_tensor_print(const msml_tensor_t* tensor, bool with_header, bool with_data);
 extern   void msml_tensor_set_name(msml_tensor_t* tensor, const char* name);
 extern   void msml_tensor_fmt_name(msml_tensor_t* tensor, const char* fmt, ...);
 extern   const char* msml_tensor_get_name(const msml_tensor_t* tensor);

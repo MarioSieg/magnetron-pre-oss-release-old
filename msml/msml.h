@@ -193,7 +193,7 @@ extern MSML_EXPORT void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set
 extern MSML_EXPORT void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max); /* Fill tensor with random values within [min, max] */
 
 extern MSML_EXPORT size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor); /* Return memory used by this tensor in bytes. */
-extern MSML_EXPORT void msml_tensor_print(const msml_tensor_t* tensor, bool with_data); /* Print tensor info (with or without data) */
+extern MSML_EXPORT void msml_tensor_print(const msml_tensor_t* tensor, bool with_header, bool with_data); /* Print tensor info (with or without data) */
 extern MSML_EXPORT void msml_tensor_set_name(msml_tensor_t* tensor, const char* name); /* Set the name of the tensor */
 extern MSML_EXPORT void msml_tensor_fmt_name(msml_tensor_t* tensor, const char* fmt, ...); /* Format the name of the tensor */
 extern MSML_EXPORT const char* msml_tensor_get_name(const msml_tensor_t* tensor); /* Get the name of the tensor */

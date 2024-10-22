@@ -1614,46 +1614,65 @@ size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor) {
     return sizeof(*tensor) + tensor->buf_size;
 }
 
-void msml_tensor_print(const msml_tensor_t* tensor, bool with_data) {
+void msml_tensor_print(const msml_tensor_t* tensor, bool with_header, bool with_data) {
     msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor must be F32");
+    msml__assert2(with_header || with_data);
     msml__load_local_storage_group(tensor, x_d, shape)
     msml__load_local_storage_group(tensor, x_s, strides)
-    double buf_size_cvt = 0.0;
-    const char* buf_size_unit = NULL;
-    msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
-    msml_log_info("Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s \n",
-        tensor->name,
-        msml_dtype_info_of(tensor->dtype)->name,
-        (size_t)tensor->rank,
-        (size_t)x_d0,
-        (size_t)x_d1,
-        (size_t)x_d2,
-        (size_t)x_d3,
-        (size_t)x_s0,
-        (size_t)x_s1,
-        (size_t)x_s2,
-        (size_t)x_s3,
-        buf_size_cvt,
-        buf_size_unit
-    );
+    FILE* f = stdout;
+    if (with_header) {
+        double buf_size_cvt = 0.0;
+        const char* buf_size_unit = NULL;
+        msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
+        fprintf(f, "Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s\n",
+          tensor->name,
+          msml_dtype_info_of(tensor->dtype)->name,
+          (size_t)tensor->rank,
+          (size_t)x_d0,
+          (size_t)x_d1,
+          (size_t)x_d2,
+          (size_t)x_d3,
+          (size_t)x_s0,
+          (size_t)x_s1,
+          (size_t)x_s2,
+          (size_t)x_s3,
+          buf_size_cvt,
+          buf_size_unit
+        );
+    }
     if (with_data) {
-        printf("[\n");
-        const float* buf = (const float*)tensor->buf;
-        for (int64_t i3=0; i3 < x_d2; ++i3) {
-            printf("[\n");
-            for (int64_t i2=0; i2 < x_d1; ++i2) {
-                putchar('\t');
-                for (int64_t i1=0; i1 < x_d0; ++i1) {
-                    float x = buf[i3*x_s1*x_s0 + i2*x_s0 + i1];
-                    char fmt_buf[128];
-                    *msml__fmt_f64(MSML_FMT_G14, x, fmt_buf) = '\0';
-                    printf("%s ", fmt_buf);
+        const uint8_t* buf = (const uint8_t*)tensor->buf;
+        if (x_d3 > 1) fprintf(f, "[\n");
+        for (int64_t i3=0; i3 < x_d3; ++i3) {
+            if (x_d3 > 1) fputc('\t', f);
+            if (x_d2 > 1) fprintf(f, "[\n");
+            for (int64_t i2=0; i2 < x_d2; ++i2) {
+                if (x_d3 > 1) fputc('\t', f);
+                if (x_d2 > 1) fputc('\t', f);
+                if (x_d1 > 1) fprintf(f, "[\n");
+                for (int64_t i1=0; i1 < x_d1; ++i1) {
+                    if (x_d3 > 1) fputc('\t', f);
+                    if (x_d2 > 1) fputc('\t', f);
+                    if (x_d1 > 1) fputc('\t', f);
+                    if (x_d0 > 1) fprintf(f, "[ ");
+                    for (int64_t i0=0; i0 < x_d0; ++i0) {
+                        const float* const p_x = (const float*)(buf + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_s3);
+                        msml__bnd_chk(p_x, buf, tensor->buf_size);
+                        char fmt_buf[128];
+                        memset(fmt_buf, 0, sizeof(fmt_buf));
+                        *msml__fmt_f64(MSML_FMT_G14, (double)*p_x, fmt_buf) = '\0';
+                        fprintf(f, "%s ", fmt_buf);
+                    }
+                    if (x_d0 > 1) fprintf(f, "]\n");
                 }
-                putchar('\n');
+                if (x_d3 > 1) fputc('\t', f);
+                if (x_d2 > 1) fputc('\t', f);
+                if (x_d1 > 1) fprintf(f, "]\n");
             }
-            printf("]\n");
+            if (x_d3 > 1) fputc('\t', f);
+            if (x_d2 > 1) fprintf(f, "]\n");
         }
-        printf("]\n");
+        if (x_d3 > 1) fprintf(f, "]\n");
     }
 }
 

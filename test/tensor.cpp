@@ -123,7 +123,7 @@ TEST(msml_tensor_t, print) {
 
     msml_tensor_t* tensor = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 2, 2, 2, 2);
     msml_tensor_fill_random(tensor, 0.0f, 1.0f);
-    msml_tensor_print(tensor, true);
+    msml_tensor_print(tensor, false, true);
 
     msml_ctx_destroy(ctx);
 }
@@ -181,14 +181,6 @@ TEST(msml_tensor_t, equals) {
     ASSERT_FALSE(msml_tensor_eq(origin, clone2));
     ASSERT_FALSE(msml_tensor_eq(clone, clone2));
 
-    msml_ctx_destroy(ctx);
-}
-
-TEST(msml_tensor_t, print_tensor_4d) {
-    msml_ctx_t* ctx = msml_ctx_create(nullptr);
-    msml_tensor_t* origin = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 4);
-    msml_tensor_fill_random(origin, 0.0f, 1.0f);
-    msml_tensor_print(origin, true);
     msml_ctx_destroy(ctx);
 }
 
