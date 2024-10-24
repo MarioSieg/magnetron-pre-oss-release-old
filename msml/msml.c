@@ -305,6 +305,16 @@ struct msml_ctx_t {
     void* ud; /* User data. */
 };
 
+typedef enum msml_tensor_flags_t {
+    MSML_TFLAG_NONE = 0,
+    MSML_TFLAG_VIEW = 1<<0,         /* Tensor is a view. */
+    MSML_TFLAG_OP_INPUT = 1<<1,     /* Tensor is an operation input. */
+    MSML_TFLAG_OP_OUTPUT = 1<<2,    /* Tensor is an operation output. */
+    MSML_TFLAG_EXEC_EAGER = 1<<3,   /* Tensor is executed eagerly. */
+    MSML_TFLAG_IMAGE = 1<<4,        /* Tensor was loaded from an image. */
+    MSML_TFLAG_FROM_FS = 1<<5,      /* Tensor was loaded from the file system. Also true for MSML_TFLAG_IMAGE. */
+} msml_tensor_flags_t;
+
 struct msml_tensor_t {
     msml_ctx_t* ctx;
     int64_t rank;
@@ -313,7 +323,7 @@ struct msml_tensor_t {
     msml_dtype_t dtype;
     void* buf;
     int64_t num_elems;
-    msml_exec_mode_t exec_mode;
+    msml_tensor_flags_t flags;
     msml_op_t op;
     msml_tensor_t* op_inputs[MSML_MAX_INPUT_TENSORS];
     msml_op_param_t op_params[MSML_MAX_OP_PARAMS];
@@ -1476,7 +1486,7 @@ static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, co
         .rank = rank,
         .dtype = type,
         .num_elems = elems_total,
-        .exec_mode = ctx->exec_mode,
+        .flags = view ? MSML_TFLAG_VIEW : MSML_TFLAG_NONE,
         .view = view,
         .view_offs = view_offs,
     };
@@ -1538,6 +1548,8 @@ msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t
     bool (*validate_op)(msml_op_t, msml_tensor_t*, msml_tensor_t**, uint32_t, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) = msml__op_get_validator_routine(op);
     msml_tensor_t* R = (*construct_result)(inputs, params);
     if (msml_unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;
+    R->flags |= MSML_TFLAG_OP_OUTPUT;
+    for (uint32_t i=0; i < n_inputs; ++i) inputs[i]->flags |= MSML_TFLAG_OP_INPUT;
     msml__assert2(R->op == MSML_OP_NOP);
     R->op = op; /* Set operation for deferred execution mode. */
     memcpy(R->op_inputs, inputs, n_inputs*sizeof(*inputs)); /* Copy input tensors */
@@ -2815,7 +2827,7 @@ static void MSML_HOTPROC msml__compute_graph_accumulate_visitor(msml_tensor_t* n
 }
 
 static void MSML_HOTPROC msml__compute_graph_coalescence_nodes_visitor(msml_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
-    msml__assert(node->exec_mode == MSML_EXEC_MODE_DEFERRED, "Tensor must be in deferred execution mode.");
+    msml__assert(!(node->flags & MSML_TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode.");
     msml_compute_graph_t* gra = (msml_compute_graph_t*)ud;
     size_t hz = msml__hashset_insert(&gra->visited_hs, node);
     msml__assert2(hz != MSML__HASHSET_FULL);
@@ -2834,7 +2846,7 @@ static void MSML_HOTPROC msml__compute_graph_coalescence_nodes_visitor(msml_tens
 }
 
 msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name) {
-    msml__assert(root->ctx == ctx && root->exec_mode == MSML_EXEC_MODE_DEFERRED, "Tensor must be in deferred execution mode, to be used with static graphs.");
+    msml__assert(root->ctx == ctx && !(root->flags & MSML_TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode, to be used with static graphs.");
     size_t total_nodes = 0;
     msml__tensor_graph_visit_node(root, &msml__compute_graph_accumulate_visitor, order == MSML_GRAPH_EVAL_ORDER_FORWARD, &total_nodes);
     msml__assert2(total_nodes > 0);
@@ -3293,6 +3305,17 @@ static void msml__system_host_info_query(msml_ctx_t* ctx) {
     if (msml_unlikely(!*ctx->sys.cpu_name)) snprintf(ctx->sys.cpu_name, sizeof(ctx->sys.cpu_name), "Unknown");
 }
 
+void msml_tensor_save(const msml_tensor_t* t, const char* file_name) {
+    panic("NYI");
+}
+
+msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name) {
+    panic("NYI");
+    msml_tensor_t* t = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 1);
+    t->flags |= MSML_TFLAG_FROM_FS;
+    return t;
+}
+
 msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t in_desired_channels, uint32_t resize_width, uint32_t resize_height) {
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
     int width, height, channels, desired_channels;
@@ -3325,6 +3348,7 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
         }
     }
     msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
+    t->flags |= MSML_TFLAG_FROM_FS | MSML_TFLAG_IMAGE;
     float* dst = msml_tensor_data_as_f32(t);
     int64_t total = width*height*channels;
     msml__assert(total == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", total, (size_t)msml_tensor_num_elements(t));
