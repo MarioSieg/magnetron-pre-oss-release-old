@@ -2735,12 +2735,12 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                     for (int64_t k=0; k < x_d1; ++k) {  // Shared dimension
                         const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
                         const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
-                        //msml__bnd_chk(p_x, b_x, msml_tensor_buf_size(x));
-                        //msml__bnd_chk(p_y, b_y, msml_tensor_buf_size(y));
+                        msml__bnd_chk(p_x, b_x, msml_tensor_data_size(x));
+                        msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y));
                         sum += (double)*p_x * (double)*p_y;
                     }
                     float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
-                    //msml__bnd_chk(p_r, b_r, msml_tensor_buf_size(r));
+                    msml__bnd_chk(p_r, b_r, msml_tensor_data_size(r));
                     *p_r = (float)sum;
                 }
             }
