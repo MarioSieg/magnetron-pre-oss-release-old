@@ -113,6 +113,8 @@ namespace msml {
             };
         #undef _
         $ value;
+        constexpr op($ value) noexcept : value{value} {}
+        constexpr operator $() const noexcept { return value; }
         [[nodiscard]] inline auto name() const noexcept -> std::string_view { return msml_op_get_name(static_cast<msml_op_t>(value)); }
         [[nodiscard]] inline auto mnemonic() const noexcept -> std::string_view { return msml_op_get_mnemonic(static_cast<msml_op_t>(value)); }
         [[nodiscard]] inline auto argcount() const noexcept -> std::uint8_t { return msml_op_get_argcount(static_cast<msml_op_t>(value)); }
