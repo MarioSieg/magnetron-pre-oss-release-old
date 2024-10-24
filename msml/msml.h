@@ -188,49 +188,49 @@ extern MSML_EXPORT msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dt
 
 extern MSML_EXPORT msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
 
-extern MSML_EXPORT void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size); /* Copy data into tensor buffer */
-extern MSML_EXPORT void msml_tensor_fill(msml_tensor_t* tensor, float x); /* Set all tensor elements to a specific value */
-extern MSML_EXPORT void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max); /* Fill tensor with random values within [min, max] */
+extern MSML_EXPORT void msml_tensor_copy_buffer_from(msml_tensor_t* t, const void* data, size_t size); /* Copy data into tensor buffer */
+extern MSML_EXPORT void msml_tensor_fill(msml_tensor_t* t, float x); /* Set all tensor elements to a specific value */
+extern MSML_EXPORT void msml_tensor_fill_random(msml_tensor_t* t, float min, float max); /* Fill tensor with random values within [min, max] */
 
-extern MSML_EXPORT size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor); /* Return memory used by this tensor in bytes. */
-extern MSML_EXPORT void msml_tensor_print(const msml_tensor_t* tensor, bool with_header, bool with_data); /* Print tensor info (with or without data) */
-extern MSML_EXPORT void msml_tensor_set_name(msml_tensor_t* tensor, const char* name); /* Set the name of the tensor */
-extern MSML_EXPORT void msml_tensor_fmt_name(msml_tensor_t* tensor, const char* fmt, ...); /* Format the name of the tensor */
-extern MSML_EXPORT const char* msml_tensor_get_name(const msml_tensor_t* tensor); /* Get the name of the tensor */
-extern MSML_EXPORT int64_t msml_tensor_rank(const msml_tensor_t* tensor); /* Get the rank (number of dimensions) of the tensor */
-extern MSML_EXPORT const int64_t* msml_tensor_shape(const msml_tensor_t* tensor); /* Get the dimensions of the tensor */
-extern MSML_EXPORT const int64_t* msml_tensor_strides(const msml_tensor_t* tensor); /* Get the strides of the tensor */
-extern MSML_EXPORT msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor); /* Get the data type of the tensor */
-extern MSML_EXPORT void* msml_tensor_buf(const msml_tensor_t* tensor); /* Get the tensor buffer pointer */
-extern MSML_EXPORT float* msml_tensor_buf_f32(const msml_tensor_t* tensor); /* Get the tensor buffer pointer as float pointer. Only valid if tensor's dtype is f32, else panics. */
-extern MSML_EXPORT int64_t msml_tensor_buf_size(const msml_tensor_t* tensor); /* Get the size of the tensor buffer */
-extern MSML_EXPORT int64_t msml_tensor_buf_len(const msml_tensor_t* tensor); /* Get the length of the tensor buffer */
-extern MSML_EXPORT int64_t msml_tensor_num_rows(const msml_tensor_t* tensor); /* Get the number of rows (for 2D tensors) */
-extern MSML_EXPORT int64_t msml_tensor_num_cols(const msml_tensor_t* tensor); /* Get the number of columns (for 2D tensors) */
-extern MSML_EXPORT bool msml_tensor_is_scalar(const msml_tensor_t* tensor); /* Check if the tensor is a scalar */
-extern MSML_EXPORT bool msml_tensor_is_vector(const msml_tensor_t* tensor); /* Check if the tensor is a vector */
-extern MSML_EXPORT bool msml_tensor_is_matrix(const msml_tensor_t* tensor); /* Check if the tensor is a matrix */
-extern MSML_EXPORT bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor); /* Check if the tensor is higher-order (3D or more) */
+extern MSML_EXPORT size_t msml_tensor_get_memory_usage(const msml_tensor_t* t); /* Return memory used by this tensor in bytes. */
+extern MSML_EXPORT void msml_tensor_print(const msml_tensor_t* t, bool with_header, bool with_data); /* Print tensor info (with or without data) */
+extern MSML_EXPORT void msml_tensor_set_name(msml_tensor_t* t, const char* name); /* Set the name of the tensor */
+extern MSML_EXPORT void msml_tensor_fmt_name(msml_tensor_t* t, const char* fmt, ...); /* Format the name of the tensor */
+extern MSML_EXPORT const char* msml_tensor_get_name(const msml_tensor_t* t); /* Get the name of the tensor */
+extern MSML_EXPORT int64_t msml_tensor_rank(const msml_tensor_t* t); /* Get the rank (number of dimensions) of the tensor */
+extern MSML_EXPORT const int64_t* msml_tensor_shape(const msml_tensor_t* t); /* Get the dimensions of the tensor */
+extern MSML_EXPORT const int64_t* msml_tensor_strides(const msml_tensor_t* t); /* Get the strides of the tensor */
+extern MSML_EXPORT msml_dtype_t msml_tensor_dtype(const msml_tensor_t* t); /* Get the data type of the tensor */
+extern MSML_EXPORT void* msml_tensor_data(const msml_tensor_t* t); /* Get the tensor buffer pointer */
+extern MSML_EXPORT float* msml_tensor_data_as_f32(const msml_tensor_t* t); /* Get the tensor buffer pointer as float pointer. Only valid if tensor's dtype is f32, else panics. */
+extern MSML_EXPORT int64_t msml_tensor_data_size(const msml_tensor_t* t); /* Get the size of the tensor buffer in bytes. */
+extern MSML_EXPORT int64_t msml_tensor_num_elements(const msml_tensor_t* t); /* Get the total amount of elements in the tensor. */
+extern MSML_EXPORT int64_t msml_tensor_num_rows(const msml_tensor_t* t); /* Get the number of rows (for 2D tensors) */
+extern MSML_EXPORT int64_t msml_tensor_num_cols(const msml_tensor_t* t); /* Get the number of columns (for 2D tensors) */
+extern MSML_EXPORT bool msml_tensor_is_scalar(const msml_tensor_t* t); /* Check if the tensor is a scalar */
+extern MSML_EXPORT bool msml_tensor_is_vector(const msml_tensor_t* t); /* Check if the tensor is a vector */
+extern MSML_EXPORT bool msml_tensor_is_matrix(const msml_tensor_t* t); /* Check if the tensor is a matrix */
+extern MSML_EXPORT bool msml_tensor_is_higher_order_3d(const msml_tensor_t* t); /* Check if the tensor is higher-order (3D or more) */
 extern MSML_EXPORT bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if a and b have the same shape. */
 extern MSML_EXPORT bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if a and b have the same strides. */
 extern MSML_EXPORT bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if b can be broadcasted into a. */
-extern MSML_EXPORT bool msml_tensor_is_transposed(const msml_tensor_t* tensor); /* Check if the tensor is transposed */
-extern MSML_EXPORT bool msml_tensor_is_permuted(const msml_tensor_t* tensor); /* Check if the tensor is permuted */
-extern MSML_EXPORT void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert virtual index to physical index */
-extern MSML_EXPORT int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert physical index to virtual index */
-extern MSML_EXPORT bool msml_tensor_is_contiguous(const msml_tensor_t* tensor); /* Check if the tensor memory is contiguous */
-extern MSML_EXPORT float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3); /* Get scalar value at physical index */
-extern MSML_EXPORT void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x); /* Set scalar value at physical index */
-extern MSML_EXPORT float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx); /* Get scalar value at virtual index */
-extern MSML_EXPORT void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x); /* Set scalar value at virtual index */
+extern MSML_EXPORT bool msml_tensor_is_transposed(const msml_tensor_t* t); /* Check if the tensor is transposed */
+extern MSML_EXPORT bool msml_tensor_is_permuted(const msml_tensor_t* t); /* Check if the tensor is permuted */
+extern MSML_EXPORT void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert virtual index to physical index */
+extern MSML_EXPORT int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* t, const int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert physical index to virtual index */
+extern MSML_EXPORT bool msml_tensor_is_contiguous(const msml_tensor_t* t); /* Check if the tensor memory is contiguous */
+extern MSML_EXPORT float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3); /* Get scalar value at physical index */
+extern MSML_EXPORT void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x); /* Set scalar value at physical index */
+extern MSML_EXPORT float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* t, int64_t v_idx); /* Get scalar value at virtual index */
+extern MSML_EXPORT void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_EXPORT bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern MSML_EXPORT bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
-extern MSML_EXPORT msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor); /* Get the context of the tensor */
+extern MSML_EXPORT msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t); /* Get the context of the tensor */
 
-extern MSML_EXPORT void msml_tensor_save(const msml_tensor_t* tensor, const char* file_name); /* Save tensor to MSML binary file. */
+extern MSML_EXPORT void msml_tensor_save(const msml_tensor_t* t, const char* file_name); /* Save tensor to MSML binary file. */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
-extern MSML_EXPORT void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path); /* Save tensor data as an image */
+extern MSML_EXPORT void msml_tensor_save_to_image(const msml_tensor_t* t, const char* file_path); /* Save tensor data as an image */
 #define msml_tensor_image_width(tensor) (msml_tensor_shape(tensor)[0]) /* Get image width from tensor */
 #define msml_tensor_image_height(tensor) (msml_tensor_shape(tensor)[1]) /* Get image height from tensor */
 #define msml_tensor_image_channels(tensor) (msml_tensor_shape(tensor)[2]) /* Get image channels from tensor */
@@ -238,7 +238,7 @@ extern MSML_EXPORT void msml_tensor_save_to_image(const msml_tensor_t* tensor, c
 typedef struct msml_compute_graph_t msml_compute_graph_t; /* Opaque type representing a compute graph */
 extern MSML_EXPORT msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name); /* Compile computation graph from root tensor. */
 extern MSML_EXPORT msml_tensor_t* msml_compute_graph_execute(msml_compute_graph_t* gra); /* Execute computation graph. */
-extern MSML_EXPORT bool msml_compute_graph_contains(const msml_compute_graph_t* gra, const msml_tensor_t* tensor); /* Check if the tensor is in the compute graph */
+extern MSML_EXPORT bool msml_compute_graph_contains(const msml_compute_graph_t* gra, const msml_tensor_t* t); /* Check if the tensor is in the compute graph */
 extern MSML_EXPORT void msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gra, const char* file_name); /* Dump computation graph to DOT file. */
 extern MSML_EXPORT msml_ctx_t* msml_compute_graph_get_ctx(const msml_compute_graph_t* gra); /* Get the context of the compute graph */
 extern MSML_EXPORT const char* msml_compute_graph_get_name(const msml_compute_graph_t* gra); /* Get the name of the compute graph */

@@ -7,7 +7,7 @@ import numpy as np
 
 
 def to_numpy(tensor: Tensor) -> np.array:
-    buffer: list[float] = tensor.f32_data()
+    buffer: list[float] = tensor.data_as_f32()
     return np.array(buffer, dtype=np.float32).reshape(tensor.shape)
 
 

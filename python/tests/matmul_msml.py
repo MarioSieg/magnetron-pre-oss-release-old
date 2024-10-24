@@ -1,7 +1,5 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-# (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-
 from msml.core import *
 import time
 

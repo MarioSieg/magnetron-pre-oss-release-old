@@ -312,7 +312,7 @@ struct msml_tensor_t {
     int64_t strides[MSML_MAX_DIMS];
     msml_dtype_t dtype;
     void* buf;
-    int64_t buf_size;
+    int64_t num_elems;
     msml_exec_mode_t exec_mode;
     msml_op_t op;
     msml_tensor_t* op_inputs[MSML_MAX_INPUT_TENSORS];
@@ -1468,34 +1468,36 @@ static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(m
 #undef msml__validate_inputs
 
 static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs) {
-    msml__assert(dims != NULL && rank > -1 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
+    msml__assert(dims != NULL && rank >= 0 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
     if (view && view->view) { /* Accumulate relative view offset. */
         view_offs += view->view_offs;
         view = view->view;
     }
     int64_t scalar_size = msml_dtype_info_of(type)->size;
-    int64_t buf_size = scalar_size;
-    for (int64_t i=0; i < rank; ++i) { /* Calculate buffer size and check for overflow. */
-        msml__assert(dims[i] > 0, "Dimension must be > 0: %lld", dims[i]);
-        msml__assert(!msml__imull64_ov(msml_max(1, dims[i]), buf_size, &buf_size), "Overflow in buffer size. Max: INT64_MAX. Reduce dimensions.");
-    }
-    msml__assert2(!view || !buf_size || buf_size + view_offs <= view->buf_size); /* Slice must be within viewed tensor data range. */
-    msml_tensor_t* tensor = (msml_tensor_t*)msml_ctx_pool_alloc(ctx, sizeof(*tensor) + (view ? 0 : buf_size)); /* Allocate memory for tensor struct and data */
-    memset(tensor, 0, sizeof(*tensor));
-    tensor->ctx = ctx;
-    tensor->rank = rank;
-    tensor->dtype = type;
-    tensor->buf_size = buf_size;
-    tensor->exec_mode = ctx->exec_mode;
-    tensor->view = view;
-    tensor->view_offs = view_offs;
+    int64_t elems_total = 1;
+    for (int64_t i=0; i < rank; ++i) /* Calculate buffer size and check for overflow. */
+        msml__assert2(dims[i] > 0 && !msml__imull64_ov(dims[i], elems_total, &elems_total)); /* Overflow in buffer size. Max: INT64_MAX. Reduce dimensions. */
+    int64_t bytes_total = elems_total*scalar_size;
+    msml__assert2(!view || !bytes_total || bytes_total + view_offs <= msml_tensor_data_size(view)); /* Slice must be within viewed tensor data range. */
+    msml_tensor_t* t = (msml_tensor_t*)msml_ctx_pool_alloc(ctx, sizeof(*t) + (view ? 0 : bytes_total)); /* Allocate memory for tensor struct and data */
+    memset(t, 0, sizeof(*t));
+    *t = (msml_tensor_t) {
+        .name = "tensor",
+        .ctx = ctx,
+        .rank = rank,
+        .dtype = type,
+        .num_elems = elems_total,
+        .exec_mode = ctx->exec_mode,
+        .view = view,
+        .view_offs = view_offs,
+    };
     for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
-        tensor->shape[i] = i < rank ? msml_max(1, dims[i]) : 1;
-    *tensor->strides = scalar_size;
-    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i) /* Calculate strides and check for overflow. */
-        msml__assert(!msml__imull64_ov(tensor->strides[i-1], tensor->shape[i-1], tensor->strides+i), "Overflow in stride calculation. Max: INT64_MAX. Reduce dimensions.");
-    tensor->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(tensor + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
-    return tensor;
+        t->shape[i] = i < rank ? dims[i] : 1;
+    *t->strides = scalar_size;
+    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i)    /* Calculate strides and check for overflow. */
+        msml__assert2(!msml__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
+    t->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(t + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
+    return t;
 }
 
 msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1) {
@@ -1560,88 +1562,81 @@ msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t
     return R;
 }
 
-msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* tensor, size_t slot) {
+msml_tensor_t* msml_tensor_get_arg(const msml_tensor_t* t, size_t slot) {
     msml__assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
-    return tensor->op_inputs[slot];
+    return t->op_inputs[slot];
 }
 
-void msml_tensor_set_arg(msml_tensor_t* tensor, size_t slot, msml_tensor_t* arg) {
+void msml_tensor_set_arg(msml_tensor_t* t, size_t slot, msml_tensor_t* arg) {
     msml__assert(slot < MSML_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", MSML_MAX_INPUT_TENSORS);
-    msml__assert(tensor->op_inputs[slot] == NULL, "Argument at slot #%zu already set", slot);
-    tensor->op_inputs[slot] = arg;
+    msml__assert(t->op_inputs[slot] == NULL, "Argument at slot #%zu already set", slot);
+    t->op_inputs[slot] = arg;
 }
 
-msml_op_t msml_tensor_get_op(const msml_tensor_t* tensor) {
-    return tensor->op;
+void msml_tensor_copy_buffer_from(msml_tensor_t* t, const void* data, size_t size) {
+    msml__assert(size == (size_t) msml_tensor_data_size(t), "Buffer size mismatch: %zu != %lld", size,
+                 msml_tensor_data_size(t));
+    memcpy(t->buf, data, size);
 }
 
-void msml_tensor_set_op(msml_tensor_t* tensor, msml_op_t op) {
-    tensor->op = op;
-}
-
-void msml_tensor_copy_buffer_from(msml_tensor_t* tensor, const void* data, size_t size) {
-    msml__assert(size == (size_t)tensor->buf_size, "Buffer size mismatch: %zu != %lld", size, tensor->buf_size);
-    memcpy(tensor->buf, data, size);
-}
-
-void msml_tensor_fill(msml_tensor_t* tensor, float x) {
+void msml_tensor_fill(msml_tensor_t* t, float x) {
     if (x == 0.0f) {
-        memset(tensor->buf, 0, tensor->buf_size);
+        memset(t->buf, 0, msml_tensor_data_size(t));
         return;
     }
-    switch (tensor->dtype) {
+    switch (t->dtype) {
         case MSML_DTYPE_F32: {
-            int64_t n = msml_tensor_buf_len(tensor);
-            float* buf = (float*)tensor->buf;
+            int64_t n = msml_tensor_num_elements(t);
+            float* buf = (float*)t->buf;
             for (int64_t i=0; i < n; ++i) buf[i] = x;
         } break;
-        default: msml__panic("Unsupported DType: %d", tensor->dtype);
+        default: msml__panic("Unsupported DType: %d", t->dtype);
     }
 }
 
-void msml_tensor_fill_random(msml_tensor_t* tensor, float min, float max) {
-    switch (tensor->dtype) {
+void msml_tensor_fill_random(msml_tensor_t* t, float min, float max) {
+    switch (t->dtype) {
         case MSML_DTYPE_F32: {
-            int64_t n = msml_tensor_buf_len(tensor);
-            float* buf = (float*)tensor->buf;
-            msml__prng_generate_n(tensor->ctx, buf, n, min, max);
+            int64_t n = msml_tensor_num_elements(t);
+            float* buf = (float*)t->buf;
+            msml__prng_generate_n(t->ctx, buf, n, min, max);
         } break;
-        default: msml__panic("Unsupported DType: %d", tensor->dtype);
+        default: msml__panic("Unsupported DType: %d", t->dtype);
     }
 }
 
-size_t msml_tensor_get_memory_usage(const msml_tensor_t* tensor) {
-    return sizeof(*tensor) + tensor->buf_size;
+size_t msml_tensor_get_memory_usage(const msml_tensor_t* t) {
+    return sizeof(*t) + msml_tensor_data_size(t);
 }
 
-void msml_tensor_print(const msml_tensor_t* tensor, bool with_header, bool with_data) {
-    msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor must be F32");
+void msml_tensor_print(const msml_tensor_t* t, bool with_header, bool with_data) {
+    msml__assert(t->dtype == MSML_DTYPE_F32, "Tensor must be F32");
     msml__assert2(with_header || with_data);
-    msml__load_local_storage_group(tensor, x_d, shape)
-    msml__load_local_storage_group(tensor, x_s, strides)
+    msml__load_local_storage_group(t, x_d, shape)
+    msml__load_local_storage_group(t, x_s, strides)
     FILE* f = stdout;
     if (with_header) {
         double buf_size_cvt = 0.0;
         const char* buf_size_unit = NULL;
-        msml__humanize_memory_size(msml_tensor_get_memory_usage(tensor), &buf_size_cvt, &buf_size_unit);
+        msml__humanize_memory_size(msml_tensor_get_memory_usage(t), &buf_size_cvt, &buf_size_unit);
         fprintf(f, "Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s\n",
-          tensor->name,
-          msml_dtype_info_of(tensor->dtype)->name,
-          (size_t)tensor->rank,
-          (size_t)x_d0,
-          (size_t)x_d1,
-          (size_t)x_d2,
-          (size_t)x_d3,
-          (size_t)x_s0,
-          (size_t)x_s1,
-          (size_t)x_s2,
-          (size_t)x_s3,
-          buf_size_cvt,
-          buf_size_unit
+            t->name,
+            msml_dtype_info_of(t->dtype)->name,
+            (size_t)t->rank,
+            (size_t)x_d0,
+            (size_t)x_d1,
+            (size_t)x_d2,
+            (size_t)x_d3,
+            (size_t)x_s0,
+            (size_t)x_s1,
+            (size_t)x_s2,
+            (size_t)x_s3,
+            buf_size_cvt,
+            buf_size_unit
         );
     }
     if (with_data) {
-        const uint8_t* buf = (const uint8_t*)tensor->buf;
+        const uint8_t* buf = (const uint8_t*)t->buf;
         if (x_d3 > 1) fprintf(f, "[\n");
         for (int64_t i3=0; i3 < x_d3; ++i3) {
             if (x_d3 > 1) fputc('\t', f);
@@ -1657,7 +1652,7 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_header, bool with_
                     if (x_d0 > 1) fprintf(f, "[ ");
                     for (int64_t i0=0; i0 < x_d0; ++i0) {
                         const float* const p_x = (const float*)(buf + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_s3);
-                        msml__bnd_chk(p_x, buf, tensor->buf_size);
+                        msml__bnd_chk(p_x, buf, msml_tensor_data_size(t));
                         char fmt_buf[128];
                         memset(fmt_buf, 0, sizeof(fmt_buf));
                         *msml__fmt_f64(MSML_FMT_G14, (double)*p_x, fmt_buf) = '\0';
@@ -1676,92 +1671,67 @@ void msml_tensor_print(const msml_tensor_t* tensor, bool with_header, bool with_
     }
 }
 
-void msml_tensor_set_name(msml_tensor_t* tensor, const char* name) {
-    strncpy(tensor->name, name, MSML_MAX_TENSOR_NAME_LEN);
-    tensor->name[MSML_MAX_TENSOR_NAME_LEN-1] = '\0';
+void msml_tensor_set_name(msml_tensor_t* t, const char* name) {
+    strncpy(t->name, name, MSML_MAX_TENSOR_NAME_LEN);
+    t->name[MSML_MAX_TENSOR_NAME_LEN-1] = '\0';
 }
 
-void msml_tensor_fmt_name(msml_tensor_t* tensor, const char* fmt, ...) {
+void msml_tensor_fmt_name(msml_tensor_t* t, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
-    vsnprintf(tensor->name, sizeof(tensor->name), fmt, args);
+    vsnprintf(t->name, sizeof(t->name), fmt, args);
     va_end(args);
 }
 
-const char* msml_tensor_get_name(const msml_tensor_t* tensor) {
-    return tensor->name;
+const char* msml_tensor_get_name(const msml_tensor_t* t) {
+    return t->name;
 }
 
-int64_t msml_tensor_rank(const msml_tensor_t* tensor) {
-    return tensor->rank;
+int64_t msml_tensor_rank(const msml_tensor_t* t) { return t->rank; }
+const int64_t* msml_tensor_shape(const msml_tensor_t* t) { return t->shape; }
+const int64_t* msml_tensor_strides(const msml_tensor_t* t) { return t->strides; }
+msml_dtype_t msml_tensor_dtype(const msml_tensor_t* t) { return t->dtype; }
+void* msml_tensor_data(const msml_tensor_t* t) { return t->buf; }
+
+float* msml_tensor_data_as_f32(const msml_tensor_t* t) {
+    msml__assert(t->dtype == MSML_DTYPE_F32, "Tensor data type must be F32, not %s", msml_dtype_info_of(t->dtype)->name);
+    return (float*)t->buf;
 }
 
-const int64_t* msml_tensor_shape(const msml_tensor_t* tensor) {
-    return tensor->shape;
+int64_t msml_tensor_data_size(const msml_tensor_t* t) {
+    return t->num_elems*msml_dtype_info_of(t->dtype)->size;
 }
 
-const int64_t* msml_tensor_strides(const msml_tensor_t* tensor) {
-    return tensor->strides;
+int64_t msml_tensor_num_elements(const msml_tensor_t* t) {
+    return t->num_elems;
 }
 
-msml_dtype_t msml_tensor_dtype(const msml_tensor_t* tensor) {
-    return tensor->dtype;
-}
-
-void* msml_tensor_buf(const msml_tensor_t* tensor) {
-    return tensor->buf;
-}
-
-float* msml_tensor_buf_f32(const msml_tensor_t* tensor) {
-    msml__assert(tensor->dtype == MSML_DTYPE_F32, "Tensor data type must be F32, not %s",
-                 msml_dtype_info_of(tensor->dtype)->name);
-    return (float*)tensor->buf;
-}
-
-int64_t msml_tensor_buf_size(const msml_tensor_t* tensor) {
-    return tensor->buf_size;
-}
-
-int64_t msml_tensor_buf_len(const msml_tensor_t* tensor) {
-    return tensor->buf_size / msml_dtype_info_of(tensor->dtype)->size;
-}
-
-int64_t msml_tensor_num_rows(const msml_tensor_t* tensor) {
-    int64_t rows=tensor->shape[1];
+int64_t msml_tensor_num_rows(const msml_tensor_t* t) {
+    int64_t rows=t->shape[1];
     for (int64_t i=2; i < MSML_MAX_DIMS; ++i)
-        rows *= tensor->shape[i];
+        rows *= t->shape[i];
     return rows;
 }
 
-int64_t msml_tensor_num_cols(const msml_tensor_t* tensor) {
-    return tensor->shape[0];
-}
+int64_t msml_tensor_num_cols(const msml_tensor_t* t) { return t->shape[0]; }
 
-bool msml_tensor_is_scalar(const msml_tensor_t* tensor) {
-    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
-        if (tensor->shape[i] != 1)
-            return false;
+bool msml_tensor_is_scalar(const msml_tensor_t* t) {
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
     return true;
 }
 
-bool msml_tensor_is_vector(const msml_tensor_t* tensor) {
-    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i)
-        if (tensor->shape[i] != 1)
-            return false;
+bool msml_tensor_is_vector(const msml_tensor_t* t) {
+    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
     return true;
 }
 
-bool msml_tensor_is_matrix(const msml_tensor_t* tensor) {
-    for (uint32_t i=2; i < MSML_MAX_DIMS; ++i)
-        if (tensor->shape[i] != 1)
-            return false;
+bool msml_tensor_is_matrix(const msml_tensor_t* t) {
+    for (uint32_t i=2; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
     return true;
 }
 
-bool msml_tensor_is_higher_order_3d(const msml_tensor_t* tensor) {
-    for (uint32_t i=3; i < MSML_MAX_DIMS; ++i)
-        if (tensor->shape[i] != 1)
-            return false;
+bool msml_tensor_is_higher_order_3d(const msml_tensor_t* t) {
+    for (uint32_t i=3; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
     return true;
 }
 
@@ -1780,79 +1750,77 @@ bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b) {
     return true;
 }
 
-bool msml_tensor_is_transposed(const msml_tensor_t* tensor) {
-    return tensor->strides[0] > tensor->strides[1];
-}
+bool msml_tensor_is_transposed(const msml_tensor_t* t) { return t->strides[0] > t->strides[1]; }
 
-bool msml_tensor_is_permuted(const msml_tensor_t* tensor) {
+bool msml_tensor_is_permuted(const msml_tensor_t* t) {
     return
-        tensor->strides[0] > tensor->strides[1]
-        || tensor->strides[1] > tensor->strides[2]
-        || tensor->strides[2] > tensor->strides[3];
+        t->strides[0] > t->strides[1]
+        || t->strides[1] > t->strides[2]
+        || t->strides[2] > t->strides[3];
 }
 
-void msml_tensor_virtual_to_physical_index(const msml_tensor_t* tensor, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
-    msml__load_local_storage_group(tensor, d, shape);
+void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
+    msml__load_local_storage_group(t, d, shape);
     (*p_idx)[3] = v_idx / (d2*d1*d0);
     (*p_idx)[2] = (v_idx - (*p_idx)[3]*d2*d1*d0) / (d1*d0);
     (*p_idx)[1] = (v_idx - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0) / d0;
     (*p_idx)[0] =  v_idx - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0 - (*p_idx)[1]*d0;
 }
 
-int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* tensor, const int64_t (*p_idx)[MSML_MAX_DIMS]) {
+int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* t, const int64_t (*p_idx)[MSML_MAX_DIMS]) {
     int64_t v_idx = 0;
     for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
-        v_idx += (*p_idx)[i] * tensor->strides[i];
+        v_idx += (*p_idx)[i] * t->strides[i];
     return v_idx;
 }
 
-bool msml_tensor_is_contiguous(const msml_tensor_t* tensor) {
-    return *tensor->strides == msml_dtype_info_of(tensor->dtype)->size;
+bool msml_tensor_is_contiguous(const msml_tensor_t* t) {
+    return *t->strides == msml_dtype_info_of(t->dtype)->size;
 }
 
-float msml_tensor_get_scalar_physical_index(const msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
-    const uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
-    switch (tensor->dtype) {
+float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
+    const uint8_t* dst = msml__resolve_physical_ptr(t, d0, d1, d2, d3);
+    switch (t->dtype) {
         case MSML_DTYPE_F32: return *(float*)dst;
-        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
     }
 }
 
-void msml_tensor_set_scalar_physical_index(msml_tensor_t* tensor, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x) {
-    uint8_t* dst = msml__resolve_physical_ptr(tensor, d0, d1, d2, d3);
-    switch (tensor->dtype) {
+void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x) {
+    uint8_t* dst = msml__resolve_physical_ptr(t, d0, d1, d2, d3);
+    switch (t->dtype) {
         case MSML_DTYPE_F32: *(float*)dst = x; break;
-        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
+        default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
     }
 }
 
-float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* tensor, int64_t v_idx) {
-    if (!msml_tensor_is_contiguous(tensor)) {
+float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* t, int64_t v_idx) {
+    if (!msml_tensor_is_contiguous(t)) {
         int64_t physical_idx[MSML_MAX_DIMS];
-        msml_tensor_virtual_to_physical_index(tensor, v_idx, &physical_idx);
-        return msml_tensor_get_scalar_physical_index(tensor, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3]);
+        msml_tensor_virtual_to_physical_index(t, v_idx, &physical_idx);
+        return msml_tensor_get_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3]);
     }
-    switch (tensor->dtype) {
+    switch (t->dtype) {
         case MSML_DTYPE_F32:
-            return ((const float*)tensor->buf)[v_idx];
+            return ((const float*)t->buf)[v_idx];
         default:
-            msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
     }
 }
 
-void msml_tensor_set_scalar_virtual_index(msml_tensor_t* tensor, int64_t v_idx, float x) {
-    if (!msml_tensor_is_contiguous(tensor)) {
+void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_idx, float x) {
+    if (!msml_tensor_is_contiguous(t)) {
         int64_t physical_idx[MSML_MAX_DIMS];
-        msml_tensor_virtual_to_physical_index(tensor, v_idx, &physical_idx);
-        msml_tensor_set_scalar_physical_index(tensor, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], x);
+        msml_tensor_virtual_to_physical_index(t, v_idx, &physical_idx);
+        msml_tensor_set_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], x);
         return;
     }
-    switch (tensor->dtype) {
+    switch (t->dtype) {
         case MSML_DTYPE_F32:
-            ((float*)tensor->buf)[v_idx] = x;
+            ((float*)t->buf)[v_idx] = x;
             break;
         default:
-            msml__panic("Unsupported data type: %s", msml_dtype_info_of(tensor->dtype)->name);
+            msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
     }
 }
 
@@ -1860,8 +1828,8 @@ bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b) {
     if (a->dtype != b->dtype) return false;
     if (a->rank != b->rank) return false;
     if (memcmp(a->shape, b->shape, sizeof(a->shape)) != 0) return false;
-    if (a->buf_size != b->buf_size) return false;
-    int64_t n = msml_tensor_buf_len(a);
+    if (a->num_elems != b->num_elems) return false;
+    int64_t n = msml_tensor_num_elements(a);
     switch (a->dtype) {
         case MSML_DTYPE_F32: {
             const float* buf_a = (const float*)a->buf;
@@ -1881,9 +1849,9 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
     if (a->dtype != b->dtype) return false;
     if (a->rank != b->rank) return false;
     if (memcmp(a->shape, b->shape, sizeof(a->shape)) != 0) return false;
-    if (a->buf_size != b->buf_size) return false;
+    if (a->num_elems != b->num_elems) return false;
     eps = eps < 0.0f ? FLT_EPSILON : eps;
-    int64_t n = msml_tensor_buf_len(a);
+    int64_t n = msml_tensor_num_elements(a);
     int64_t n_eq = 0;
     switch (a->dtype) {
         case MSML_DTYPE_F32: {
@@ -1898,7 +1866,7 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
     return n_eq == n;
 }
 
-msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* tensor) { return tensor->ctx; }
+msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t) { return t->ctx; }
 
 /* CPU BLAS impl */
 #define MSML__GELU_COEFF 0.044715f
@@ -2488,7 +2456,7 @@ static void msml__blas_clone(
     const int64_t ti = bci->thread_idx;
     const int64_t tc = bci->n_threads;
     if (msml_tensor_is_contiguous(r) && msml_tensor_is_contiguous(x)) { /* Fast path for contiguous input and output tensors. */
-        const int64_t ne = msml_tensor_buf_len(x);
+        const int64_t ne = msml_tensor_num_elements(x);
         const int64_t rc = (ne+tc-1) / tc;
         const int64_t rs = rc * ti;
         const int64_t re = msml_min(rs + rc, ne);
@@ -2613,8 +2581,8 @@ static void msml__blas_clone(
         for (int64_t ri=0; ri < rc; ++ri) { \
             T* const p_r = (T*)(b_r + ri*r_s1); \
             const T* const p_x = (const T*)(b_x + ri*x_s1); \
-            msml__bnd_chk(p_r, b_r, r->buf_size); \
-            msml__bnd_chk(p_x, b_x, x->buf_size); \
+            msml__bnd_chk(p_r, b_r, msml_tensor_data_size(r)); \
+            msml__bnd_chk(p_x, b_x, msml_tensor_data_size(x)); \
             vec_op(cc, p_r, p_x); \
         } \
     }
@@ -2653,15 +2621,13 @@ static void msml__blas_clone(
                 T* const p_r = (T*)(b_r + x_i3*r_s3 + x_i2*r_s2 + x_i1*r_s1); \
                 const T* const p_x = (const T*)(b_x + x_i3*x_s3 + x_i2*x_s2 + x_i1*x_s1); \
                 const T* const p_y = (const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1); \
-                msml__bnd_chk(p_r, b_r, r->buf_size); \
-                msml__bnd_chk(p_x, b_x, x->buf_size); \
-                msml__bnd_chk(p_y, b_y, y->buf_size); \
+                msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y)); \
                 const int64_t pa = x_d0 / y_d0; \
                 for (int64_t i=0; i < pa; ++i) { \
                     T* const pp_r = p_r + i*y_d0; \
                     const T* const pp_x = p_x + i*y_d0; \
-                    msml__bnd_chk(pp_r, b_r, r->buf_size); \
-                    msml__bnd_chk(pp_x, b_x, x->buf_size); \
+                    msml__bnd_chk(pp_r, b_r, msml_tensor_data_size(r)); \
+                    msml__bnd_chk(pp_x, b_x, msml_tensor_data_size(x)); \
                     vec_op(y_d0, pp_r, pp_x, p_y); \
                 } \
             } \
@@ -2675,13 +2641,11 @@ static void msml__blas_clone(
                 const int64_t y_i1 = x_i1 % y_d1; \
                 T* const p_r = (T*)(b_r + x_i3*r_s3 + x_i2*r_s2 + x_i1*r_s1); \
                 const T* const p_x = (const T*)(b_x + x_i3*x_s3 + x_i2*x_s2 + x_i1*x_s1); \
-                msml__bnd_chk(p_r, b_r, r->buf_size); \
-                msml__bnd_chk(p_x, b_x, x->buf_size); \
                 for (int64_t i=0; i < r_d0; ++i) { \
                     const T* const p_y = (const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1 + i%y_d0*y_s0); \
-                    msml__bnd_chk(p_r+i, b_r, r->buf_size); \
-                    msml__bnd_chk(p_x+i, b_x, x->buf_size); \
-                    msml__bnd_chk(p_y, b_y, y->buf_size); \
+                    msml__bnd_chk(p_r+i, b_r, msml_tensor_data_size(r)); \
+                    msml__bnd_chk(p_x+i, b_x, msml_tensor_data_size(x)); \
+                    msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y)); \
                     p_r[i] = p_x[i] scalar_op *p_y; \
                 } \
             } \
@@ -2779,12 +2743,12 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
                     for (int64_t k=0; k < x_d1; ++k) {  // Shared dimension
                         const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
                         const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
-                        msml__bnd_chk(p_x, b_x, x->buf_size);
-                        msml__bnd_chk(p_y, b_y, y->buf_size);
+                        //msml__bnd_chk(p_x, b_x, msml_tensor_buf_size(x));
+                        //msml__bnd_chk(p_y, b_y, msml_tensor_buf_size(y));
                         sum += (double)*p_x * (double)*p_y;
                     }
                     float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
-                    msml__bnd_chk(p_r, b_r, r->buf_size);
+                    //msml__bnd_chk(p_r, b_r, msml_tensor_buf_size(r));
                     *p_r = (float)sum;
                 }
             }
@@ -2922,11 +2886,11 @@ msml_tensor_t* MSML_HOTPROC msml_compute_graph_execute(msml_compute_graph_t* gra
     return root;
 }
 
-bool msml_compute_graph_contains(const msml_compute_graph_t* gra, const msml_tensor_t* tensor) {
+bool msml_compute_graph_contains(const msml_compute_graph_t* gra, const msml_tensor_t* t) {
     for (size_t i = 0; i < gra->num_internal_nodes; ++i) /* Linear search for internal nodes. */
-        if (gra->internal_nodes[i] == tensor) return true;
+        if (gra->internal_nodes[i] == t) return true;
     for (size_t i = 0; i < gra->num_leaf_nodes; ++i) /* Linear search for leaf nodes. */
-        if (gra->leaf_nodes[i] == tensor) return true;
+        if (gra->leaf_nodes[i] == t) return true;
     return false;
 }
 
@@ -2971,7 +2935,7 @@ void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gr
         if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_dtype_info_of(node->dtype)->name);
         else fprintf(f, "(%s)|", msml_dtype_info_of(node->dtype)->name);
         fprintf(f, "IN #%zu [%zu, %zu]", i, (size_t)node->shape[0], (size_t)node->shape[1]);
-        size_t n = msml_tensor_buf_len(node);
+        size_t n = msml_tensor_num_elements(node);
         if (n < 4) {
             fprintf(f, " | (");
             for (size_t j=0; j < n; ++j) {
@@ -3370,38 +3334,38 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
             height = (int)resize_height;
         }
     }
-    msml_tensor_t* tensor = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
-    float* dst = (float*)tensor->buf;
+    msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
+    float* dst = (float*)t->buf;
     int64_t n = width*height*channels;
-    msml__assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
+    msml__assert(n == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %lld", n, msml_tensor_num_elements(t));
     for (int64_t i=0; i < n; ++i)
         dst[i] = (float)image_data[i] / 255.0f; /* Normalize pixel values to [0, 1] */
     stbi_image_free(image_data);
     msml_log_info("Loaded tensor from image: %s, width: %d, height: %d, channels: %d", file_path, width, height, channels);
-    return tensor;
+    return t;
 #else
     msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
 #endif
 }
 
-void msml_tensor_save_to_image(const msml_tensor_t* tensor, const char* file_path) {
+void msml_tensor_save_to_image(const msml_tensor_t* t, const char* file_path) {
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
-    const int64_t* dims = msml_tensor_shape(tensor);
-    int64_t rank = msml_tensor_rank(tensor);
+    const int64_t* dims = msml_tensor_shape(t);
+    int64_t rank = msml_tensor_rank(t);
     msml__assert(rank == 3, "Tensor rank must be 3, but is: %" PRIi64, (size_t)rank);
     int64_t width = dims[0];
     int64_t height = dims[1];
     int64_t channels = dims[2];
     msml__assert(channels == 1 || channels == 3 || channels == 4, "Invalid number of channels: %" PRIi64, channels);
     size_t n = width*height*channels;
-    msml__assert(n == msml_tensor_buf_len(tensor), "Buffer size mismatch: %zu != %lld", n, msml_tensor_buf_len(tensor));
-    uint8_t* image_data = (*tensor->ctx->alloc_fn)(NULL, n); /* Allocate memory for image data */
+    msml__assert(n == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %lld", n, msml_tensor_num_elements(t));
+    uint8_t* image_data = (*t->ctx->alloc_fn)(NULL, n); /* Allocate memory for image data */
     for (size_t i=0; i < n; ++i) { /* Clamp and denormalize pixel values to [0, 255] */
-        image_data[i] = (uint8_t)(255.0f * msml_min(msml_max(((const float*)tensor->buf)[i], 0.0f), 1.0f));
+        image_data[i] = (uint8_t)(255.0f * msml_min(msml_max(((const float*)t->buf)[i], 0.0f), 1.0f));
     }
     int result = stbi_write_jpg(file_path, (int)width, (int)height, (int)channels, image_data, 100);
     msml__assert(result, "Failed to save tensor to image: %s", file_path);
-    (*tensor->ctx->alloc_fn)(image_data, 0); /* Free image data */
+    (*t->ctx->alloc_fn)(image_data, 0); /* Free image data */
     msml_log_info("Saved tensor to image: %s, width: %d, height: %d, channels: %d", file_path, (int)width, (int)height, (int)channels);
 #else
     msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");

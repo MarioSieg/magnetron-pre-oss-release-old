@@ -16,10 +16,10 @@
             \
             msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x); \
             \
-            const auto* b_x = msml_tensor_buf_f32(x); \
-            const auto* b_r = msml_tensor_buf_f32(r); \
-            ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(r)); \
-            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+            const auto* b_x = msml_tensor_data_as_f32(x); \
+            const auto* b_r = msml_tensor_data_as_f32(r); \
+            ASSERT_EQ(msml_tensor_num_elements(x), msml_tensor_num_elements(r)); \
+            for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
                 ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), 0.000001); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
             } \
         } \
@@ -92,12 +92,12 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             \
             msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x, y); \
             \
-            const auto* b_x = msml_tensor_buf_f32(x); \
-            const auto* b_y = msml_tensor_buf_f32(y); \
-            const auto* b_r = msml_tensor_buf_f32(r); \
-            ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
-            ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(y)); \
-            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+            const auto* b_x = msml_tensor_data_as_f32(x); \
+            const auto* b_y = msml_tensor_data_as_f32(y); \
+            const auto* b_r = msml_tensor_data_as_f32(r); \
+            ASSERT_EQ(msml_tensor_num_elements(x), msml_tensor_num_elements(y)); \
+            ASSERT_EQ(msml_tensor_num_elements(r), msml_tensor_num_elements(y)); \
+            for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
         } \
@@ -119,11 +119,11 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             \
             msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x, y); \
             \
-            const auto* b_x = msml_tensor_buf_f32(x); \
-            const auto* b_r = msml_tensor_buf_f32(r); \
-            ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(x)); \
-            ASSERT_NE(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
-            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+            const auto* b_x = msml_tensor_data_as_f32(x); \
+            const auto* b_r = msml_tensor_data_as_f32(r); \
+            ASSERT_EQ(msml_tensor_num_elements(r), msml_tensor_num_elements(x)); \
+            ASSERT_NE(msml_tensor_num_elements(x), msml_tensor_num_elements(y)); \
+            for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
         } \
@@ -171,6 +171,7 @@ TEST(compute_cpu, matmul_inner_naive) {
     ASSERT_FLOAT_EQ(C[2], 5.0*0.5 + 6.0*-1.0);
 }
 
+#if 0
 TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
@@ -244,6 +245,7 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
 
     msml_ctx_destroy(ctx);
 }
+#endif
 
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);

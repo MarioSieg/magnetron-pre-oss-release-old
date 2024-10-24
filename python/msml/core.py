@@ -313,19 +313,20 @@ class Tensor:
         """Returns the data type of the tensor."""
         return DType(C.msml_tensor_dtype(self.tensor))
 
+    def data_as_f32(self) -> list[float]:
+        """Returns the data of the tensor buffer as a list of floats."""
+        assert self.dtype == DType.F32, 'Invalid data type'
+        return ffi.unpack(C.msml_tensor_data_as_f32(self.tensor), self.num_elements)
+
     @property
-    def buf_size(self) -> int:
+    def data_size(self) -> int:
         """Returns the size of the tensor buffer in bytes."""
-        return C.msml_tensor_buf_size(self.tensor)
+        return C.msml_tensor_data_size(self.tensor)
 
     @property
     def num_elements(self) -> int:
         """Returns the size of the tensor buffer in bytes."""
-        return C.msml_tensor_buf_len(self.tensor)
-
-    def f32_data(self) -> list[float]:
-        """Returns the data of the tensor buffer as a list of floats."""
-        return ffi.unpack(C.msml_tensor_buf_f32(self.tensor), self.num_elements)
+        return C.msml_tensor_num_elements(self.tensor)
 
     @property
     def num_rows(self) -> int:
