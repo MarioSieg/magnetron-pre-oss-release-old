@@ -1155,17 +1155,6 @@ uint64_t msml_op_param_unpack_int(msml_op_param_t param) {
     (void)prefix##2; \
     (void)prefix##3;
 
-#define msml__dot4_unrolled_var_arr(arr, x0, x1, x2, x3) \
-    ( \
-        arr[0]*(x0) \
-        + arr[1]*(x1) \
-        + arr[2]*(x2) \
-        + arr[3]*(x3) \
-    )
-
-#define msml__resolve_physical_ptr(tensor, d0, d1, d2, d3) \
-    (((uint8_t*)(tensor)->buf) + msml__dot4_unrolled_var_arr((tensor)->strides, d0, d1, d2, d3))
-
 const msml_dtype_info_t* msml_dtype_info_of(msml_dtype_t type) {
     static const msml_dtype_info_t infos[MSML_DTYPE_COUNT_] = {
         [MSML_DTYPE_F32] = {
@@ -1759,7 +1748,7 @@ bool msml_tensor_is_permuted(const msml_tensor_t* t) {
         || t->strides[2] > t->strides[3];
 }
 
-void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
+static MSML_AINLINE void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
     msml__load_local_storage_group(t, d, shape);
     (*p_idx)[3] = v_idx / (d2*d1*d0);
     (*p_idx)[2] = (v_idx - (*p_idx)[3]*d2*d1*d0) / (d1*d0);
@@ -1767,11 +1756,9 @@ void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx
     (*p_idx)[0] =  v_idx - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0 - (*p_idx)[1]*d0;
 }
 
-int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* t, const int64_t (*p_idx)[MSML_MAX_DIMS]) {
-    int64_t v_idx = 0;
-    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
-        v_idx += (*p_idx)[i] * t->strides[i];
-    return v_idx;
+static MSML_AINLINE int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* t, const int64_t (*p_idx)[MSML_MAX_DIMS]) {
+    msml__load_local_storage_group(t, t_s, strides)
+    return (*p_idx)[0]*t_s0 + (*p_idx)[1]*t_s1 + (*p_idx)[2]*t_s2 + (*p_idx)[3]*t_s3;
 }
 
 bool msml_tensor_is_contiguous(const msml_tensor_t* t) {
@@ -1779,7 +1766,8 @@ bool msml_tensor_is_contiguous(const msml_tensor_t* t) {
 }
 
 float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
-    const uint8_t* dst = msml__resolve_physical_ptr(t, d0, d1, d2, d3);
+    msml__load_local_storage_group(t, t_s, strides)
+    const uint8_t* dst = (const uint8_t*)t->buf + d0*t_s0 + d1*t_s0 + d2*t_s0 + d3*t_s0;
     switch (t->dtype) {
         case MSML_DTYPE_F32: return *(float*)dst;
         default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
@@ -1787,7 +1775,8 @@ float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, 
 }
 
 void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x) {
-    uint8_t* dst = msml__resolve_physical_ptr(t, d0, d1, d2, d3);
+    msml__load_local_storage_group(t, t_s, strides)
+    uint8_t* dst = (uint8_t*)t->buf + d0*t_s0 + d1*t_s0 + d2*t_s0 + d3*t_s0;
     switch (t->dtype) {
         case MSML_DTYPE_F32: *(float*)dst = x; break;
         default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
@@ -1867,6 +1856,9 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
 }
 
 msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t) { return t->ctx; }
+
+void* msml_tensor_get_user_data(const msml_tensor_t* t) { return t->ud; }
+void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
 
 /* CPU BLAS impl */
 #define MSML__GELU_COEFF 0.044715f
@@ -3312,9 +3304,7 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
         case MSML_COLOR_CHANNELS_RGBA: desired_channels = STBI_rgb_alpha; break;
     }
     uint8_t* image_data = stbi_load(file_path, &width, &height, &channels, desired_channels);
-    if (!image_data || width == 0 || height == 0 || channels == 0) {
-        msml__panic("Failed to load image from file: %s\n", file_path);
-    }
+    msml__assert(image_data && width && height && channels, "Failed to load image from file: %s\n", file_path)
     if (resize_width && resize_height) { /* Resize image if requested */
         uint8_t* resized_data = stbir_resize_uint8_srgb(
             image_data,
@@ -3335,11 +3325,11 @@ msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_p
         }
     }
     msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, width, height, channels);
-    float* dst = (float*)t->buf;
-    int64_t n = width*height*channels;
-    msml__assert(n == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %lld", n, msml_tensor_num_elements(t));
-    for (int64_t i=0; i < n; ++i)
-        dst[i] = (float)image_data[i] / 255.0f; /* Normalize pixel values to [0, 1] */
+    float* dst = msml_tensor_data_as_f32(t);
+    int64_t total = width*height*channels;
+    msml__assert(total == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", total, (size_t)msml_tensor_num_elements(t));
+    for (int64_t i=0; i < total; ++i) /* Normalize pixel values to [0, 1] */
+        dst[i] = (float)image_data[i] / 255.0f;
     stbi_image_free(image_data);
     msml_log_info("Loaded tensor from image: %s, width: %d, height: %d, channels: %d", file_path, width, height, channels);
     return t;
@@ -3357,12 +3347,12 @@ void msml_tensor_save_to_image(const msml_tensor_t* t, const char* file_path) {
     int64_t height = dims[1];
     int64_t channels = dims[2];
     msml__assert(channels == 1 || channels == 3 || channels == 4, "Invalid number of channels: %" PRIi64, channels);
-    size_t n = width*height*channels;
-    msml__assert(n == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %lld", n, msml_tensor_num_elements(t));
-    uint8_t* image_data = (*t->ctx->alloc_fn)(NULL, n); /* Allocate memory for image data */
-    for (size_t i=0; i < n; ++i) { /* Clamp and denormalize pixel values to [0, 255] */
-        image_data[i] = (uint8_t)(255.0f * msml_min(msml_max(((const float*)t->buf)[i], 0.0f), 1.0f));
-    }
+    int64_t total = width*height*channels;
+    msml__assert(total == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %lld", total, msml_tensor_num_elements(t));
+    uint8_t* image_data = (*t->ctx->alloc_fn)(NULL, total); /* Allocate memory for image data */
+    const float* src = msml_tensor_data_as_f32(t);
+    for (int64_t i=0; i < total; ++i)/* Clamp and denormalize pixel values to [0, 255] */
+        image_data[i] = (uint8_t)(255.0f*msml_min(msml_max(src[i], 0.0f), 1.0f));
     int result = stbi_write_jpg(file_path, (int)width, (int)height, (int)channels, image_data, 100);
     msml__assert(result, "Failed to save tensor to image: %s", file_path);
     (*t->ctx->alloc_fn)(image_data, 0); /* Free image data */

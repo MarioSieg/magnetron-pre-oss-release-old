@@ -216,8 +216,6 @@ extern MSML_EXPORT bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const
 extern MSML_EXPORT bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if b can be broadcasted into a. */
 extern MSML_EXPORT bool msml_tensor_is_transposed(const msml_tensor_t* t); /* Check if the tensor is transposed */
 extern MSML_EXPORT bool msml_tensor_is_permuted(const msml_tensor_t* t); /* Check if the tensor is permuted */
-extern MSML_EXPORT void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert virtual index to physical index */
-extern MSML_EXPORT int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* t, const int64_t(*p_idx)[MSML_MAX_DIMS]); /* Convert physical index to virtual index */
 extern MSML_EXPORT bool msml_tensor_is_contiguous(const msml_tensor_t* t); /* Check if the tensor memory is contiguous */
 extern MSML_EXPORT float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3); /* Get scalar value at physical index */
 extern MSML_EXPORT void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x); /* Set scalar value at physical index */
@@ -226,6 +224,8 @@ extern MSML_EXPORT void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, i
 extern MSML_EXPORT bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern MSML_EXPORT bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
 extern MSML_EXPORT msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t); /* Get the context of the tensor */
+extern MSML_EXPORT void* msml_tensor_get_user_data(const msml_tensor_t* t); /* Get the user data of the tensor */
+extern MSML_EXPORT void msml_tensor_set_user_data(msml_tensor_t* t, void* ud); /* Set the user data of the tensor */
 
 extern MSML_EXPORT void msml_tensor_save(const msml_tensor_t* t, const char* file_name); /* Save tensor to MSML binary file. */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */
