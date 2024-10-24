@@ -210,7 +210,7 @@ extern MSML_EXPORT int64_t msml_tensor_num_cols(const msml_tensor_t* t); /* Get 
 extern MSML_EXPORT bool msml_tensor_is_scalar(const msml_tensor_t* t); /* Check if the tensor is a scalar */
 extern MSML_EXPORT bool msml_tensor_is_vector(const msml_tensor_t* t); /* Check if the tensor is a vector */
 extern MSML_EXPORT bool msml_tensor_is_matrix(const msml_tensor_t* t); /* Check if the tensor is a matrix */
-extern MSML_EXPORT bool msml_tensor_is_higher_order_3d(const msml_tensor_t* t); /* Check if the tensor is higher-order (3D or more) */
+extern MSML_EXPORT bool msml_tensor_is_volume(const msml_tensor_t* t); /* Check if the tensor is higher-order (3D or more) */
 extern MSML_EXPORT bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if a and b have the same shape. */
 extern MSML_EXPORT bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if a and b have the same strides. */
 extern MSML_EXPORT bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b); /* Checks if b can be broadcasted into a. */

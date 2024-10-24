@@ -29,7 +29,7 @@ TEST(msml_tensor_t, init_1d) {
     ASSERT_FALSE(msml_tensor_is_scalar(tensor));
     ASSERT_TRUE(msml_tensor_is_vector(tensor));
     ASSERT_TRUE(msml_tensor_is_matrix(tensor));
-    ASSERT_TRUE(msml_tensor_is_higher_order_3d(tensor));
+    ASSERT_TRUE(msml_tensor_is_volume(tensor));
 
     msml_ctx_destroy(ctx);
 }
@@ -57,7 +57,7 @@ TEST(msml_tensor_t, init_2d) {
     ASSERT_FALSE(msml_tensor_is_scalar(tensor));
     ASSERT_FALSE(msml_tensor_is_vector(tensor));
     ASSERT_TRUE(msml_tensor_is_matrix(tensor));
-    ASSERT_TRUE(msml_tensor_is_higher_order_3d(tensor));
+    ASSERT_TRUE(msml_tensor_is_volume(tensor));
 
     msml_ctx_destroy(ctx);
 }
@@ -85,7 +85,7 @@ TEST(msml_tensor_t, init_3d) {
     ASSERT_FALSE(msml_tensor_is_scalar(tensor));
     ASSERT_FALSE(msml_tensor_is_vector(tensor));
     ASSERT_FALSE(msml_tensor_is_matrix(tensor));
-    ASSERT_TRUE(msml_tensor_is_higher_order_3d(tensor));
+    ASSERT_TRUE(msml_tensor_is_volume(tensor));
 
     msml_ctx_destroy(ctx);
 }
@@ -113,7 +113,7 @@ TEST(msml_tensor_t, init_4d) {
     ASSERT_FALSE(msml_tensor_is_scalar(tensor));
     ASSERT_FALSE(msml_tensor_is_vector(tensor));
     ASSERT_FALSE(msml_tensor_is_matrix(tensor));
-    ASSERT_FALSE(msml_tensor_is_higher_order_3d(tensor));
+    ASSERT_FALSE(msml_tensor_is_volume(tensor));
 
     msml_ctx_destroy(ctx);
 }

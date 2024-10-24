@@ -1719,7 +1719,7 @@ bool msml_tensor_is_matrix(const msml_tensor_t* t) {
     return true;
 }
 
-bool msml_tensor_is_higher_order_3d(const msml_tensor_t* t) {
+bool msml_tensor_is_volume(const msml_tensor_t* t) {
     for (uint32_t i=3; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
     return true;
 }

@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-24 16:15:22.730882, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-24 16:36:53.829812, do NOT edit!
 
 __MSML_CDECLS: str = '''
 
@@ -69,14 +69,12 @@ extern   int64_t msml_tensor_num_cols(const msml_tensor_t* t);
 extern   bool msml_tensor_is_scalar(const msml_tensor_t* t);
 extern   bool msml_tensor_is_vector(const msml_tensor_t* t);
 extern   bool msml_tensor_is_matrix(const msml_tensor_t* t);
-extern   bool msml_tensor_is_higher_order_3d(const msml_tensor_t* t);
+extern   bool msml_tensor_is_volume(const msml_tensor_t* t);
 extern   bool msml_tensor_is_shape_eq(const msml_tensor_t* a, const msml_tensor_t* b);
 extern   bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b);
 extern   bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b);
 extern   bool msml_tensor_is_transposed(const msml_tensor_t* t);
 extern   bool msml_tensor_is_permuted(const msml_tensor_t* t);
-extern   void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[4]);
-extern   int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* t, const int64_t(*p_idx)[4]);
 extern   bool msml_tensor_is_contiguous(const msml_tensor_t* t);
 extern   float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3);
 extern   void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x);
@@ -85,6 +83,8 @@ extern   void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_i
 extern   bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
 extern   bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
 extern   msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t);
+extern   void* msml_tensor_get_user_data(const msml_tensor_t* t);
+extern   void msml_tensor_set_user_data(msml_tensor_t* t, void* ud);
 extern   void msml_tensor_save(const msml_tensor_t* t, const char* file_name);
 extern   msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
 extern   msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
