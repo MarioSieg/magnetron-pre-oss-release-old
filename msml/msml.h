@@ -174,6 +174,9 @@ extern MSML_EXPORT msml_op_param_t msml_op_param_int(uint64_t x); /* Create an i
 extern MSML_EXPORT bool msml_op_param_is_int(msml_op_param_t param); /* Check if parameter is integer */
 extern MSML_EXPORT uint64_t msml_op_param_unpack_int(msml_op_param_t param); /* Get integer value from parameter */
 
+extern MSML_EXPORT uint32_t msml_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
+extern MSML_EXPORT uint32_t msml_pack_color_f32(float r, float g, float b);
+
 typedef enum msml_graph_eval_order_t {
     MSML_GRAPH_EVAL_ORDER_FORWARD = 0, /* Evaluate graph from left to right */
     MSML_GRAPH_EVAL_ORDER_REVERSE = 1 /* Evaluate graph from right to left */
@@ -223,17 +226,17 @@ extern MSML_EXPORT float msml_tensor_get_scalar_virtual_index(const msml_tensor_
 extern MSML_EXPORT void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_EXPORT bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern MSML_EXPORT bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
+extern MSML_EXPORT void msml_tensor_img_draw_box(msml_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t wi, uint32_t rgb);
 extern MSML_EXPORT msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t); /* Get the context of the tensor */
 extern MSML_EXPORT void* msml_tensor_get_user_data(const msml_tensor_t* t); /* Get the user data of the tensor */
 extern MSML_EXPORT void msml_tensor_set_user_data(msml_tensor_t* t, void* ud); /* Set the user data of the tensor */
-
 extern MSML_EXPORT void msml_tensor_save(const msml_tensor_t* t, const char* file_name); /* Save tensor to MSML binary file. */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */
-extern MSML_EXPORT msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
-extern MSML_EXPORT void msml_tensor_save_to_image(const msml_tensor_t* t, const char* file_path); /* Save tensor data as an image */
-#define msml_tensor_image_width(tensor) (msml_tensor_shape(tensor)[0]) /* Get image width from tensor */
+extern MSML_EXPORT msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
+extern MSML_EXPORT void msml_tensor_save_image(const msml_tensor_t* t, const char* file_path); /* Save tensor data as an image */
+#define msml_tensor_image_width(tensor) (msml_tensor_shape(tensor)[2]) /* Get image width from tensor */
 #define msml_tensor_image_height(tensor) (msml_tensor_shape(tensor)[1]) /* Get image height from tensor */
-#define msml_tensor_image_channels(tensor) (msml_tensor_shape(tensor)[2]) /* Get image channels from tensor */
+#define msml_tensor_image_channels(tensor) (msml_tensor_shape(tensor)[0]) /* Get image channels from tensor */
 
 typedef struct msml_compute_graph_t msml_compute_graph_t; /* Opaque type representing a compute graph */
 extern MSML_EXPORT msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name); /* Compile computation graph from root tensor. */

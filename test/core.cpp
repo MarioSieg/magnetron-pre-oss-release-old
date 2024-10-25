@@ -1,7 +1,6 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
 #include "prelude.hpp"
-#include <cstring>
 
 TEST(core, op_param_int) {
     msml_op_param_t p = msml_op_param_int(1234);

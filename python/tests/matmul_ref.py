@@ -2,8 +2,9 @@
 
 import numpy as np
 
-A = np.random.rand(3, 2)
+A = np.random.rand(3, 4, 2)
 print(A)
+exit(0)
 B = np.random.rand(2)
 print(B)
 print(np.matmul(A, B))
