@@ -97,7 +97,7 @@ namespace msml {
     using dtype_info = msml_dtype_info_t;
     [[nodiscard]] inline auto dtype_info_of(msml_dtype_t type) noexcept -> const dtype_info& { return * msml_dtype_info_of(type); }
 
-    enum class desired_color_channels : std::underlying_type_t<msml_desired_color_channels_t> {
+    enum class desired_color_channels : std::underlying_type_t<msml_color_channels_t> {
         automatic = MSML_COLOR_CHANNELS_AUTO, /* Automatically determine the number of color channels. */
         grayscale = MSML_COLOR_CHANNELS_GRAY, /* Convert to grayscale. */
         grayscale_alpha = MSML_COLOR_CHANNELS_GRAY_A, /* Convert to grayscale with alpha channel. */

@@ -64,15 +64,25 @@ typedef enum msml_prng_algorithm_t {
     MSML_PRNG_PCG = 1 /* Permuted Congruential Generator PRNG */
 } msml_prng_algorithm_t;
 
+typedef enum msml_desired_color_channels_t {
+    MSML_COLOR_CHANNELS_AUTO,  /* Automatically detect number of color channels */
+    MSML_COLOR_CHANNELS_GRAY,  /* Grayscale F32 */
+    MSML_COLOR_CHANNELS_GRAY_A,/* Grayscale F32 + Alpha F32 */
+    MSML_COLOR_CHANNELS_RGB,   /* R32G32B32 */
+    MSML_COLOR_CHANNELS_RGBA   /* R32G32B32A32 */
+} msml_color_channels_t;
+
 typedef struct msml_ctx_info_t {
-    void* (*alloc_fn)(void* blk, size_t size);  /* Custom allocator function */
-    size_t pool_chunk_size;                     /* Size of each memory pool chunk */
-    size_t pool_chunks_cap;                     /* Maximum chunks in the pool */
-    uint64_t prng_seed;                         /* Seed for PRNG if prng_init_seed == true */
-    bool warmup_chunks;                         /* If true, fresh pool chunks are filled to allocate kernel pages, can improve performance depending on scenario. */
-    msml_prng_algorithm_t prng_algorithm;       /* PRNG algorithm */
-    msml_exec_mode_t exec_mode;                 /* Default context execution mode */
-    void* user_data;                            /* User-defined data */
+    void* (*alloc_fn)(void* blk, size_t size); /* Custom allocator function */
+    size_t pool_chunk_size; /* Size of each memory pool chunk */
+    size_t pool_chunks_cap; /* Maximum chunks in the pool */
+    uint64_t prng_seed; /* Seed for PRNG if prng_init_seed == true */
+    bool warmup_chunks; /* If true, fresh pool chunks are filled to allocate kernel pages, can improve performance depending on scenario. */
+    msml_prng_algorithm_t prng_algorithm; /* PRNG algorithm */
+    msml_exec_mode_t exec_mode; /* Default context execution mode */
+    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], msml_color_channels_t); /* Image raw data loader. */
+    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]); /* Image raw data saver. */
+    void* user_data; /* User-defined data */
 } msml_ctx_info_t;
 
 typedef struct msml_ctx_t msml_ctx_t; /* Opaque context type for managing memory pools */
@@ -107,14 +117,6 @@ typedef struct msml_dtype_info_t {
     const char* name;    /* Name of the data type */
 } msml_dtype_info_t;
 extern MSML_EXPORT const msml_dtype_info_t* msml_dtype_info_of(msml_dtype_t type);
-
-typedef enum msml_desired_color_channels_t {
-    MSML_COLOR_CHANNELS_AUTO,  /* Automatically detect number of color channels */
-    MSML_COLOR_CHANNELS_GRAY,  /* Grayscale F32 */
-    MSML_COLOR_CHANNELS_GRAY_A,/* Grayscale F32 + Alpha F32 */
-    MSML_COLOR_CHANNELS_RGB,   /* R32G32B32 */
-    MSML_COLOR_CHANNELS_RGBA   /* R32G32B32A32 */
-} msml_desired_color_channels_t;
 
 #define MSML_SEP ,
 #define msml_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
@@ -230,10 +232,10 @@ extern MSML_EXPORT void msml_tensor_img_draw_box(msml_tensor_t* t, uint32_t x1, 
 extern MSML_EXPORT msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t); /* Get the context of the tensor */
 extern MSML_EXPORT void* msml_tensor_get_user_data(const msml_tensor_t* t); /* Get the user data of the tensor */
 extern MSML_EXPORT void msml_tensor_set_user_data(msml_tensor_t* t, void* ud); /* Set the user data of the tensor */
-extern MSML_EXPORT void msml_tensor_save(const msml_tensor_t* t, const char* file_name); /* Save tensor to MSML binary file. */
-extern MSML_EXPORT msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name); /* Load tensor from MSML binary file. */
-extern MSML_EXPORT msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
-extern MSML_EXPORT void msml_tensor_save_image(const msml_tensor_t* t, const char* file_path); /* Save tensor data as an image */
+extern MSML_EXPORT void msml_tensor_save(const msml_tensor_t* t, const char* file); /* Save tensor to MSML binary file. */
+extern MSML_EXPORT msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file); /* Load tensor from MSML binary file. */
+extern MSML_EXPORT msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
+extern MSML_EXPORT void msml_tensor_save_image(const msml_tensor_t* t, const char* file); /* Save tensor data as an image */
 #define msml_tensor_image_width(tensor) (msml_tensor_shape(tensor)[2]) /* Get image width from tensor */
 #define msml_tensor_image_height(tensor) (msml_tensor_shape(tensor)[1]) /* Get image height from tensor */
 #define msml_tensor_image_channels(tensor) (msml_tensor_shape(tensor)[0]) /* Get image channels from tensor */
