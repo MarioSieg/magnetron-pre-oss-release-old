@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-24 16:36:53.829812, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-25 16:36:48.418129, do NOT edit!
 
 __MSML_CDECLS: str = '''
 
@@ -10,8 +10,8 @@ typedef struct msml_compute_graph_t msml_compute_graph_t;
 
 typedef int msml_exec_mode_t;
 typedef int msml_prng_algorithm_t;
+typedef int msml_color_channels_t;
 typedef int msml_dtype_t;
-typedef int msml_desired_color_channels_t;
 typedef int msml_op_t;
 typedef int msml_op_param_type_t;
 typedef int msml_graph_eval_order_t;
@@ -43,6 +43,8 @@ typedef uint64_t msml_op_param_t;
 extern   msml_op_param_t msml_op_param_int(uint64_t x);
 extern   bool msml_op_param_is_int(msml_op_param_t param);
 extern   uint64_t msml_op_param_unpack_int(msml_op_param_t param);
+extern   uint32_t msml_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
+extern   uint32_t msml_pack_color_f32(float r, float g, float b);
 extern   msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1);
 extern   msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern   msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
@@ -82,13 +84,14 @@ extern   float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* t, int6
 extern   void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_idx, float x);
 extern   bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);
 extern   bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float eps, double* percent_eq);
+extern   void msml_tensor_img_draw_box(msml_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t wi, uint32_t rgb);
 extern   msml_ctx_t* msml_tensor_get_ctx(const msml_tensor_t* t);
 extern   void* msml_tensor_get_user_data(const msml_tensor_t* t);
 extern   void msml_tensor_set_user_data(msml_tensor_t* t, void* ud);
-extern   void msml_tensor_save(const msml_tensor_t* t, const char* file_name);
-extern   msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file_name);
-extern   msml_tensor_t* msml_tensor_create_from_image(msml_ctx_t* ctx, const char* file_path, msml_desired_color_channels_t channels, uint32_t resize_width, uint32_t resize_height);
-extern   void msml_tensor_save_to_image(const msml_tensor_t* t, const char* file_path);
+extern   void msml_tensor_save(const msml_tensor_t* t, const char* file);
+extern   msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file);
+extern   msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t channels, uint32_t resize_w, uint32_t resize_h);
+extern   void msml_tensor_save_image(const msml_tensor_t* t, const char* file);
 extern   msml_compute_graph_t* msml_compute_graph_compile(msml_ctx_t* ctx, msml_tensor_t* root, msml_graph_eval_order_t order, const char* name);
 extern   msml_tensor_t* msml_compute_graph_execute(msml_compute_graph_t* gra);
 extern   bool msml_compute_graph_contains(const msml_compute_graph_t* gra, const msml_tensor_t* t);

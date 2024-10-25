@@ -1,5 +1,4 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-
 # To debug Python to C FFI calls:
 # $ cp examples/perceptron.py tmp.py && gdb -ex r --args python3 tmp.py
 # See also https://wiki.python.org/moin/DebuggingWithGdb
@@ -8,6 +7,7 @@ import random
 import faulthandler
 import weakref
 
+from os.path import isfile
 from msml._lib_loader import load_native_msml_lib
 from enum import Enum, auto
 
@@ -32,6 +32,10 @@ def humanize_memory_size(size: int) -> str:
     return f'{size:.2f} {units[unit]}'
 
 
+def pack_color(r: int, g: int, b: int) -> int:
+    return C.msml_pack_color_u8(r, g, b)
+
+
 class PRNGAlgorithm(Enum):
     MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
     PCG = auto()  # Permuted Congruential Generator
@@ -42,7 +46,7 @@ class DType(Enum):
     F32 = 0
 
 
-class DesiredColorChannels(Enum):
+class ColorChannels(Enum):
     """Enumerates the desired color channels when loading images."""
     AUTO = 0  # Automatically determine the number of color channels
     GRAY = auto()  # Grayscale F32
@@ -259,7 +263,7 @@ class Tensor:
         if params is not None:
             assert 0 < len(params) <= MSML_MAX_OP_PARAMS, f'Invalid number of operation parameters: {len(params)}'
             param_vals = [param.value & ((1 << 64) - 1) for param in params] + [OpParam.int(0)] * (
-                        MSML_MAX_OP_PARAMS - len(params))
+                    MSML_MAX_OP_PARAMS - len(params))
             c_para = ffi.new(f'msml_op_param_t[{MSML_MAX_OP_PARAMS}]', param_vals)
             c_para_ptr = ffi.new(f'msml_op_param_t(*)[{MSML_MAX_OP_PARAMS}]', c_para)
         assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count}'
@@ -279,7 +283,7 @@ class Tensor:
             interval = (interval[1], interval[0])
         C.msml_tensor_fill_random(self.tensor, interval[0], interval[1])
 
-    def print(self, print_header: bool=False, print_data: bool=True) -> None:
+    def print(self, print_header: bool = False, print_data: bool = True) -> None:
         """Prints the tensor metadata and optionally its data."""
         C.msml_tensor_print(self.tensor, print_header, print_data)
 
@@ -383,7 +387,7 @@ class Tensor:
     @property
     def image_width(self) -> int:
         """Returns the width of the image tensor. (Equals to the first dimension)"""
-        return self.shape[0]
+        return self.shape[2]
 
     @property
     def image_height(self) -> int:
@@ -393,7 +397,7 @@ class Tensor:
     @property
     def image_channels(self) -> int:
         """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
-        return self.shape[2]
+        return self.shape[0]
 
     def virtual_to_physical_index(self, v_idx: int) -> list[int]:
         """Converts a virtual index to a physical index."""
@@ -435,17 +439,21 @@ class Tensor:
             print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
         return is_eq, percent_eq[0]
 
+    def image_draw_box(self, p1: (int, int), p2: (int, int), width: int = 2, rgb: int = pack_color(0xff, 0xff, 0xff)):
+        assert p2[0] > p1[0] and p2[1] > p1[1] and width > 0
+        C.msml_tensor_img_draw_box(self.tensor, p1[0], p1[1], p2[0], p2[1], width, rgb & 0xffffff)
+
     def save(self, file_path: str) -> None:
         """Saves to tensor to a binary MSML file"""
         if not file_path.endswith('.msml'):
             file_path += '.msml'
         C.msml_tensor_save(self.tensor, bytes(file_path, 'utf-8'))
 
-    def save_to_image(self, file_path: str) -> None:
+    def save_image(self, file_path: str) -> None:
         """Saves the tensor as an JPG image to a file."""
         assert self.rank == 3, 'Tensor must be a 3D image tensor'
         assert self.image_channels in (1, 3, 4), 'Invalid number of color channels'
-        C.msml_tensor_save_to_image(self.tensor, bytes(file_path, 'utf-8'))
+        C.msml_tensor_save_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
     def empty(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
@@ -492,21 +500,22 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def load(ctx: Context, file_path: str) -> 'Tensor':
+    def load(file_path: str, ctx: Context = Context.G) -> 'Tensor':
         assert file_path.endswith('.msml'), 'File must be a MSML file'
         """Loads a tensor from a binary MSML file."""
         instance = C.msml_tensor_load(ctx.ctx, bytes(file_path, 'utf-8'))
         return Tensor(internal_instance=instance)
 
     @staticmethod
-    def from_image(ctx: Context,
-                   name: str | None,
-                   file_path: str,
-                   desired_color_channels=DesiredColorChannels.AUTO,
-                   resize_to_dims: tuple[int, int] = (0, 0)) -> 'Tensor':
+    def load_image(file_path: str,
+                   ctx: Context = Context.G,
+                   name: str | None = None,
+                   channels=ColorChannels.AUTO,
+                   resize_to_dims: (int, int) = (0, 0)) -> 'Tensor':
         """Loads an image from a file and creates a tensor from it."""
-        instance = C.msml_tensor_create_from_image(ctx.ctx, bytes(file_path, 'utf-8'), desired_color_channels.value,
-                                                   resize_to_dims[0], resize_to_dims[1])
+        assert isfile(file_path), f'File not found: {file_path}'
+        instance = C.msml_tensor_load_image(ctx.ctx, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
+                                            resize_to_dims[1])
         tensor = Tensor(internal_instance=instance)
         if name is not None:
             tensor.name = name

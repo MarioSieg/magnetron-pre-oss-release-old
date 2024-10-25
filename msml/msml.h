@@ -64,7 +64,7 @@ typedef enum msml_prng_algorithm_t {
     MSML_PRNG_PCG = 1 /* Permuted Congruential Generator PRNG */
 } msml_prng_algorithm_t;
 
-typedef enum msml_desired_color_channels_t {
+typedef enum msml_color_channels_t {
     MSML_COLOR_CHANNELS_AUTO,  /* Automatically detect number of color channels */
     MSML_COLOR_CHANNELS_GRAY,  /* Grayscale F32 */
     MSML_COLOR_CHANNELS_GRAY_A,/* Grayscale F32 + Alpha F32 */
