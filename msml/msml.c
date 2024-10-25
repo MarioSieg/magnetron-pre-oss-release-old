@@ -3439,10 +3439,13 @@ msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_co
         msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, whc[2], whc[1], whc[0]);
         t->flags |= MSML_TFLAG_FROM_FS | MSML_TFLAG_IMAGE;
         float* dst = msml_tensor_data_as_f32(t);
-        for (int64_t k = 0; k < whc[2]; ++k) /* Convert from interleaved to planar representation. */
-            for (int64_t j = 0; j < whc[1]; ++j)
-                for (int64_t i = 0; i < whc[0]; ++i)
+        for (int64_t k = 0; k < whc[2]; ++k) { /* Convert from interleaved to planar representation. */
+            for (int64_t j = 0; j < whc[1]; ++j) {
+                for (int64_t i = 0; i < whc[0]; ++i) {
                     dst[i + whc[0]*j + whc[0]*whc[1]*k] = (float)src[k + whc[2]*i + whc[2]*whc[0]*j] / 255.0f;  /* Normalize pixel values to [0, 1] */
+                }
+            }
+        }
         msml__assert(whc[0]*whc[1]*whc[2] == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", whc[0]*whc[1]*whc[2], (size_t)msml_tensor_num_elements(t));
         (*load_free)(src);
         msml_log_info("Loaded tensor from image: %s, %u x %u x %u", file, whc[0], whc[1], whc[2]);
