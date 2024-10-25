@@ -81,6 +81,7 @@ typedef struct msml_ctx_info_t {
     msml_prng_algorithm_t prng_algorithm; /* PRNG algorithm */
     msml_exec_mode_t exec_mode; /* Default context execution mode */
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], msml_color_channels_t); /* Image raw data loader. */
+    void (*image_load_free_fn)(uint8_t*); /* Free function for buffer returned by image_load_fn(). */
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]); /* Image raw data saver. */
     void* user_data; /* User-defined data */
 } msml_ctx_info_t;
@@ -234,7 +235,7 @@ extern MSML_EXPORT void* msml_tensor_get_user_data(const msml_tensor_t* t); /* G
 extern MSML_EXPORT void msml_tensor_set_user_data(msml_tensor_t* t, void* ud); /* Set the user data of the tensor */
 extern MSML_EXPORT void msml_tensor_save(const msml_tensor_t* t, const char* file); /* Save tensor to MSML binary file. */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file); /* Load tensor from MSML binary file. */
-extern MSML_EXPORT msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t channels, uint32_t resize_width, uint32_t resize_height); /* Create a tensor from an image file */
+extern MSML_EXPORT msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t channels, uint32_t resize_w, uint32_t resize_h); /* Create a tensor from an image file. */
 extern MSML_EXPORT void msml_tensor_save_image(const msml_tensor_t* t, const char* file); /* Save tensor data as an image */
 #define msml_tensor_image_width(tensor) (msml_tensor_shape(tensor)[2]) /* Get image width from tensor */
 #define msml_tensor_image_height(tensor) (msml_tensor_shape(tensor)[1]) /* Get image height from tensor */

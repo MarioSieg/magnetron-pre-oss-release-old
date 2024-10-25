@@ -63,16 +63,11 @@ msml_static_assert(sizeof(0ull) == 8);
 #   define STBI_MALLOC(sz) msml_alloc(NULL, (sz))
 #   define STBI_FREE(ptr) msml_alloc((ptr), 0)
 #   define STBI_REALLOC(ptr, sz) msml_alloc((ptr), (sz))
-#   define STBIR_MALLOC(sz, usr) msml_alloc(NULL, (sz))
-#   define STBIR_FREE(ptr, usr) msml_alloc((ptr), 0)
-#   define STBIR_REALLOC(ptr, sz, usr) msml_alloc((ptr), (sz))
 #   define STBIW_MALLOC(sz) msml_alloc(NULL, (sz))
 #   define STBIW_FREE(ptr) msml_alloc((ptr), 0)
 #   define STBIW_REALLOC(ptr, sz) msml_alloc((ptr), (sz))
 #   define STB_IMAGE_IMPLEMENTATION
 #   include <stb_image.h>
-#   define STB_IMAGE_RESIZE_IMPLEMENTATION
-#   include <stb_image_resize2.h>
 #   define STB_IMAGE_WRITE_IMPLEMENTATION
 #   include <stb_image_write.h>
 #endif
@@ -288,6 +283,7 @@ struct msml_ctx_t {
         size_t alloc_total;
     } pool;
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], msml_color_channels_t);
+    void (*image_load_free_fn)(uint8_t*);
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
     msml_exec_mode_t exec_mode;
     union {
@@ -973,6 +969,7 @@ static void msml__blas_compute_dispatch_table_install(msml_ctx_t* ctx); /* Insta
 
 #if MSML_ENABLE_IMAGE_SUPPORT
     static uint8_t* msml_default_image_load_impl(const char* file, uint32_t(*whc)[3], msml_color_channels_t channels);
+    static void msml_default_image_load_free_fn_impl(uint8_t*);
     static bool msml_default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]);
 #endif
 
@@ -1051,7 +1048,8 @@ msml_ctx_t* msml_ctx_create(const msml_ctx_info_t* info) {
     msml__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
     #if MSML_ENABLE_IMAGE_SUPPORT
-        ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : & msml_default_image_load_impl;
+        ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &msml_default_image_load_impl;
+        ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &msml_default_image_load_free_fn_impl;
         ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &msml_default_image_save_impl;
     #else
         ctx->image_load_fn = ctx_info->image_load_fn;
@@ -3378,43 +3376,80 @@ msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file) {
     return t;
 }
 
-msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t requested_channels, uint32_t resize_width, uint32_t resize_height) {
+#define get_pixel(buf,w,h,x,y,c) ((buf)[(c)*(w)*(h) + (y)*(w) + (x)])
+#define set_pixel(buf,w,h,x,y,c,xx) (buf[(c)*(w)*(h) + (y)*(w) + (x)] = (xx))
+#define add_pixel(buf,w,h,x,y,c,xx) (buf[(c)*(w)*(h) + (y)*(w) + (x)] += (xx))
+
+msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t channels, uint32_t rw, uint32_t rh) {
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
     uint8_t* (*loader)(const char*, uint32_t(*)[3], msml_color_channels_t) = ctx->image_load_fn;
-    msml__assert(loader, "Image loader not set");
+    void (*load_free)(uint8_t*) = ctx->image_load_free_fn;
+    msml__assert(loader && load_free, "Image loader not set");
     uint32_t whc[3];
-    uint8_t* src = (*loader)(file, &whc, requested_channels);
+    uint8_t* src = (*loader)(file, &whc, channels);
     msml__assert(src, "Failed to load tensor from image: '%s'", file);
-    if (resize_width && resize_height) { /* Resize image if requested */
-        uint8_t* resized_data = stbir_resize_uint8_srgb(
-            src,
-            (int)whc[0],
-            (int)whc[1],
-            0,
-            NULL,
-            (int)resize_width,
-            (int)resize_height,
-            0,
-            (stbir_pixel_layout)whc[2]
-        );
-        if (resized_data) { /* Replace original image data with resized data */
-            stbi_image_free(src);
-            src = resized_data;
-            whc[0] = resize_width;
-            whc[1] = resize_height;
+    if (rw && rh) { /* Resize requested. */
+        float* ori = (*ctx->alloc_fn)(NULL, whc[2]*whc[1]*whc[0]*sizeof(*ori));
+        for (int64_t k=0; k < whc[2]; ++k) /* Convert from interleaved to planar representation. */
+            for (int64_t j=0; j < whc[1]; ++j)
+                for (int64_t i=0; i < whc[0]; ++i)
+                    ori[i + whc[0]*j + whc[0]*whc[1]*k] = (float)src[k + whc[2]*i + whc[2]*whc[0]*j] / 255.0f;  /* Normalize pixel values to [0, 1] */
+        msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, whc[2], rh, rw);
+        float* dst = msml_tensor_data_as_f32(t);
+        float* part = (*ctx->alloc_fn)(NULL, whc[2]*whc[1]*rw*sizeof(*part));
+        float w_scale = (float)(whc[0] - 1)/(float)(rw - 1);
+        float h_scale = (float)(whc[1] - 1)/(float)(rh - 1);
+        for (uint32_t k = 0; k < whc[2]; ++k){
+            for (uint32_t r = 0; r < whc[1]; ++r) {
+                for (uint32_t c = 0; c < rw; ++c) {
+                    float val = 0;
+                    if (c == rw-1 || whc[0] == 1) {
+                        val = get_pixel(ori, whc[0], whc[1], whc[0]-1, r, k);
+                    } else {
+                        float sx = c*w_scale;
+                        uint32_t ix = (uint32_t)sx;
+                        float dx = sx - ix;
+                        val = (1-dx) * get_pixel(ori, whc[0], whc[1], ix, r, k) + dx*get_pixel(ori, whc[0], whc[1], ix+1, r, k);
+                    }
+                    set_pixel(part, rw, whc[1], c, r, k, val);
+                }
+            }
         }
+        for (uint32_t k = 0; k < whc[2]; ++k) {
+            for (uint32_t r = 0; r < rh; ++r) {
+                float sy = r*h_scale;
+                uint32_t iy = (uint32_t)sy;
+                float dy = sy - iy;
+                for (uint32_t c = 0; c < rw; ++c) {
+                    float val = (1-dy) * get_pixel(part, rw, whc[1], c, iy, k);
+                    set_pixel(dst, rw, rh, c, r, k, val);
+                }
+                if (r == rh-1 || whc[1] == 1) continue;
+                for (uint32_t c = 0; c < rw; ++c) {
+                    float val = dy * get_pixel(part, rw, whc[1], c, iy+1, k);
+                    add_pixel(dst, rw, rh,  c, r, k, val);
+                }
+            }
+        }
+        (*ctx->alloc_fn)(ori, 0);
+        (*ctx->alloc_fn)(part, 0);
+        msml__assert(rw*rh*whc[2] == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", rw*rh*whc[2], (size_t)msml_tensor_num_elements(t));
+        (*load_free)(src);
+        msml_log_info("Loaded and resized tensor from image: %s, %u x %u x %u", file, rw, rh, whc[2]);
+        return t;
+    } else {
+        msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, whc[2], whc[1], whc[0]);
+        t->flags |= MSML_TFLAG_FROM_FS | MSML_TFLAG_IMAGE;
+        float* dst = msml_tensor_data_as_f32(t);
+        for (int64_t k = 0; k < whc[2]; ++k) /* Convert from interleaved to planar representation. */
+            for (int64_t j = 0; j < whc[1]; ++j)
+                for (int64_t i = 0; i < whc[0]; ++i)
+                    dst[i + whc[0]*j + whc[0]*whc[1]*k] = (float)src[k + whc[2]*i + whc[2]*whc[0]*j] / 255.0f;  /* Normalize pixel values to [0, 1] */
+        msml__assert(whc[0]*whc[1]*whc[2] == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", whc[0]*whc[1]*whc[2], (size_t)msml_tensor_num_elements(t));
+        (*load_free)(src);
+        msml_log_info("Loaded tensor from image: %s, %u x %u x %u", file, whc[0], whc[1], whc[2]);
+        return t;
     }
-    msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, whc[2], whc[1], whc[0]);
-    t->flags |= MSML_TFLAG_FROM_FS | MSML_TFLAG_IMAGE;
-    float* dst = msml_tensor_data_as_f32(t);
-    msml__assert(whc[0]*whc[1]*whc[2] == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", whc[0]*whc[1]*whc[2], (size_t)msml_tensor_num_elements(t));
-    for (int64_t k = 0; k < whc[2]; ++k) /* Convert from interleaved to planar representation. */
-        for (int64_t j = 0; j < whc[1]; ++j)
-            for (int64_t i = 0; i < whc[0]; ++i)
-                dst[i + whc[0]*j + whc[0]*whc[1]*k] = (float)src[k + whc[2]*i + whc[2]*whc[0]*j] / 255.0f;  /* Normalize pixel values to [0, 1] */
-    stbi_image_free(src);
-    msml_log_info("Loaded tensor from image: %s, width: %d, height: %d, channels: %d", file, whc[0], whc[1], whc[2]);
-    return t;
 #else
     msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
 #endif
@@ -3711,7 +3746,7 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
     } t = {.n = n};
     if (msml_unlikely((t.u32.hi << 1) >= 0xffe00000)) {
         /* Handle non-finite values uniformly for %a, %e, %f, %g. */
-        int prefix = 0, ch = (sf & MSML_FMT_F_UPPER) ? 0x202020 : 0;
+        int32_t prefix = 0, ch = (sf & MSML_FMT_F_UPPER) ? 0x202020 : 0;
         if (((t.u32.hi & 0x000fffff) | t.u32.lo) != 0) {
             ch ^= ('n' << 16) | ('a' << 8) | 'n';
             if ((sf & MSML_FMT_F_SPACE)) prefix = ' ';
@@ -4025,6 +4060,10 @@ static char* msml__fmt_f64(msml_format_flags sf, double n, char* p) {
         (*whc)[1] = (uint32_t)h;
         (*whc)[2] = (uint32_t)c;
         return buf;
+    }
+
+    static void msml_default_image_load_free_fn_impl(uint8_t* p) {
+        stbi_image_free(p);
     }
 
     static bool msml_default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]) {
