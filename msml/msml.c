@@ -3376,58 +3376,56 @@ msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file) {
     return t;
 }
 
-#define get_pixel(buf,w,h,x,y,c) ((buf)[(c)*(w)*(h) + (y)*(w) + (x)])
-#define set_pixel(buf,w,h,x,y,c,xx) (buf[(c)*(w)*(h) + (y)*(w) + (x)] = (xx))
-#define add_pixel(buf,w,h,x,y,c,xx) (buf[(c)*(w)*(h) + (y)*(w) + (x)] += (xx))
-
 msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t channels, uint32_t rw, uint32_t rh) {
-#ifdef MSML_ENABLE_IMAGE_SUPPORT
     uint8_t* (*loader)(const char*, uint32_t(*)[3], msml_color_channels_t) = ctx->image_load_fn;
     void (*load_free)(uint8_t*) = ctx->image_load_free_fn;
     msml__assert(loader && load_free, "Image loader not set");
-    uint32_t whc[3];
+    uint32_t whc[3] = {0};
     uint8_t* src = (*loader)(file, &whc, channels);
     msml__assert(src, "Failed to load tensor from image: '%s'", file);
     if (rw && rh) { /* Resize requested. */
         float* ori = (*ctx->alloc_fn)(NULL, whc[2]*whc[1]*whc[0]*sizeof(*ori));
-        for (int64_t k=0; k < whc[2]; ++k) /* Convert from interleaved to planar representation. */
-            for (int64_t j=0; j < whc[1]; ++j)
-                for (int64_t i=0; i < whc[0]; ++i)
+        for (int64_t k=0; k < whc[2]; ++k) { /* Convert from interleaved to planar representation. */
+            for (int64_t j=0; j < whc[1]; ++j) {
+                for (int64_t i=0; i < whc[0]; ++i) {
                     ori[i + whc[0]*j + whc[0]*whc[1]*k] = (float)src[k + whc[2]*i + whc[2]*whc[0]*j] / 255.0f;  /* Normalize pixel values to [0, 1] */
+                }
+            }
+        }
         msml_tensor_t* t = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, whc[2], rh, rw);
         float* dst = msml_tensor_data_as_f32(t);
         float* part = (*ctx->alloc_fn)(NULL, whc[2]*whc[1]*rw*sizeof(*part));
-        float w_scale = (float)(whc[0] - 1)/(float)(rw - 1);
-        float h_scale = (float)(whc[1] - 1)/(float)(rh - 1);
+        float ws = (float)(whc[0] - 1)/(float)(rw - 1);
+        float hs = (float)(whc[1] - 1)/(float)(rh - 1);
         for (uint32_t k = 0; k < whc[2]; ++k){
             for (uint32_t r = 0; r < whc[1]; ++r) {
                 for (uint32_t c = 0; c < rw; ++c) {
                     float val = 0;
                     if (c == rw-1 || whc[0] == 1) {
-                        val = get_pixel(ori, whc[0], whc[1], whc[0]-1, r, k);
+                        val = ori[k*(whc[0])*(whc[1]) + r*(whc[0]) + (whc[0] - 1)];
                     } else {
-                        float sx = c*w_scale;
+                        float sx = (float)c*ws;
                         uint32_t ix = (uint32_t)sx;
-                        float dx = sx - ix;
-                        val = (1-dx) * get_pixel(ori, whc[0], whc[1], ix, r, k) + dx*get_pixel(ori, whc[0], whc[1], ix+1, r, k);
+                        float dx = sx - (float)ix;
+                        val = (1-dx) * (ori[k*(whc[0])*(whc[1]) + r*(whc[0]) + ix]) + dx*(ori[k*(whc[0])*(whc[1]) + r*(whc[0]) + (ix + 1)]);
                     }
-                    set_pixel(part, rw, whc[1], c, r, k, val);
+                    part[k*rw*(whc[1]) + r*rw + c] = val;
                 }
             }
         }
         for (uint32_t k = 0; k < whc[2]; ++k) {
             for (uint32_t r = 0; r < rh; ++r) {
-                float sy = r*h_scale;
+                float sy = (float)r*hs;
                 uint32_t iy = (uint32_t)sy;
-                float dy = sy - iy;
+                float dy = sy - (float)iy;
                 for (uint32_t c = 0; c < rw; ++c) {
-                    float val = (1-dy) * get_pixel(part, rw, whc[1], c, iy, k);
-                    set_pixel(dst, rw, rh, c, r, k, val);
+                    float val = (1-dy)*(part[k*rw*whc[1] + iy*rw + c]);
+                    dst[k*rw*rh + r*rw + c] = val;
                 }
                 if (r == rh-1 || whc[1] == 1) continue;
                 for (uint32_t c = 0; c < rw; ++c) {
-                    float val = dy * get_pixel(part, rw, whc[1], c, iy+1, k);
-                    add_pixel(dst, rw, rh,  c, r, k, val);
+                    float val = dy*(part[k*rw*(whc[1]) + (iy + 1)*rw + c]);
+                    dst[k*rw*rh + r*rw + c] += val;
                 }
             }
         }
@@ -3450,9 +3448,6 @@ msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_co
         msml_log_info("Loaded tensor from image: %s, %u x %u x %u", file, whc[0], whc[1], whc[2]);
         return t;
     }
-#else
-    msml__panic("Image support is disabled. MSML must be compiled with MSML_ENABLE_IMAGE_SUPPORT defined.");
-#endif
 }
 
 void msml_tensor_save_image(const msml_tensor_t* t, const char* file) {

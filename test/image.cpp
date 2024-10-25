@@ -37,7 +37,7 @@ TEST(image, load_resize) {
     ASSERT_EQ(msml_tensor_shape(img)[1], msml_tensor_image_height(img));
     ASSERT_EQ(msml_tensor_shape(img)[0], msml_tensor_image_channels(img)); // RGB
 
-    //msml_tensor_save_image(img, "test_data/car_resized.jpg");
+    msml_tensor_save_image(img, "test_data/car_resized.jpg");
 
     auto* buf = msml_tensor_data_as_f32(img);
     for (int64_t i=0; i < msml_tensor_num_elements(img); ++i) {
