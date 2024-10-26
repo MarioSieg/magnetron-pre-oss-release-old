@@ -1903,7 +1903,7 @@ void msml_tensor_img_draw_box(msml_tensor_t* t, uint32_t x1, uint32_t y1, uint32
     for (uint32_t i = 0; i < wi; ++i) {
         uint32_t xx1 = x1+i;
         uint32_t yy1 = y1+i;
-        uint32_t xx2 =  x2-i;
+        uint32_t xx2 = x2-i;
         uint32_t yy2 = y2-i;
         if (xx1 >= w) xx1 = w-1;
         if (xx2 >= w) xx2 = w-1;
