@@ -5,4 +5,7 @@ import math
 
 from msml.core import Op
 
-approx.plot_approximation_error('gelu', math.tanh, Op.TANH, domain=(-2, 2))
+def gelu(x: float) -> float:
+    return 0.5*x*(1.0 + math.tanh(0.79788456080286535587989211986876*x*(1.0 + 0.044715*x*x)))
+
+approx.plot_approximation_error('gelu', gelu, Op.GELU, domain=(-2, 2))
