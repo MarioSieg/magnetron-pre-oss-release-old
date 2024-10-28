@@ -4,15 +4,12 @@ from msml.core import *
 
 
 def mse(y: Tensor, y_hat: Tensor) -> float:
-    """Calculate the Mean Squared Error between predictions and targets."""
     e = y - y_hat
     mse_value = (e * e).mean()
     return mse_value.unpack_scalar()
 
 
-class Linear:
-    """Affine linear transformation on data. A = A@B^T"""
-
+class DenseLayer:
     def __init__(self, in_features: int, out_features: int, activation: Op = Op.SIGMOID):
         self.weight = Tensor.random(shape=[out_features, in_features])
         self.bias = Tensor.random(shape=[out_features, 1])
@@ -32,10 +29,8 @@ class Linear:
             return delta
 
 
-class Model:
-    """A simple multilayer perceptron (feedforward network)."""
-
-    def __init__(self, layers: list[Linear]):
+class SequentialModel:
+    def __init__(self, layers: list[DenseLayer]):
         assert len(layers) > 0
         self.layers = layers
         self.cache = []
