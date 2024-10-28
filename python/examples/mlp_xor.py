@@ -1,7 +1,5 @@
-import sys
-
 from msml.core import *
-from mlp import MultilayerPerceptron
+from msml.model import Model, Linear
 
 # Define the XOR input and target data manually
 inputs = [
@@ -18,8 +16,12 @@ targets = [
     Tensor.with_data([1], [0.0], name='Target 4')
 ]
 
-mlp = MultilayerPerceptron(layout=[2, 4, 1])
+mlp = Model([
+    Linear(2, 4),
+    Linear(4, 1)
+])
 mlp.train(inputs, targets, epochs=10000, learning_rate=0.5)
 for input_tensor in inputs:
-    output: float = mlp.forward(input_tensor, hard_sig=True).data_as_f32()[0]
-    print(f'Output: {output}')
+    input_data = input_tensor.data_as_f32()
+    output: float = mlp.forward(input_tensor).data_as_f32()[0]
+    print(f'{input_data[0]} ^ {input_data[1]} = {output}')
