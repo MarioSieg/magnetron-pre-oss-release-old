@@ -3,43 +3,41 @@ from msml.core import *
 
 class MultilayerPerceptron:
     """A simple multilayer perceptron (feedforward network)."""
+
     def __init__(self, layout: list[int]):
         self.layout = layout
         self.weights = []
         self.biases = []
         self.cache = []
 
-        for i in range(0, len(layout)-1):
-            self.weights.append(Tensor.random([layout[i+1], layout[i]], name=f'Weight {i}'))
-            self.biases.append(Tensor.random([layout[i+1], 1], name=f'Bias {i}'))
+        for i in range(0, len(layout) - 1):
+            self.weights.append(Tensor.random([layout[i + 1], layout[i]], name=f'Weight {i}'))
+            self.biases.append(Tensor.random([layout[i + 1], 1], name=f'Bias {i}'))
 
-    def forward(self, inputs: Tensor) -> Tensor:
+    def forward(self, inputs: Tensor, hard_sig: bool = False) -> Tensor:
         """Forward propagate the input through the network."""
-        prev: Tensor = inputs
+        prev = inputs
         self.cache.clear()
-        self.cache.append(prev.clone())
-        for i in range(0, len(self.weights)):
-            x: Tensor = prev if i == 0 else prev.relu()
-            prev = (self.weights[i] @ x) + self.biases[i]
-            self.cache.append(prev.clone())
-        return prev.sigmoid()
+        self.cache.append(prev)
+        for i in range(0, len(self.layout) - 1):
+            prev = (self.weights[i] @ prev + self.biases[i])
+            prev = prev.hard_sigmoid() if hard_sig else prev.sigmoid()
+            self.cache.append(prev)
+        return prev
 
     def backward(self, outputs: Tensor, targets: Tensor, rate: Tensor):
-        errors: Tensor = outputs - targets
-        gradients: Tensor = outputs.sigmoid(derivative=True)
-        for i in reversed(range(0, len(self.weights))):
-            gradients = gradients * errors * rate
-            self.weights[i] = self.weights[i] + ((gradients @ self.cache[i].transpose().clone()).transpose().clone())
-            self.biases[i] = self.biases[i] + gradients
-            errors = self.weights[i].transpose().clone() @ errors
-            gradients = self.cache[i].sigmoid(derivative=True)
+        delta = (outputs - targets) * outputs.sigmoid(derivative=True)
+        for i in reversed(range(0, len(self.layout) - 1)):
+            self.weights[i] = self.weights[i] - (delta @ self.cache[i].transpose().clone()) * rate
+            self.biases[i] = self.biases[i] - delta * rate
+            if i != 0:
+                delta = (self.weights[i].transpose() @ delta) * self.cache[i].sigmoid(derivative=True)
 
     def train(self, inputs: list[Tensor], targets: list[Tensor], epochs: int, learning_rate: float):
         assert len(inputs) == len(targets)
         rate = Tensor.full([1], fill_value=learning_rate)
-        for _ in range(1, epochs+1):
+        for e in range(1, epochs + 1):
+            if e % 1000 == 0:
+                print(f'Epoch: {e}')
             for i in range(0, len(inputs)):
-                input_tensor: Tensor = inputs[i]
-                target_tensor: Tensor = targets[i]
-                output: Tensor = self.forward(input_tensor)
-                self.backward(output, target_tensor, rate)
+                self.backward(self.forward(inputs[i]), targets[i], rate)
