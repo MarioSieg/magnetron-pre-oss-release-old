@@ -16,10 +16,10 @@
             \
             msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x); \
             \
-            const auto* b_x = msml_tensor_buf_f32(x); \
-            const auto* b_r = msml_tensor_buf_f32(r); \
-            ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(r)); \
-            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+            const auto* b_x = msml_tensor_data_as_f32(x); \
+            const auto* b_r = msml_tensor_data_as_f32(r); \
+            ASSERT_EQ(msml_tensor_num_elements(x), msml_tensor_num_elements(r)); \
+            for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
                 ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), 0.000001); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
             } \
         } \
@@ -38,7 +38,7 @@ impl_test_unary_op(sigmoid, SIGMOID, [](float x) -> float {
     return 1.0f / (1.0f + std::exp(-x));
 })
 impl_test_unary_op(sigmoid_dv, SIGMOID_DV, [](float x) -> float {
-    return -(std::exp(x) / ((std::exp(x)+1.0f)*(std::exp(x)+1.0f)));
+    return x * (1.0f - x);
 })
 
 impl_test_unary_op(hard_sigmoid, HARD_SIGMOID, [](float x) -> float {
@@ -92,12 +92,12 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             \
             msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x, y); \
             \
-            const auto* b_x = msml_tensor_buf_f32(x); \
-            const auto* b_y = msml_tensor_buf_f32(y); \
-            const auto* b_r = msml_tensor_buf_f32(r); \
-            ASSERT_EQ(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
-            ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(y)); \
-            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+            const auto* b_x = msml_tensor_data_as_f32(x); \
+            const auto* b_y = msml_tensor_data_as_f32(y); \
+            const auto* b_r = msml_tensor_data_as_f32(r); \
+            ASSERT_EQ(msml_tensor_num_elements(x), msml_tensor_num_elements(y)); \
+            ASSERT_EQ(msml_tensor_num_elements(r), msml_tensor_num_elements(y)); \
+            for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
         } \
@@ -119,11 +119,11 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
             \
             msml_tensor_t* r = msml_tensor_emit_op_va(ctx, MSML_OP_##op, x, y); \
             \
-            const auto* b_x = msml_tensor_buf_f32(x); \
-            const auto* b_r = msml_tensor_buf_f32(r); \
-            ASSERT_EQ(msml_tensor_buf_len(r), msml_tensor_buf_len(x)); \
-            ASSERT_NE(msml_tensor_buf_len(x), msml_tensor_buf_len(y)); \
-            for (std::int64_t i=0; i < msml_tensor_buf_len(x); ++i) { \
+            const auto* b_x = msml_tensor_data_as_f32(x); \
+            const auto* b_r = msml_tensor_data_as_f32(r); \
+            ASSERT_EQ(msml_tensor_num_elements(r), msml_tensor_num_elements(x)); \
+            ASSERT_NE(msml_tensor_num_elements(x), msml_tensor_num_elements(y)); \
+            for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
         } \
@@ -138,16 +138,49 @@ impl_test_binary_op(div_f32, DIV, /)
 
 #undef impl_test_binary_op
 
+static void msml__inner_matmul_naive(
+    const float* A,
+    const float* B,
+    float* C,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K
+) {
+    for (int64_t i = 0; i < M * N; ++i) C[i] = 0.0f;
+    for (int64_t i = 0; i < M; ++i) {       // Rows of A and C
+        for (int64_t k = 0; k < K; ++k) {   // Columns of A, Rows of B
+            float a_ik = A[i * K + k];      // Access A[i][k]
+            for (int64_t j = 0; j < N; ++j) { // Columns of B and C
+                C[i * N + j] += a_ik * B[k * N + j]; // C[i][j] += A[i][k] * B[k][j]
+            }
+        }
+    }
+}
+
+TEST(compute_cpu, matmul_inner_naive) {
+    static constexpr  float A[6] = {
+        1.0f, 2.0f,
+        3.0f, 4.0f,
+        5.0f, 6.0f
+    };
+    static constexpr float B[2] = {0.5f, -1.0f};
+    float C[3];
+    msml__inner_matmul_naive(A, B, C, 3, 1, 2);
+    ASSERT_FLOAT_EQ(C[0], -1.5f);
+    ASSERT_FLOAT_EQ(C[1], -2.5f);
+    ASSERT_FLOAT_EQ(C[2], -3.5f);
+}
+
 TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
     static constexpr float A_values[2][2] = {
-        {1.0f, 2.0f},
-        {3.0f, 4.0f}
+        {1.6354027, -1.3607267},
+        {1.8556793, 1.1689897}
     };
     static constexpr float B_values[2][2] = {
-        {5.0f, 6.0f},
-        {7.0f, 8.0f}
+        {-0.6105532, 0.10695228},
+        {-1.0069681, -0.40955952}
     };
 
     // Manually set known values for A and B
@@ -160,78 +193,51 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     // Create result tensor R for matrix multiplication
     msml_tensor_t* params[2] = {A, B};
     msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2, nullptr);
+    msml_tensor_print(R, true, true);
+    auto* buf = msml_tensor_data_as_f32(R);
 
-    auto* buf = msml_tensor_buf_f32(R);
-
-    // Manually compute the expected result of Rᵀ = A x Bᵀ
-    static constexpr float expected[2][2] = {
-        {17.0f,  23.0f},
-        {39.0f,  53.0f}
+    static constexpr float expected[2*2] = {
+        0.3717081,   0.7322086,
+        -2.3101263, -0.28030172
     };
 
-    for (int i = 0; i < 2; ++i) {
-        for (int j = 0; j < 2; ++j) {
-            ASSERT_FLOAT_EQ(buf[i*2 + j], expected[j][i]); /* We need to transpose the expected matrix Rᵀ = A x Bᵀ as Rᵀ is transposed too */
-        }
+    for (int i = 0; i < 2*2; ++i) {
+        ASSERT_FLOAT_EQ(buf[i], expected[i]);
     }
 
     msml_ctx_destroy(ctx);
 }
 
-#if 0
-TEST(compute_cpu, matmul_f32) {
-    static constexpr std::size_t M = 4, N = 16, K = 36;
-    static constexpr float A_mtx[M * K] = {
-        2.0f, 9.0f, 2.0f, 10.0f, 6.0f, 4.0f, 3.0f, 6.0f, 3.0f, 6.0f, 9.0f, 7.0f, 8.0f, 8.0f, 3.0f, 3.0f, 10.0f, 5.0f, 2.0f, 10.0f, 7.0f, 10.0f, 9.0f, 3.0f, 6.0f, 6.0f, 5.0f, 10.0f, 2.0f, 3.0f, 6.0f, 1.0f, 9.0f, 4.0f, 10.0f, 4.0f,
-        10.0f, 7.0f, 8.0f, 10.0f, 10.0f, 8.0f, 7.0f, 10.0f, 4.0f, 6.0f, 8.0f, 7.0f, 7.0f, 6.0f, 9.0f, 3.0f, 6.0f, 5.0f, 5.0f, 2.0f, 7.0f, 2.0f, 7.0f, 4.0f, 4.0f, 6.0f, 6.0f, 4.0f, 3.0f, 9.0f, 3.0f, 6.0f, 4.0f, 7.0f, 2.0f, 9.0f,
-        7.0f, 3.0f, 2.0f, 5.0f, 7.0f, 3.0f, 10.0f, 2.0f, 6.0f, 1.0f, 4.0f, 7.0f, 5.0f, 10.0f, 3.0f, 10.0f, 4.0f, 5.0f, 5.0f, 1.0f, 6.0f, 10.0f, 7.0f, 4.0f, 5.0f, 3.0f, 9.0f, 9.0f, 8.0f, 6.0f, 9.0f, 2.0f, 3.0f, 6.0f, 8.0f, 5.0f,
-        5.0f, 5.0f, 5.0f, 5.0f, 3.0f, 10.0f, 4.0f, 1.0f, 8.0f, 8.0f, 9.0f, 8.0f, 4.0f, 1.0f, 4.0f, 9.0f, 3.0f, 6.0f, 3.0f, 1.0f, 4.0f, 8.0f, 3.0f, 10.0f, 8.0f, 6.0f, 4.0f, 5.0f, 4.0f, 3.0f, 2.0f, 2.0f, 4.0f, 3.0f, 6.0f, 4.0f,
-    };
-    static constexpr float B_mtx[N * K] = {
-        9.0f, 7.0f, 1.0f, 3.0f, 5.0f, 9.0f, 7.0f, 6.0f, 1.0f, 10.0f, 1.0f, 1.0f, 7.0f, 2.0f, 4.0f, 9.0f, 10.0f, 4.0f, 5.0f, 5.0f, 7.0f, 1.0f, 7.0f, 7.0f, 2.0f, 9.0f, 5.0f, 10.0f, 7.0f, 4.0f, 8.0f, 9.0f, 9.0f, 3.0f, 10.0f, 2.0f,
-        4.0f, 6.0f, 10.0f, 9.0f, 5.0f, 1.0f, 8.0f, 7.0f, 4.0f, 7.0f, 2.0f, 6.0f, 5.0f, 3.0f, 1.0f, 10.0f, 8.0f, 4.0f, 8.0f, 3.0f, 7.0f, 1.0f, 2.0f, 7.0f, 6.0f, 8.0f, 6.0f, 5.0f, 2.0f, 3.0f, 1.0f, 1.0f, 2.0f, 5.0f, 7.0f, 1.0f,
-        8.0f, 2.0f, 8.0f, 8.0f, 8.0f, 8.0f, 4.0f, 4.0f, 6.0f, 10.0f, 10.0f, 9.0f, 2.0f, 9.0f, 3.0f, 7.0f, 7.0f, 1.0f, 4.0f, 9.0f, 1.0f, 2.0f, 3.0f, 6.0f, 1.0f, 10.0f, 5.0f, 8.0f, 9.0f, 4.0f, 6.0f, 2.0f, 3.0f, 1.0f, 2.0f, 7.0f,
-        5.0f, 1.0f, 7.0f, 2.0f, 9.0f, 10.0f, 9.0f, 5.0f, 2.0f, 5.0f, 4.0f, 10.0f, 9.0f, 9.0f, 1.0f, 9.0f, 8.0f, 8.0f, 9.0f, 4.0f, 9.0f, 4.0f, 8.0f, 2.0f, 1.0f, 8.0f, 4.0f, 5.0f, 10.0f, 7.0f, 6.0f, 2.0f, 1.0f, 10.0f, 10.0f, 7.0f,
-        9.0f, 4.0f, 5.0f, 9.0f, 5.0f, 10.0f, 10.0f, 3.0f, 6.0f, 6.0f, 4.0f, 4.0f, 4.0f, 8.0f, 5.0f, 4.0f, 9.0f, 1.0f, 9.0f, 9.0f, 1.0f, 7.0f, 9.0f, 2.0f, 10.0f, 9.0f, 10.0f, 8.0f, 3.0f, 3.0f, 9.0f, 3.0f, 9.0f, 10.0f, 1.0f, 8.0f,
-        9.0f, 2.0f, 6.0f, 9.0f, 7.0f, 2.0f, 3.0f, 5.0f, 3.0f, 6.0f, 9.0f, 7.0f, 3.0f, 7.0f, 6.0f, 4.0f, 10.0f, 3.0f, 5.0f, 7.0f, 2.0f, 9.0f, 3.0f, 2.0f, 2.0f, 10.0f, 8.0f, 7.0f, 3.0f, 10.0f, 6.0f, 3.0f, 1.0f, 1.0f, 4.0f, 10.0f,
-        2.0f, 9.0f, 2.0f, 10.0f, 6.0f, 4.0f, 3.0f, 6.0f, 3.0f, 6.0f, 9.0f, 7.0f, 8.0f, 8.0f, 3.0f, 3.0f, 10.0f, 5.0f, 2.0f, 10.0f, 7.0f, 10.0f, 9.0f, 3.0f, 6.0f, 6.0f, 5.0f, 10.0f, 2.0f, 3.0f, 6.0f, 1.0f, 9.0f, 4.0f, 10.0f, 4.0f,
-        10.0f, 7.0f, 8.0f, 10.0f, 10.0f, 8.0f, 7.0f, 10.0f, 4.0f, 6.0f, 8.0f, 7.0f, 7.0f, 6.0f, 9.0f, 3.0f, 6.0f, 5.0f, 5.0f, 2.0f, 7.0f, 2.0f, 7.0f, 4.0f, 4.0f, 6.0f, 6.0f, 4.0f, 3.0f, 9.0f, 3.0f, 6.0f, 4.0f, 7.0f, 2.0f, 9.0f,
-        7.0f, 3.0f, 2.0f, 5.0f, 7.0f, 3.0f, 10.0f, 2.0f, 6.0f, 1.0f, 4.0f, 7.0f, 5.0f, 10.0f, 3.0f, 10.0f, 4.0f, 5.0f, 5.0f, 1.0f, 6.0f, 10.0f, 7.0f, 4.0f, 5.0f, 3.0f, 9.0f, 9.0f, 8.0f, 6.0f, 9.0f, 2.0f, 3.0f, 6.0f, 8.0f, 5.0f,
-        5.0f, 5.0f, 5.0f, 5.0f, 3.0f, 10.0f, 4.0f, 1.0f, 8.0f, 8.0f, 9.0f, 8.0f, 4.0f, 1.0f, 4.0f, 9.0f, 3.0f, 6.0f, 3.0f, 1.0f, 4.0f, 8.0f, 3.0f, 10.0f, 8.0f, 6.0f, 4.0f, 5.0f, 4.0f, 3.0f, 2.0f, 2.0f, 4.0f, 3.0f, 6.0f, 4.0f,
-        6.0f, 2.0f, 3.0f, 3.0f, 3.0f, 7.0f, 5.0f, 1.0f, 8.0f, 1.0f, 4.0f, 5.0f, 1.0f, 1.0f, 6.0f, 4.0f, 2.0f, 1.0f, 7.0f, 8.0f, 6.0f, 1.0f, 1.0f, 5.0f, 6.0f, 5.0f, 10.0f, 6.0f, 7.0f, 5.0f, 9.0f, 3.0f, 2.0f, 7.0f, 9.0f, 4.0f,
-        2.0f, 5.0f, 9.0f, 5.0f, 10.0f, 3.0f, 1.0f, 8.0f, 1.0f, 7.0f, 1.0f, 8.0f, 1.0f, 6.0f, 7.0f, 8.0f, 4.0f, 9.0f, 5.0f, 10.0f, 3.0f, 7.0f, 6.0f, 8.0f, 8.0f, 5.0f, 6.0f, 8.0f, 10.0f, 9.0f, 4.0f, 1.0f, 3.0f, 3.0f, 4.0f, 7.0f,
-        8.0f, 2.0f, 6.0f, 6.0f, 5.0f, 1.0f, 3.0f, 7.0f, 1.0f, 7.0f, 2.0f, 2.0f, 2.0f, 8.0f, 4.0f, 1.0f, 1.0f, 5.0f, 9.0f, 4.0f, 1.0f, 2.0f, 3.0f, 10.0f, 1.0f, 4.0f, 9.0f, 9.0f, 6.0f, 8.0f, 8.0f, 1.0f, 9.0f, 10.0f, 4.0f, 1.0f,
-        8.0f, 5.0f, 8.0f, 9.0f, 4.0f, 8.0f, 2.0f, 1.0f, 1.0f, 9.0f, 4.0f, 5.0f, 6.0f, 1.0f, 2.0f, 5.0f, 6.0f, 7.0f, 3.0f, 1.0f, 4.0f, 6.0f, 7.0f, 7.0f, 7.0f, 8.0f, 7.0f, 8.0f, 8.0f, 2.0f, 10.0f, 2.0f, 7.0f, 3.0f, 8.0f, 3.0f,
-        8.0f, 7.0f, 6.0f, 2.0f, 4.0f, 10.0f, 10.0f, 6.0f, 10.0f, 3.0f, 7.0f, 6.0f, 4.0f, 3.0f, 5.0f, 5.0f, 5.0f, 3.0f, 8.0f, 10.0f, 3.0f, 4.0f, 8.0f, 4.0f, 2.0f, 6.0f, 8.0f, 9.0f, 6.0f, 9.0f, 4.0f, 3.0f, 5.0f, 2.0f, 2.0f, 6.0f,
-        10.0f, 6.0f, 2.0f, 1.0f, 7.0f, 5.0f, 6.0f, 4.0f, 1.0f, 9.0f, 10.0f, 2.0f, 4.0f, 5.0f, 8.0f, 5.0f, 7.0f, 4.0f, 7.0f, 6.0f, 3.0f, 9.0f, 2.0f, 1.0f, 4.0f, 2.0f, 6.0f, 6.0f, 3.0f, 3.0f, 2.0f, 8.0f, 5.0f, 9.0f, 3.0f, 4.0f,
-    };
-    static constexpr float result_mtx[M * N] = {
-        1224.0f, 1023.0f, 1158.0f,1259.0f,1359.0f,1194.0f,1535.0f,1247.0f,1185.0f,1029.0f,889.0f,1182.0f,955.0f,1179.0f,1147.0f,1048.0f,
-        1216.0f, 1087.0f, 1239.0f,1361.0f,1392.0f,1260.0f,1247.0f,1563.0f,1167.0f,1052.0f,942.0f,1214.0f,1045.0f,1134.0f,1264.0f,1126.0f,
-        1125.0f, 966.0f, 1079.0f,1333.0f,1287.0f,1101.0f,1185.0f,1167.0f,1368.0f,990.0f,967.0f,1121.0f,971.0f,1086.0f,1130.0f,980.0f,
-        999.0f, 902.0f, 1020.0f,1056.0f,1076.0f,929.0f,1029.0f,1052.0f,990.0f,1108.0f,823.0f,989.0f,759.0f,1041.0f,1003.0f,870.0f
-    };
-
+TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
-    msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, K, M);
-    msml_tensor_copy_buffer_from(A, A_mtx, sizeof(A_mtx));
-    msml_tensor_t* B = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, K, N);
-    msml_tensor_copy_buffer_from(B, B_mtx, sizeof(B_mtx));
-    msml_tensor_t* params[2] = {A, B};
-    msml_tensor_t* R = msml_tensor_emit_op(MSML_OP_MATMUL, params, 2);
-    ASSERT_NE(R, nullptr);
-    msml_tensor_t* RR = msml_tensor_clone(msml_tensor_transpose(R));
-    msml_tensor_evaluate(RR, MSML_GRAPH_EVAL_ORDER_FORWARD);
-    msml_tensor_print(RR, true);
+    static constexpr  float AV[3*2] = {
+        1.0f, 2.0f,
+        3.0f, 4.0f,
+        5.0f, 6.0f
+    };
+    static constexpr float BV[2] = {0.5f, -1.0f};
 
-    auto* buf = msml_tensor_buf_f32(RR);
-    for (std::size_t i = 0; i < M * N; ++i) {
-        ASSERT_FLOAT_EQ(buf[i], result_mtx[i]);
-    }
+    // Manually set known values for A and B
+    msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 3, 2);
+    msml_tensor_copy_buffer_from(A, AV, sizeof(AV));
+
+    msml_tensor_t* B = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 2);
+    msml_tensor_copy_buffer_from(B, BV, sizeof(BV));
+
+    // Create result tensor R for matrix multiplication
+    msml_tensor_t* params[2] = {A, B};
+    msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2, nullptr);
+    //ASSERT_EQ(msml_tensor_rank(R), 1);
+    ASSERT_EQ(msml_tensor_shape(R)[0], 3);
+    const auto* C = msml_tensor_data_as_f32(R);
+    //msml__inner_matmul_naive(A, B, C, 3, 1, 2);
+    ASSERT_FLOAT_EQ(C[0], -1.5f);
+    ASSERT_FLOAT_EQ(C[1], -2.5f);
+    ASSERT_FLOAT_EQ(C[2], -3.5f);
+
     msml_ctx_destroy(ctx);
 }
-#endif
 
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);

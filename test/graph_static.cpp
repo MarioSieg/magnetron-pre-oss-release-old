@@ -17,8 +17,8 @@ TEST(graph_static, simple) {
     msml_tensor_set_name(X, "X");
 
     auto* WX = msml_tensor_emit_op_va(ctx, MSML_OP_MUL, W, X);
-    auto* buf = msml_tensor_buf_f32(WX);
-    for (std::int64_t i=0; i < msml_tensor_buf_len(WX); ++i) { // op must already be executed
+    auto* buf = msml_tensor_data_as_f32(WX);
+    for (std::int64_t i=0; i < msml_tensor_num_elements(WX); ++i) { // op must already be executed
         ASSERT_EQ(buf[i], 0.0f);
     }
 
@@ -27,14 +27,14 @@ TEST(graph_static, simple) {
     msml_tensor_set_name(B, "B");
 
     auto* WXB = msml_tensor_emit_op_va(ctx, MSML_OP_ADD, WX, B);
-    buf = msml_tensor_buf_f32(WXB);
-    for (std::int64_t i=0; i < msml_tensor_buf_len(WXB); ++i) { // op must already be executed
+    buf = msml_tensor_data_as_f32(WXB);
+    for (std::int64_t i=0; i < msml_tensor_num_elements(WXB); ++i) { // op must already be executed
         ASSERT_EQ(buf[i], 0.0f);
     }
 
     msml_tensor_evaluate_static_graph(WXB, MSML_GRAPH_EVAL_ORDER_FORWARD);
 
-    for (std::int64_t i=0; i < msml_tensor_buf_len(WXB); ++i) { // op must already be executed
+    for (std::int64_t i=0; i < msml_tensor_num_elements(WXB); ++i) { // op must already be executed
         ASSERT_EQ(buf[i], 0.6f*2.11f + 0.1f);
     }
 
