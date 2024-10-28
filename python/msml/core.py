@@ -323,6 +323,9 @@ class Tensor:
         assert self.dtype == DType.F32, 'Invalid data type'
         return ffi.unpack(C.msml_tensor_data_as_f32(self.tensor), self.num_elements)
 
+    def unpack_scalar(self) -> float:
+        return self.data_as_f32()[0]
+
     @property
     def data_size(self) -> int:
         """Returns the size of the tensor buffer in bytes."""
@@ -475,11 +478,11 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def with_data(shape: list[int], data: list[float], dtype: DType = DType.F32, ctx: Context = Context.G,
-                  name: str | None = None) -> 'Tensor':
+    def const(data: list[float], shape: list[int] | None = None, dtype: DType = DType.F32, ctx: Context = Context.G,
+              name: str | None = None) -> 'Tensor':
         """Creates a tensor with the given data."""
         tensor = Tensor(None)
-        tensor._new(ctx, shape, dtype, name)
+        tensor._new(ctx, shape if shape is not None else [len(data)], dtype, name)
         size: int = len(data) * ffi.sizeof('float')
         C.msml_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(data)}]', data), size)
         return tensor

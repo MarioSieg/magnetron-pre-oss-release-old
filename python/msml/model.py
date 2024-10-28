@@ -6,10 +6,8 @@ from msml.core import *
 def mse(y: Tensor, y_hat: Tensor) -> float:
     """Calculate the Mean Squared Error between predictions and targets."""
     e = y - y_hat
-    e_sq = e * e
-    mse_value = e_sq.mean()
-    assert mse_value.shape[0] == 1
-    return mse_value.data_as_f32()[0]
+    mse_value = (e * e).mean()
+    return mse_value.unpack_scalar()
 
 
 class Linear:
