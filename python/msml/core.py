@@ -257,7 +257,7 @@ class Tensor:
         self.name = f'Tensor {self.shape}' if name is None else name
 
     @staticmethod
-    def _new_op(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
+    def operator(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
         c_para: ffi.CData
         c_para_ptr: ffi.CData = ffi.NULL
         if params is not None:
@@ -523,15 +523,15 @@ class Tensor:
 
     def clone(self) -> 'Tensor':
         """Create new tensor with same shape and data as input. (deep clone)"""
-        return self._new_op(Op.CLONE, None, self)
+        return self.operator(Op.CLONE, None, self)
 
     def view(self) -> 'Tensor':
         """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
-        return self._new_op(Op.VIEW, None, self)
+        return self.operator(Op.VIEW, None, self)
 
     def transpose(self) -> 'Tensor':
         """Transposes the tensor."""
-        return self._new_op(Op.TRANSPOSE, None, self)
+        return self.operator(Op.TRANSPOSE, None, self)
 
     def permute(self, axes: list[int]) -> 'Tensor':
         """Permutes the tensor according to the given axes."""
@@ -540,59 +540,59 @@ class Tensor:
             assert 0 <= axes[i] < MAX_DIMS, f'Invalid axis: {axes[i]}'
             for j in range(i + 1, MAX_DIMS):  # All axes must be unique
                 assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
-        return self._new_op(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
+        return self.operator(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
 
     def step(self) -> 'Tensor':
         """Applies the heaviside step function to the tensor."""
-        return self._new_op(Op.STEP, None, self)
+        return self.operator(Op.STEP, None, self)
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """Applies the softmax function to the tensor."""
-        return self._new_op(Op.SOFTMAX_DV if derivative else Op.SOFTMAX, None, self)
+        return self.operator(Op.SOFTMAX_DV if derivative else Op.SOFTMAX, None, self)
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """Applies the sigmoid function to the tensor."""
-        return self._new_op(Op.SIGMOID_DV if derivative else Op.SIGMOID, None, self)
+        return self.operator(Op.SIGMOID_DV if derivative else Op.SIGMOID, None, self)
 
     def hard_sigmoid(self) -> 'Tensor':
         """Applies the hard sigmoid function to the tensor."""
-        return self._new_op(Op.HARD_SIGMOID, None, self)
+        return self.operator(Op.HARD_SIGMOID, None, self)
 
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
-        return self._new_op(Op.SILU_DV if derivative else Op.SILU, None, self)
+        return self.operator(Op.SILU_DV if derivative else Op.SILU, None, self)
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """Applies the hyperbolic tangent function to the tensor."""
-        return self._new_op(Op.TANH_DV if derivative else Op.TANH, None, self)
+        return self.operator(Op.TANH_DV if derivative else Op.TANH, None, self)
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
-        return self._new_op(Op.RELU_DV if derivative else Op.RELU, None, self)
+        return self.operator(Op.RELU_DV if derivative else Op.RELU, None, self)
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""
-        return self._new_op(Op.GELU_DV if derivative else Op.GELU, None, self)
+        return self.operator(Op.GELU_DV if derivative else Op.GELU, None, self)
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
         """Adds two tensors element-wise."""
-        return self._new_op(Op.ADD, None, self, other)
+        return self.operator(Op.ADD, None, self, other)
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
         """Subtracts two tensors element-wise."""
-        return self._new_op(Op.SUB, None, self, other)
+        return self.operator(Op.SUB, None, self, other)
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors element-wise. (Hadamard product)"""
-        return self._new_op(Op.MUL, None, self, other)
+        return self.operator(Op.MUL, None, self, other)
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
         """Divides two tensors element-wise."""
-        return self._new_op(Op.DIV, None, self, other)
+        return self.operator(Op.DIV, None, self, other)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors using matrix multiplication."""
-        return self._new_op(Op.MATMUL, None, self, other)
+        return self.operator(Op.MATMUL, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:
         """Checks if two tensors are equal."""
