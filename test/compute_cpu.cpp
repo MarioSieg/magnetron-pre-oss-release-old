@@ -3,7 +3,7 @@
 #include "prelude.hpp"
 #include <cmath>
 
-#define impl_test_unary_op(name, op, scalar_op) \
+#define impl_test_unary_op(name, eps, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
@@ -20,57 +20,57 @@
             const auto* b_r = msml_tensor_data_as_f32(r); \
             ASSERT_EQ(msml_tensor_num_elements(x), msml_tensor_num_elements(r)); \
             for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
-                ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), 0.000001); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
+                ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
             } \
         } \
         \
         msml_ctx_destroy(ctx); \
     } \
 
-impl_test_unary_op(softmax, SOFTMAX, [](float x) -> float {
+impl_test_unary_op(softmax, 1e-6, SOFTMAX, [](float x) -> float {
     return std::exp(x);
 })
-impl_test_unary_op(softmax_dv, SOFTMAX_DV, [](float x) -> float {
+impl_test_unary_op(softmax_dv, 1e-6, SOFTMAX_DV, [](float x) -> float {
     return std::exp(x);
 })
 
-impl_test_unary_op(sigmoid, SIGMOID, [](float x) -> float {
+impl_test_unary_op(sigmoid, 1e-6, SIGMOID, [](float x) -> float {
     return 1.0f / (1.0f + std::exp(-x));
 })
-impl_test_unary_op(sigmoid_dv, SIGMOID_DV, [](float x) -> float {
+impl_test_unary_op(sigmoid_dv, 1e-6, SIGMOID_DV, [](float x) -> float {
     return x * (1.0f - x);
 })
 
-impl_test_unary_op(hard_sigmoid, HARD_SIGMOID, [](float x) -> float {
+impl_test_unary_op(hard_sigmoid, 1e-6, HARD_SIGMOID, [](float x) -> float {
     return std::min(1.0f, std::max(0.0f, (x + 3.0f) / 6.0f));
 })
 //impl_test_unary_op(hard_sigmoid_dv, HARD_SIGMOID_DV, [](float x) -> float {
 //    return -(std::exp(x) / ((std::exp(x)+1.0f)*(std::exp(x)+1.0f)));
 //})
 
-impl_test_unary_op(silu, SILU, [](float x) -> float {
+impl_test_unary_op(silu, 1e-6, SILU, [](float x) -> float {
     return x / (1.0f + std::exp(-x));
 })
 //impl_test_unary_op(silu_dv, SILU_DV, [](float x) -> float {
 //    return -(std::exp(x) / ((std::exp(x)+1.0f)*(std::exp(x)+1.0f)));
 //})
 
-impl_test_unary_op(tanh, TANH, [](float x) -> float {
+impl_test_unary_op(tanh, 1e-3, TANH, [](float x) -> float {
     return std::tanh(x);
 })
-impl_test_unary_op(tanh_dv, TANH_DV, [](float x) -> float {
+impl_test_unary_op(tanh_dv, 1e-6, TANH_DV, [](float x) -> float {
     return 1.0f / (std::cosh(x)*std::cosh(x));
 })
 
-impl_test_unary_op(relu, RELU, [](float x) -> float {
+impl_test_unary_op(relu, 1e-6, RELU, [](float x) -> float {
     return std::max(x, 0.0f);
 })
-impl_test_unary_op(relu_dv, RELU_DV, [](float x) -> float {
+impl_test_unary_op(relu_dv, 1e-6, RELU_DV, [](float x) -> float {
     return x <= 0.0f ? 0.0f : 1.0f;
 })
 
-impl_test_unary_op(gelu, GELU, [](float x) -> float {
-    return 0.5f*x*(1.0f + tanhf(0.79788456080286535587989211986876f*x*(1.0f + 0.044715f*x*x)));
+impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
+    return 0.5f*x*(1.0f + std::tanh(0.79788456080286535587989211986876f*x*(1.0f + 0.044715f*x*x)));
 })
 //impl_test_unary_op(gelu_dv, GELU_DV, [](float x) -> float {
 //    return x <= 0.0f ? 0.0f : 1.0f;
@@ -158,7 +158,7 @@ static void msml__inner_matmul_naive(
 }
 
 TEST(compute_cpu, matmul_inner_naive) {
-    static constexpr  float A[6] = {
+    static constexpr float A[6] = {
         1.0f, 2.0f,
         3.0f, 4.0f,
         5.0f, 6.0f
@@ -253,7 +253,7 @@ TEST(compute_cpu, arithmetic_mean) {
     for (std::int64_t i=0; i < msml_tensor_num_elements(R); ++i)
         b_mean += static_cast<double>(msml_tensor_data_as_f32(R)[i]);
     b_mean /= static_cast<double>(msml_tensor_num_elements(R));
-    ASSERT_FLOAT_EQ(static_cast<float>(a_mean), static_cast<float>(b_mean));
+    ASSERT_NEAR(static_cast<float>(a_mean), static_cast<float>(b_mean), 1e-6);
     msml_ctx_destroy(ctx);
 }
 

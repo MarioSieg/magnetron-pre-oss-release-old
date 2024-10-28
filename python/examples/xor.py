@@ -1,3 +1,5 @@
+# (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
+
 from msml.core import *
 from msml.models import SequentialModel, DenseLayer
 import matplotlib.pyplot as plt
@@ -7,18 +9,18 @@ LEARNING_RATE: float = 0.8
 
 # Inputs
 inputs = [
-    Tensor.const([0.0, 0.0], name='Input 1'),
-    Tensor.const([0.0, 1.0], name='Input 2'),
-    Tensor.const([1.0, 0.0], name='Input 3'),
-    Tensor.const([1.0, 1.0], name='Input 4')
+    Tensor.const([0.0, 0.0]),
+    Tensor.const([0.0, 1.0]),
+    Tensor.const([1.0, 0.0]),
+    Tensor.const([1.0, 1.0])
 ]
 
 # Targets
 targets = [
-    Tensor.const([0.0], name='Target 1'),
-    Tensor.const([1.0], name='Target 2'),
-    Tensor.const([1.0], name='Target 3'),
-    Tensor.const([0.0], name='Target 4')
+    Tensor.const([0.0]),
+    Tensor.const([1.0]),
+    Tensor.const([1.0]),
+    Tensor.const([0.0])
 ]
 
 mlp = SequentialModel([

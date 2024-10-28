@@ -34,8 +34,7 @@
 #   include <arm_neon.h>
 #   include <arm_acle.h>
 #elif defined(__x86_64__) || defined(_M_X64)
-#   include <nmmintrin.h>
-#   include <wmmintrin.h>
+#   include <immintrin.h>
 #   ifndef _MSC_VER
 #       include <cpuid.h>
 #   endif
@@ -1989,8 +1988,8 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
         const float32x4_t b = msml__simd_expf(a);
         const float32x4_t c = vaddq_f32(one, b);
         float32x4_t inv = vrecpeq_f32(c);
-        inv = vmulq_f32(vrecpsq_f32(c, inv), inv);
-        inv = vmulq_f32(vrecpsq_f32(c, inv), inv);
+        inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
+        inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
         return vaddq_f32(neg_one, vmulq_f32(two, inv));
     }
 #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
@@ -2023,7 +2022,7 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
         const __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
         const __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
         const __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
-        const __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n),_mm256_set1_ps(126), _CMP_GT_OQ));
+        const __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(126), _CMP_GT_OQ));
         const __m256 u = _mm256_mul_ps(b, b);
         const __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
         if (!_mm256_movemask_ps(_mm256_castsi256_ps(c))) return _mm256_fmadd_ps(j, k, k);
@@ -2043,7 +2042,17 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
     }
 
     static __m256 msml__simd_tanh(__m256 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-
+        const __m256 one = _mm256_set1_ps(1.0f);
+        const __m256 neg_one = _mm256_set1_ps(-1.0f);
+        const __m256 two = _mm256_set1_ps(2.0f);
+        const __m256 neg_two = _mm256_set1_ps(-2.0f);
+        const __m256 a = _mm256_mul_ps(neg_two, x);
+        const __m256 b = msml__simd_expf(a);
+        const __m256 c = _mm256_add_ps(one, b);
+        __m256 inv = _mm256_rcp_ps(c);
+        inv = _mm256_mul_ps(_mm256_rcp_ps(c), inv); /* Newton–Raphson method */
+        inv = _mm256_mul_ps(_mm256_rcp_ps(c), inv); /* Newton–Raphson method */
+        return _mm256_fmadd_ps(two, inv, neg_one);
     }
 #elif MSML_INTRIN && defined(__SSE2__)
     static __m128 msml__simd_expf(const __m128 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
@@ -2072,7 +2081,17 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
     }
 
     static __m128 msml__simd_tanh(__m128 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-
+        const __m128 one = _mm_set1_ps(1.0f);
+        const __m128 neg_one = _mm_set1_ps(-1.0f);
+        const __m128 two = _mm_set1_ps(2.0f);
+        const __m128 neg_two = _mm_set1_ps(-2.0f);
+        const __m128 a = _mm_mul_ps(neg_two, x);
+        const __m128 b = msml__simd_expf(a);
+        const __m128 c = _mm_add_ps(one, b);
+        __m128 inv = _mm_rcp_ps(c);
+        inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        return _mm_add_ps(neg_one, _mm_mul_ps(two, inv));
     }
 #endif
 
@@ -2445,11 +2464,17 @@ static void MSML_HOTPROC msml__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x
             vst1q_f32(o+i, msml__simd_tanh(vld1q_f32(x+i)));
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        #error TODO
+        for (; i+15 < n; i += 16) {
+            _mm512_storeu_ps(o+i, msml__simd_tanh(_mm512_loadu_ps(x+i)));
+        }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
-        #error TODO
+        for (; i+7 < n; i += 8) {
+            _mm256_storeu_ps(o+i, msml__simd_tanh(_mm256_loadu_ps(x+i)));
+        }
     #elif MSML_INTRIN && defined(__SSE2__)
-        #error TODO
+        for (; i+3 < n; i += 4) {
+            _mm_storeu_ps(o+i, msml__simd_tanh(_mm_loadu_ps(x+i)));
+        }
     #endif
     for (; i < n; ++i) {
         o[i] = tanhf(x[i]);
@@ -2508,9 +2533,29 @@ static void MSML_HOTPROC msml__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
         #error TODO
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
-        #error TODO
+        const __m256 half = _mm256_set1_ps(0.5f);
+        const __m256 one = _mm256_set1_ps(1.0f);
+        const __m256 coeff1 = _mm256_set1_ps(0.79788456080286535587989211986876f);
+        const __m256 coeff2 = _mm256_set1_ps(MSML__GELU_COEFF);
+        for (; i+7 < n; i += 8) {
+            const __m256 xx = _mm256_loadu_ps(x+i);
+            const __m256 a = _mm256_add_ps(one, _mm256_mul_ps(coeff2, _mm256_mul_ps(xx, xx)));
+            const __m256 b = _mm256_add_ps(one, msml__simd_tanh(_mm256_mul_ps(coeff1, _mm256_mul_ps(xx, a))));
+            const __m256 c = _mm256_mul_ps(half, _mm256_mul_ps(xx, b));
+            _mm256_storeu_ps(o+i, c);
+        }
     #elif MSML_INTRIN && defined(__SSE2__)
-        #error TODO
+        const __m128 half = _mm_set1_ps(0.5f);
+        const __m128 one = _mm_set1_ps(1.0f);
+        const __m128 coeff1 = _mm_set1_ps(0.79788456080286535587989211986876f);
+        const __m128 coeff2 = _mm_set1_ps(MSML__GELU_COEFF);
+        for (; i+3 < n; i += 4) {
+            const __m128 xx = _mm_loadu_ps(x+i);
+            const __m128 a = _mm_add_ps(one, _mm_mul_ps(coeff2, _mm_mul_ps(xx, xx)));
+            const __m128 b = _mm_add_ps(one, msml__simd_tanh(_mm_mul_ps(coeff1, _mm_mul_ps(xx, a))));
+            const __m128 c = _mm_mul_ps(half, _mm_mul_ps(xx, b));
+            _mm_storeu_ps(o+i, c);
+        }
     #endif
     for (; i < n; ++i) {
         o[i] = 0.5f*x[i]*(1.0f + tanhf(0.79788456080286535587989211986876f*x[i]*(1.0f + MSML__GELU_COEFF*x[i]*x[i])));
@@ -3434,11 +3479,11 @@ static void msml__system_host_info_query(msml_ctx_t* ctx) {
 }
 
 void msml_tensor_save(const msml_tensor_t* t, const char* file) {
-    panic("NYI");
+    msml__panic("NYI");
 }
 
 msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file) {
-    panic("NYI");
+    msml__panic("NYI");
     msml_tensor_t* t = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 1);
     t->flags |= MSML_TFLAG_FROM_FS;
     return t;

@@ -33,7 +33,7 @@ if (NOT WIN32)
         -std=gnu99
     )
     if (NOT APPLE) # TODO: IF x86-64
-        target_compile_options(msml PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)
+        target_compile_options(msml PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul -march=native)
     endif()
     # Enable optimizations only for release builds
     if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
