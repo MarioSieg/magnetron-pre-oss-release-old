@@ -2,9 +2,12 @@
 
 import numpy as np
 
-A = np.random.rand(3, 4, 2)
-print(A)
-exit(0)
-B = np.random.rand(2)
-print(B)
+A = np.array([
+    [1.0, 2.0],
+    [3.0, 4.0],
+    [5.0, 6.0]
+])
+B = np.array([
+    0.5, -1.0
+])
 print(np.matmul(A, B))

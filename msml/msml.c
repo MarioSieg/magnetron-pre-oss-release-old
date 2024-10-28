@@ -2799,22 +2799,29 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
     msml__load_local_storage_group(x, x_s, strides)
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
-    for (int64_t i3=0; i3 < r_d3; ++i3) {
-        for (int64_t i2=0; i2 < r_d2; ++i2) {
-            for (int64_t i0=0; i0 < r_d0; ++i0) {  // Row
-                for (int64_t i1=0; i1 < r_d1; ++i1) {  // Columns
-                    double sum = 0.0;
-                    for (int64_t k=0; k < x_d1; ++k) {  // Shared dimension
-                        const float* const p_x = (const float*)(b_x + k*x_s0 + i0*x_s1 + i2*x_s2 + i3*x_s3);
-                        const float* const p_y = (const float*)(b_y + i1*y_s0 + k*y_s1 + i2*y_s2 + i3*y_s3);
-                        msml__bnd_chk(p_x, b_x, msml_tensor_data_size(x));
-                        msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y));
-                        sum += (double)*p_x * (double)*p_y;
-                    }
-                    float* const p_r = (float*)(b_r + i1*r_s0 + i0*r_s1 + i2*r_s2 + i3*r_s3);
-                    msml__bnd_chk(p_r, b_r, msml_tensor_data_size(r));
-                    *p_r = (float)sum;
-                }
+    msml__assert2(x_d2 == 1 && x_d3 == 1);
+    msml__assert2(y_d2 == 1 && y_d3 == 1);
+    const float* A = (const float*)b_x;
+    const float* B = (const float*)b_y;
+    float* C = (float*)b_r;
+    const int64_t M = x_d0;
+    const int64_t N = y_d1;
+    const int64_t K = y_d0;
+    for (int64_t i = 0; i < M * N; ++i) {
+        float* p_c = C + i;
+        msml__bnd_chk(p_c, C, msml_tensor_data_size(r));
+        C[i] = 0.0f;
+    }
+    for (int64_t i = 0; i < M; ++i) {
+        for (int64_t k = 0; k < K; ++k) {
+            const float* p_x = A + (i*K + k);
+            msml__bnd_chk(p_x, A, msml_tensor_data_size(x));
+            for (int64_t j = 0; j < N; ++j) {
+                float* p_r = C + i*N + j;
+                const float* p_y = B + k*N + j;
+                msml__bnd_chk(p_r, C, msml_tensor_data_size(r));
+                msml__bnd_chk(p_y, B, msml_tensor_data_size(y));
+                *p_r += *p_x * *p_y;
             }
         }
     }
@@ -2900,7 +2907,7 @@ static void MSML_HOTPROC msml__compute_graph_coalescence_nodes_visitor(msml_tens
     } else { /* Non-leaf node */
         gra->internal_nodes[gra->num_internal_nodes++] = node;
         for (uint32_t i=0; i < msml_op_get_argcount(node->op); ++i) { /* All required inputs must be not NULL for operation node. */
-            msml__assert2(node->op_inputs[i]);
+            msml__assert2(i < sizeof(node->op_inputs)/sizeof(*node->op_inputs) && node->op_inputs[i]);
         }
     }
 }

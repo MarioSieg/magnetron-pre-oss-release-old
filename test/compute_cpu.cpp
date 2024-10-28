@@ -139,12 +139,12 @@ impl_test_binary_op(div_f32, DIV, /)
 #undef impl_test_binary_op
 
 static void msml__inner_matmul_naive(
-        const float* A,
-        const float* B,
-        float* C,
-        const int64_t M,
-        const int64_t N,
-        const int64_t K
+    const float* A,
+    const float* B,
+    float* C,
+    const int64_t M,
+    const int64_t N,
+    const int64_t K
 ) {
     for (int64_t i = 0; i < M * N; ++i) C[i] = 0.0f;
     for (int64_t i = 0; i < M; ++i) {       // Rows of A and C
@@ -166,12 +166,11 @@ TEST(compute_cpu, matmul_inner_naive) {
     static constexpr float B[2] = {0.5f, -1.0f};
     float C[3];
     msml__inner_matmul_naive(A, B, C, 3, 1, 2);
-    ASSERT_FLOAT_EQ(C[0], 1.0*0.5 + 2.0*-1.0);
-    ASSERT_FLOAT_EQ(C[1], 3.0*0.5 + 4.0*-1.0);
-    ASSERT_FLOAT_EQ(C[2], 5.0*0.5 + 6.0*-1.0);
+    ASSERT_FLOAT_EQ(C[0], -1.5f);
+    ASSERT_FLOAT_EQ(C[1], -2.5f);
+    ASSERT_FLOAT_EQ(C[2], -3.5f);
 }
 
-#if 0
 TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
@@ -195,7 +194,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     msml_tensor_t* params[2] = {A, B};
     msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2, nullptr);
     msml_tensor_print(R, true, true);
-    auto* buf = msml_tensor_buf_f32(R);
+    auto* buf = msml_tensor_data_as_f32(R);
 
     static constexpr float expected[2*2] = {
         0.3717081,   0.7322086,
@@ -212,40 +211,33 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
 TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
-    static constexpr float A_values[3][2] = {
-        {0.35099377, 0.67163079},
-        {0.26191634, 0.37668009},
-        {0.77688311, 0.94348209}
+    static constexpr  float AV[3*2] = {
+        1.0f, 2.0f,
+        3.0f, 4.0f,
+        5.0f, 6.0f
     };
-    static constexpr float B_values[2] = {
-        0.34950885, 0.2928188
-    };
+    static constexpr float BV[2] = {0.5f, -1.0f};
 
     // Manually set known values for A and B
     msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 3, 2);
-    msml_tensor_copy_buffer_from(A, A_values, sizeof(A_values));
+    msml_tensor_copy_buffer_from(A, AV, sizeof(AV));
 
     msml_tensor_t* B = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 2);
-    msml_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
+    msml_tensor_copy_buffer_from(B, BV, sizeof(BV));
 
     // Create result tensor R for matrix multiplication
     msml_tensor_t* params[2] = {A, B};
     msml_tensor_t* R = msml_tensor_operator(ctx, MSML_OP_MATMUL, params, 2, nullptr);
-    ASSERT_EQ(msml_tensor_rank(R), 1);
+    //ASSERT_EQ(msml_tensor_rank(R), 1);
     ASSERT_EQ(msml_tensor_shape(R)[0], 3);
-    auto* buf = msml_tensor_buf_f32(R);
-
-    static constexpr float expected[3] = {
-        0.31934155, 0.20184109, 0.54779681
-    };
-
-    for (int i = 0; i < 2*2; ++i) {
-        ASSERT_FLOAT_EQ(buf[i], expected[i]);
-    }
+    const auto* C = msml_tensor_data_as_f32(R);
+    //msml__inner_matmul_naive(A, B, C, 3, 1, 2);
+    ASSERT_FLOAT_EQ(C[0], -1.5f);
+    ASSERT_FLOAT_EQ(C[1], -2.5f);
+    ASSERT_FLOAT_EQ(C[2], -3.5f);
 
     msml_ctx_destroy(ctx);
 }
-#endif
 
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);

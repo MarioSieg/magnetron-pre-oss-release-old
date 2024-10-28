@@ -26,7 +26,7 @@ class MultilayerPerceptron:
     def backward(self, outputs: Tensor, targets: Tensor, rate: Tensor):
         delta = (outputs - targets) * outputs.sigmoid(derivative=True)
         for i in reversed(range(0, len(self.layout) - 1)):
-            self.weights[i] = self.weights[i] - (delta @ self.cache[i].transpose()) * rate
+            self.weights[i] = self.weights[i] - (delta @ self.cache[i].transpose().clone()) * rate
             self.biases[i] = self.biases[i] - delta * rate
             if i != 0:
                 delta = (self.weights[i].transpose() @ delta) * self.cache[i].sigmoid(derivative=True)
