@@ -16,9 +16,13 @@ class Linear:
         prev = (self.weight @ prev + self.bias)
         return Tensor.operator(self.activation, None, prev)
 
-    def backward(self, cache: Tensor, delta: Tensor, rate: Tensor) -> Tensor:
+    def backward(self, is_in: bool, cache: Tensor, delta: Tensor, rate: Tensor) -> Tensor:
         self.weight = self.weight - (delta @ cache.transpose().clone()) * rate
         self.bias = self.bias - delta * rate
+        if is_in:
+            return (self.weight.transpose() @ delta) * cache.sigmoid(derivative=True)
+        else:
+            return delta
 
 
 class Model:
@@ -30,7 +34,6 @@ class Model:
         self.cache = []
 
     def forward(self, inputs: Tensor) -> Tensor:
-        """Forward propagate the input through the network."""
         prev = inputs
         self.cache.clear()
         self.cache.append(prev)
@@ -42,9 +45,7 @@ class Model:
     def backward(self, outputs: Tensor, targets: Tensor, rate: Tensor):
         delta = (outputs - targets) * outputs.sigmoid(derivative=True)
         for i in reversed(range(0, len(self.layers))):
-            self.layers[i].backward(self.cache[i], delta, rate)
-            if i != 0:
-                delta = (self.layers[i].weight.transpose() @ delta) * self.cache[i].sigmoid(derivative=True)
+            delta = self.layers[i].backward(i > 0, self.cache[i], delta, rate)
 
     def train(self, inputs: list[Tensor], targets: list[Tensor], epochs: int, learning_rate: float):
         assert len(inputs) == len(targets)

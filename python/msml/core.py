@@ -62,6 +62,7 @@ class Op(Enum):
     VIEW = auto()
     TRANSPOSE = auto()
     PERMUTE = auto()
+    MEAN = auto()
     STEP = auto()
     SOFTMAX = auto()
     SOFTMAX_DV = auto()

@@ -1364,6 +1364,17 @@ static bool msml__validate_op_transpose(msml_op_t op, msml_tensor_t* result, msm
     return true;
 }
 
+static bool msml__validate_op_scalar(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
+    if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
+    msml__validate_expr_gen(inputs[0]->strides[0] == sizeof(float), "Mean");
+    msml__validate_expr_gen(result->shape[0] == 1, "Mean");
+    msml__validate_expr_gen(result->shape[1] == inputs[0]->shape[1], "Mean");
+    msml__validate_expr_gen(result->shape[2] == inputs[0]->shape[2], "Mean");
+    msml__validate_expr_gen(result->shape[3] == inputs[0]->shape[3], "Mean");
+    return true;
+}
+
 static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
     msml__validate_expr_gen(inputs[0]->shape[1] == inputs[1]->shape[0], "Input tensor shapes must be compatible for matrix multiplication.");
@@ -1381,6 +1392,7 @@ static bool (*msml__op_get_validator_routine(msml_op_t op))(msml_op_t, msml_tens
         [MSML_OP_VIEW] = &msml__validate_op_unary,
         [MSML_OP_TRANSPOSE] = &msml__validate_op_transpose,
         [MSML_OP_PERMUTE] = &msml__validate_op_transpose,
+        [MSML_OP_MEAN] = &msml__validate_op_scalar,
         [MSML_OP_STEP] = &msml__validate_op_unary,
         [MSML_OP_SOFTMAX] = &msml__validate_op_unary,
         [MSML_OP_SOFTMAX_DV] = &msml__validate_op_unary,
@@ -1419,6 +1431,16 @@ static msml_tensor_t* msml__result_constructor_routine_isomorph(msml_tensor_t** 
 static msml_tensor_t* msml__result_constructor_routine_view(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     (void)params;
     return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, MSML_MAX_DIMS, inputs[0], 0);
+}
+
+static msml_tensor_t* msml__result_constructor_routine_scalar(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    const int64_t shape[MSML_MAX_DIMS] = {
+        1,
+        inputs[0]->shape[1],
+        inputs[0]->shape[2],
+        inputs[0]->shape[3]
+    };
+    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, shape, MSML_MAX_DIMS, NULL, 0);
 }
 
 static msml_tensor_t* msml__result_constructor_routine_transposed(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
@@ -1461,6 +1483,7 @@ static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(m
         [MSML_OP_VIEW] = &msml__result_constructor_routine_view,
         [MSML_OP_TRANSPOSE] = &msml__result_constructor_routine_transposed,
         [MSML_OP_PERMUTE] = &msml__result_constructor_routine_permuted,
+        [MSML_OP_MEAN] = &msml__result_constructor_routine_scalar,
         [MSML_OP_STEP] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_SOFTMAX] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_SOFTMAX_DV] = &msml__result_constructor_routine_isomorph,
@@ -2216,6 +2239,16 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
     #endif
 }
 
+static float MSML_HOTPROC msml__vsum_f32( /* Σx. */
+    const int64_t n,
+    const float* const x
+) {
+    double sum = 0.0;
+    for (int64_t i=0; i < n; ++i)
+        sum += (double)x[i];
+    return (float)sum;
+}
+
 static void MSML_HOTPROC msml__vstep_f32( /* Heaviside step function. */
     const int64_t n,
     float* const o,
@@ -2716,6 +2749,33 @@ static void msml__blas_clone(
         } \
     }
 
+static void MSML_HOTPROC msml__blas_mean_f32( /* Σx/n Arithmetic mean */
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_d, shape)
+    msml__load_local_storage_group(x, x_s, strides)
+    msml__assert2(x_s0 == sizeof(float));
+    for (int64_t i03 = 0; i03 < x_d3; i03++) {
+        for (int64_t i02 = 0; i02 < x_d2; i02++) {
+            for (int64_t i01 = 0; i01 < x_d1; i01++) {
+                float* const p_r = (float*)(b_r + i01*r_s1  + i02*r_s2  + i03*r_s3);
+                msml__bnd_chk(p_r, b_r, msml_tensor_data_size(r));
+                *p_r = msml__vsum_f32(
+                    x_d0,
+                    (const float*)(b_x + i01*x_s1 + i02*x_s2 + i03*x_s3)
+                ) / (float)x_d0;
+            }
+        }
+    }
+}
+
 msml__blas_impl_unary_op(step_f32, float, msml__vstep_f32)
 msml__blas_impl_unary_op(softmax_f32, float, msml__vsoftmax_f32)
 msml__blas_impl_unary_op(softmax_dv_f32, float, msml__vsoftmax_dv_f32)
@@ -2834,6 +2894,7 @@ static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lu
     (*dispatch_lut)[MSML_OP_VIEW] = &msml__blas_nop; /* View is a no-op */
     (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[MSML_OP_PERMUTE] = &msml__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[MSML_OP_MEAN] = &msml__blas_mean_f32;
     (*dispatch_lut)[MSML_OP_STEP] = &msml__blas_step_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX] = &msml__blas_softmax_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;

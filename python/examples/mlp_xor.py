@@ -20,7 +20,7 @@ mlp = Model([
     Linear(2, 4),
     Linear(4, 1)
 ])
-mlp.train(inputs, targets, epochs=10000, learning_rate=0.5)
+mlp.train(inputs, targets, epochs=10000, learning_rate=0.1)
 for input_tensor in inputs:
     input_data = input_tensor.data_as_f32()
     output: float = mlp.forward(input_tensor).data_as_f32()[0]

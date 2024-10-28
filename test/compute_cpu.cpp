@@ -239,6 +239,24 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     msml_ctx_destroy(ctx);
 }
 
+TEST(compute_cpu, arithmetic_mean) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+    msml_tensor_t* A = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 4096, 32, 3, 2);
+    msml_tensor_fill_random(A, -1.0f, 1.0f);
+    msml_tensor_t* R = msml_tensor_emit_op_va(ctx, MSML_OP_MEAN, A);
+    ASSERT_NE(R, nullptr);
+    double a_mean = 0.0;
+    for (std::int64_t i=0; i < msml_tensor_num_elements(A); ++i)
+        a_mean += static_cast<double>(msml_tensor_data_as_f32(A)[i]);
+    a_mean /= static_cast<double>(msml_tensor_num_elements(A));
+    double b_mean = 0.0;
+    for (std::int64_t i=0; i < msml_tensor_num_elements(R); ++i)
+        b_mean += static_cast<double>(msml_tensor_data_as_f32(R)[i]);
+    b_mean /= static_cast<double>(msml_tensor_num_elements(R));
+    ASSERT_FLOAT_EQ(static_cast<float>(a_mean), static_cast<float>(b_mean));
+    msml_ctx_destroy(ctx);
+}
+
 TEST(compute_cpu, heavy_compute_single_op) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
     msml_tensor_t* A = msml_tensor_create_3d(ctx, MSML_DTYPE_F32, 16384, 16384, 3);

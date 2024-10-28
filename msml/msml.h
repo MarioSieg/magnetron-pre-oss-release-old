@@ -126,7 +126,8 @@ extern MSML_EXPORT const msml_dtype_info_t* msml_dtype_info_of(msml_dtype_t type
     _(VIEW,             "view",             1)/* R = X[:]. */__\
     _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ. */__\
     _(PERMUTE,          "permute",          1)/* R = permute(X). */__\
-    _(STEP,             "step",             1)/* R = 1 if x >= 0 else 0. Heaviside step function */__\
+    _(MEAN,             "mean",             1)/* R = Σx/n */__\
+    _(STEP,             "step",             1)/* R = Heaviside step function */__\
     _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
     _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
     _(SIGMOID,          "sigmoid",          1)/* R = sigmoid(X) */__\
