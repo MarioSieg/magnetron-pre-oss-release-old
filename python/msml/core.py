@@ -543,6 +543,10 @@ class Tensor:
                 assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
         return self.operator(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
 
+    def mean(self) -> 'Tensor':
+        """Applies the arithmetic mean to the tensor and reduces to scalar."""
+        return self.operator(Op.MEAN, None, self)
+
     def step(self) -> 'Tensor':
         """Applies the heaviside step function to the tensor."""
         return self.operator(Op.STEP, None, self)

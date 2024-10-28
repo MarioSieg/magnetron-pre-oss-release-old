@@ -3,6 +3,15 @@
 from msml.core import *
 
 
+def mse(y: Tensor, y_hat: Tensor) -> float:
+    """Calculate the Mean Squared Error between predictions and targets."""
+    e = y - y_hat
+    e_sq = e * e
+    mse_value = e_sq.mean()
+    assert mse_value.shape[0] == 1
+    return mse_value.data_as_f32()[0]
+
+
 class Linear:
     """Affine linear transformation on data. A = A@B^T"""
 
@@ -49,9 +58,16 @@ class Model:
 
     def train(self, inputs: list[Tensor], targets: list[Tensor], epochs: int, learning_rate: float):
         assert len(inputs) == len(targets)
+        losses = []
         rate = Tensor.full([1], fill_value=learning_rate)
-        for e in range(1, epochs + 1):
-            if e % 1000 == 0:
-                print(f'Epoch: {e}')
+        for e in range(0, epochs - 1):
+            total_mse = 0
             for i in range(0, len(inputs)):
-                self.backward(self.forward(inputs[i]), targets[i], rate)
+                pred: Tensor = self.forward(inputs[i])
+                self.backward(pred, targets[i], rate)
+                total_mse += mse(pred, targets[i])
+            avg_mse = total_mse / len(inputs)
+            losses.append(avg_mse)
+            if e % 1000 == 0:
+                print(f'Epoch: {e}, Loss: {avg_mse}')
+        return losses
