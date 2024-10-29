@@ -3714,7 +3714,7 @@ static uint8_t* msml__sto_write_buffered(const msml_tensor_t** tensors, size_t n
     return base;
 }
 
-static msml_tensor_t** msml__sto_read_buffered(msml_ctx_t* ctx, const uint8_t* buf, size_t size, size_t* out_n_tensors) {
+MSML_EXPORT msml_tensor_t** msml__sto_read_buffered(msml_ctx_t* ctx, const uint8_t* buf, size_t size, size_t* out_n_tensors) { /* Load stored tensors from buffer. Function is exported for fuzzing test. */
     msml__assert(size > MSML__STO_FILE_HEADER_SIZE + MSML__STO_TENSOR_HEADER_SIZE + 1, "Malformed size"); /* At least one tensor with 1 element */
     const uint8_t* needle = buf;
     const uint8_t* end = buf + size;
