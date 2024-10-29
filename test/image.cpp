@@ -2,7 +2,6 @@
 
 #include "prelude.hpp"
 
-
 TEST(image, load) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
