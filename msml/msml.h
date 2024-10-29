@@ -43,7 +43,7 @@ extern "C" {
 #define msml_version_major(version) (((version)>>8)&0xff)
 #define msml_version_minor(version) ((version)&0xff)
 #define MSML_VERSION msml_version_pack(0, 1) /* MSML library version. */
-#define MSML_STORAGE_VERSION 1 /* MSML tensor storage file format version. */
+#define MSML_STORAGE_VERSION 1 /* MSML storage format version. */
 
 #define msml_assert_name2(name, line) name ## line
 #define msml_assert_name(line) msml_assert_name2(_assert_, line)
