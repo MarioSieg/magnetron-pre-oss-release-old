@@ -362,9 +362,9 @@ class Tensor:
         return C.msml_tensor_is_matrix(self.tensor)
 
     @property
-    def is_higher_order_3d(self) -> bool:
+    def is_volume(self) -> bool:
         """Checks if the tensor is a higher-order 3D tensor."""
-        return C.msml_tensor_is_higher_order_3d(self.tensor)
+        return C.msml_tensor_is_volume(self.tensor)
 
     @property
     def is_transposed(self) -> bool:
@@ -389,17 +389,17 @@ class Tensor:
         return C.msml_tensor_can_broadcast(self.tensor, other.tensor)
 
     @property
-    def image_width(self) -> int:
+    def width(self) -> int:
         """Returns the width of the image tensor. (Equals to the first dimension)"""
         return self.shape[2]
 
     @property
-    def image_height(self) -> int:
+    def height(self) -> int:
         """Returns the height of the image tensor. (Equals to the second dimension)"""
         return self.shape[1]
 
     @property
-    def image_channels(self) -> int:
+    def channels(self) -> int:
         """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
         return self.shape[0]
 
@@ -456,7 +456,7 @@ class Tensor:
     def save_image(self, file_path: str) -> None:
         """Saves the tensor as an JPG image to a file."""
         assert self.rank == 3, 'Tensor must be a 3D image tensor'
-        assert self.image_channels in (1, 3, 4), 'Invalid number of color channels'
+        assert self.channels in (1, 3, 4), 'Invalid number of color channels'
         C.msml_tensor_save_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
