@@ -1,4 +1,6 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
+# Implements core functionality: Context, Tensors and Operations.
+
 # To debug Python to C FFI calls:
 # $ cp examples/perceptron.py tmp.py && gdb -ex r --args python3 tmp.py
 # See also https://wiki.python.org/moin/DebuggingWithGdb

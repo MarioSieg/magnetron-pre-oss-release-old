@@ -1,4 +1,5 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
+# Implements high level model classes for neural networks based on the msml.core module.
 
 from msml.core import *
 
