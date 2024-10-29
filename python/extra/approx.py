@@ -30,6 +30,8 @@ def plot_approximation_error(name: str, exact_func: callable, approx_op: Op, dom
     plt.title(f'Error in {name} Approximation')
     plt.xlabel('x')
     plt.ylabel('Absolute Error')
+    plt.plot([], [], ' ', label=f'Samples {len(errors)}')
+    plt.plot([], [], ' ', label=f'Mean Error: {sum(errors) / len(errors):.20f}')
     plt.plot([], [], ' ', label=f'Min Error: {min(errors):.20f}')
     plt.plot([], [], ' ', label=f'Max Error: {max(errors):.20f}')
     plt.yscale('linear')
