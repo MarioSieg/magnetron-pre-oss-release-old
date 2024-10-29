@@ -3592,7 +3592,7 @@ static uint8_t* msml__sto_write_buffered(const msml_tensor_t** tensors, size_t n
         msml__assert2(t != NULL);
         msml__sto_write_tensor_header(
             &needle,
-            MSML_STORAGE_VERSION,
+            version,
             &t->name,
             t->flags,
             t->dtype,
