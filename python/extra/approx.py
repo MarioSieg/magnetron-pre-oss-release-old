@@ -1,7 +1,10 @@
 # (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
 
 from msml.core import Tensor, Op
+import matplotlib
 import matplotlib.pyplot as plt
+
+matplotlib.rcParams["axes.formatter.limits"] = (-99, 99)  # Disable scientific notation to show all digits
 
 
 def plot_approximation_error(name: str, exact_func: callable, approx_op: Op, domain: (float, float),
@@ -10,6 +13,7 @@ def plot_approximation_error(name: str, exact_func: callable, approx_op: Op, dom
     exact = [exact_func(x) for x in x_values]
     approx = Tensor.operator(approx_op, None, Tensor.const(x_values)).data_as_f32()
     errors = [abs(exact[i] - approx[i]) for i in range(len(exact))]
+    assert len(exact) == len(approx) == len(errors) == len(x_values)
 
     plt.figure(figsize=(10, 5))
     plt.plot(x_values, exact, label=f'Exact {name}', color='blue')
@@ -22,11 +26,12 @@ def plot_approximation_error(name: str, exact_func: callable, approx_op: Op, dom
 
     plt.figure(figsize=(10, 5))
     plt.plot(x_values, errors, label='Absolute Error', color='red')
+    plt.ticklabel_format(useOffset=False, style='plain')
     plt.title(f'Error in {name} Approximation')
     plt.xlabel('x')
     plt.ylabel('Absolute Error')
-    plt.plot([], [], ' ', label=f'Min Error: {min(errors)}')
-    plt.plot([], [], ' ', label=f'Max Error: {max(errors)}')
+    plt.plot([], [], ' ', label=f'Min Error: {min(errors):.20f}')
+    plt.plot([], [], ' ', label=f'Max Error: {max(errors):.20f}')
     plt.yscale('linear')
     plt.legend()
     plt.grid(True)
