@@ -16,9 +16,9 @@ class DenseLayer:
         self.activation = activation
         self.cache = None
 
-    def forward(self, prev: Tensor) -> Tensor:
+    def forward(self, prev: Tensor, activation: Op | None = None) -> Tensor:
         prev = (self.weight @ prev + self.bias)
-        return Tensor.operator(self.activation, None, prev)
+        return Tensor.operator(activation if activation is not None else self.activation, None, prev)
 
     def backward(self, is_in: bool, cache: Tensor, delta: Tensor, rate: Tensor) -> Tensor:
         self.weight = self.weight - (delta @ cache.transpose().clone()) * rate
@@ -34,13 +34,14 @@ class SequentialModel:
         assert len(layers) > 0
         self.layers = layers
         self.cache = []
+        self.loss_epoch_step = 1000
 
-    def forward(self, inputs: Tensor) -> Tensor:
+    def forward(self, inputs: Tensor, activation: Op | None = None) -> Tensor:
         prev = inputs
         self.cache.clear()
         self.cache.append(prev)
         for i in range(0, len(self.layers)):
-            prev = self.layers[i].forward(prev)
+            prev = self.layers[i].forward(prev, activation)
             self.cache.append(prev)
         return prev
 
@@ -51,16 +52,28 @@ class SequentialModel:
 
     def train(self, inputs: list[Tensor], targets: list[Tensor], epochs: int, learning_rate: float):
         assert len(inputs) == len(targets)
+        print(f'Training started {epochs} epochs with learning rate {learning_rate}')
         losses = []
         rate = Tensor.full([1], fill_value=learning_rate)
         for e in range(0, epochs - 1):
-            total_mse = 0
+            total_mse: float = 0
             for i in range(0, len(inputs)):
                 pred: Tensor = self.forward(inputs[i])
                 self.backward(pred, targets[i], rate)
                 total_mse += mse(pred, targets[i])
             avg_mse = total_mse / len(inputs)
             losses.append(avg_mse)
-            if e % 1000 == 0:
+            if e % self.loss_epoch_step == 0:
                 print(f'Epoch: {e}, Loss: {avg_mse}')
+        print(f'Training finished')
         return losses
+
+    def summary(self):
+        trainable_params = 0
+        for layer in self.layers:
+            trainable_params += layer.weight.num_elements + layer.bias.num_elements
+        layers: int = len(self.layers)
+        print(f'---- Model Summary ----')
+        print(f'Trainable Parameters: {trainable_params}')
+        print(f'Layers: {layers}')
+        print(f'-----------------------')
