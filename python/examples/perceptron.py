@@ -9,14 +9,12 @@ def perceptron(x: wl.Tensor, w: wl.Tensor, b: wl.Tensor) -> wl.Tensor:
 
 
 # Negating perceptron
-def p_not(xx: int) -> int:
+def p_not(xx: int) -> float:
     x: wl.Tensor = wl.Tensor.full([1], fill_value=float(xx))
     w: wl.Tensor = wl.Tensor.full([1], fill_value=-1)
     b: wl.Tensor = wl.Tensor.full([1], fill_value=0.5)
     r: wl.Tensor = perceptron(x, w, b)
-    flag: int = int(r.get_scalar_virtual_index(0))
-    assert flag & ~1 == 0
-    return flag
+    return r.unpack_scalar()
 
 
 truth_table = [
