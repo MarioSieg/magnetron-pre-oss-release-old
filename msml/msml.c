@@ -1961,77 +1961,89 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
 
 #if MSML_INTRIN && defined(__aarch64__) && defined(__ARM_NEON)
     static float32x4_t msml__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
-        const float32x4_t r = vdupq_n_f32(0x1.8p23f);
-        const float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
-        const float32x4_t n = vsubq_f32(z, r);
-        const float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n, vdupq_n_f32(0x1.7f7d1cp-20f));
-        const uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
-        const float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
-        const uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
-        const float32x4_t u = vmulq_f32(b, b);
-        const float32x4_t j = vfmaq_f32(
+        float32x4_t r = vdupq_n_f32(0x1.8p23f);
+        float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
+        float32x4_t n = vsubq_f32(z, r);
+        float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n, vdupq_n_f32(0x1.7f7d1cp-20f));
+        uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
+        float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
+        uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
+        float32x4_t u = vmulq_f32(b, b);
+        float32x4_t j = vfmaq_f32(
             vmulq_f32(vdupq_n_f32(0x1.ffffecp-1f), b),
             vfmaq_f32(vfmaq_f32(vdupq_n_f32(0x1.fffdb6p-2f), vdupq_n_f32(0x1.555e66p-3f), b),
             vfmaq_f32(vdupq_n_f32(0x1.573e2ep-5f), vdupq_n_f32(0x1.0e4020p-7f), b), u), u);
         if (!vpaddd_u64(vreinterpretq_u64_u32(c))) return vfmaq_f32(k, j, k);
-        const uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
-        const float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
-        const float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
+        uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
+        float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
+        float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
         return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
                vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
     }
 
     static float32x4_t msml__simd_tanh(float32x4_t x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        const float32x4_t one = vdupq_n_f32(1.0f);
-        const float32x4_t neg_one = vdupq_n_f32(-1.0f);
-        const float32x4_t two = vdupq_n_f32(2.0f);
-        const float32x4_t neg_two = vdupq_n_f32(-2.0f);
-        const float32x4_t a = vmulq_f32(neg_two, x);
-        const float32x4_t b = msml__simd_expf(a);
-        const float32x4_t c = vaddq_f32(one, b);
+        float32x4_t one = vdupq_n_f32(1.0f);
+        float32x4_t neg_one = vdupq_n_f32(-1.0f);
+        float32x4_t two = vdupq_n_f32(2.0f);
+        float32x4_t neg_two = vdupq_n_f32(-2.0f);
+        float32x4_t a = vmulq_f32(neg_two, x);
+        float32x4_t b = msml__simd_expf(a);
+        float32x4_t c = vaddq_f32(one, b);
         float32x4_t inv = vrecpeq_f32(c);
         inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
         inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
         return vaddq_f32(neg_one, vmulq_f32(two, inv));
     }
 #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+
     static __m512 msml__simd_expf(const __m512 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        const __m512 r = _mm512_set1_ps(0x1.8p23f);
-        const __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
-        const __m512 n = _mm512_sub_ps(z, r);
-        const __m512 b = _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.7f7d1cp-20f), _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.62e4p-1f), x));
-        const __mmask16 d = _mm512_cmp_ps_mask(_mm512_abs_ps(n), _mm512_set1_ps(192), _CMP_GT_OQ);
-        const __m512 u = _mm512_mul_ps(b, b);
-        const __m512 j = _mm512_fmadd_ps(
+        __m512 r = _mm512_set1_ps(0x1.8p23f);
+        __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
+        __m512 n = _mm512_sub_ps(z, r);
+        __m512 b = _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.7f7d1cp-20f), _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.62e4p-1f), x));
+        __mmask16 d = _mm512_cmp_ps_mask(_mm512_abs_ps(n), _mm512_set1_ps(192), _CMP_GT_OQ);
+        __m512 u = _mm512_mul_ps(b, b);
+        __m512 j = _mm512_fmadd_ps(
             _mm512_fmadd_ps(_mm512_fmadd_ps(_mm512_set1_ps(0x1.0e4020p-7f), b, _mm512_set1_ps(0x1.573e2ep-5f)), u,
             _mm512_fmadd_ps(_mm512_set1_ps(0x1.555e66p-3f), b, _mm512_set1_ps(0x1.fffdb6p-2f))), u, _mm512_fmadd_ps(_mm512_set1_ps(0x1.ffffecp-1f), b, _mm512_set1_ps(1.0F))
         );
-        const __m512 res = _mm512_scalef_ps(j, n);
+        __m512 res = _mm512_scalef_ps(j, n);
         if (_mm512_kortestz(d, d)) return res;
-        const __m512 zero = _mm512_setzero_ps();
-        const __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
+        __m512 zero = _mm512_setzero_ps();
+        __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
         return _mm512_mask_blend_ps(d, res, alt);
     }
 
     static __m512 msml__simd_tanh(__m512 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-
+        __m512 one = _mm512_set1_ps(1.0f);
+        __m512 neg_one = _mm512_set1_ps(-1.0f);
+        __m512 two = _mm512_set1_ps(2.0f);
+        __m512 neg_two = _mm512_set1_ps(-2.0f);
+        __m512 a = _mm512_mul_ps(neg_two, x);
+        __m512 b = msml__simd_expf(a);
+        __m512 c = _mm512_add_ps(one, b);
+        __m512 inv = _mm512_rcp14_ps(c);
+        inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        return _mm512_fmadd_ps(two, inv, neg_one);
     }
+
 #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
     static __m256 msml__simd_expf(const __m256 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        const __m256 r = _mm256_set1_ps(0x1.8p23f);
-        const __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
-        const __m256 n = _mm256_sub_ps(z, r);
-        const __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
-        const __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
-        const __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
-        const __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(126), _CMP_GT_OQ));
-        const __m256 u = _mm256_mul_ps(b, b);
-        const __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
+        __m256 r = _mm256_set1_ps(0x1.8p23f);
+        __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
+        __m256 n = _mm256_sub_ps(z, r);
+        __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
+        __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
+        __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
+        __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(126), _CMP_GT_OQ));
+        __m256 u = _mm256_mul_ps(b, b);
+        __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
         if (!_mm256_movemask_ps(_mm256_castsi256_ps(c))) return _mm256_fmadd_ps(j, k, k);
-        const __m256i g = _mm256_and_si256(_mm256_castps_si256(_mm256_cmp_ps(n, _mm256_setzero_ps(), _CMP_LE_OQ)),_mm256_set1_epi32(0x82000000u));
-        const __m256 s1 = _mm256_castsi256_ps(_mm256_add_epi32(g, _mm256_set1_epi32(0x7f000000u)));
-        const __m256 s2 = _mm256_castsi256_ps(_mm256_sub_epi32(e, g));
-        const __m256i d = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(192), _CMP_GT_OQ));
+        __m256i g = _mm256_and_si256(_mm256_castps_si256(_mm256_cmp_ps(n, _mm256_setzero_ps(), _CMP_LE_OQ)),_mm256_set1_epi32(0x82000000u));
+        __m256 s1 = _mm256_castsi256_ps(_mm256_add_epi32(g, _mm256_set1_epi32(0x7f000000u)));
+        __m256 s2 = _mm256_castsi256_ps(_mm256_sub_epi32(e, g));
+        __m256i d = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(192), _CMP_GT_OQ));
         return _mm256_or_ps(
             _mm256_and_ps(_mm256_castsi256_ps(d), _mm256_mul_ps(s1, s1)),
             _mm256_andnot_ps(
@@ -2044,36 +2056,36 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
     }
 
     static __m256 msml__simd_tanh(__m256 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        const __m256 one = _mm256_set1_ps(1.0f);
-        const __m256 neg_one = _mm256_set1_ps(-1.0f);
-        const __m256 two = _mm256_set1_ps(2.0f);
-        const __m256 neg_two = _mm256_set1_ps(-2.0f);
-        const __m256 a = _mm256_mul_ps(neg_two, x);
-        const __m256 b = msml__simd_expf(a);
-        const __m256 c = _mm256_add_ps(one, b);
+        __m256 one = _mm256_set1_ps(1.0f);
+        __m256 neg_one = _mm256_set1_ps(-1.0f);
+        __m256 two = _mm256_set1_ps(2.0f);
+        __m256 neg_two = _mm256_set1_ps(-2.0f);
+        __m256 a = _mm256_mul_ps(neg_two, x);
+        __m256 b = msml__simd_expf(a);
+        __m256 c = _mm256_add_ps(one, b);
         __m256 inv = _mm256_rcp_ps(c);
-        inv = _mm256_mul_ps(_mm256_rcp_ps(c), inv); /* Newton–Raphson method */
-        inv = _mm256_mul_ps(_mm256_rcp_ps(c), inv); /* Newton–Raphson method */
+        inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
         return _mm256_fmadd_ps(two, inv, neg_one);
     }
 #elif MSML_INTRIN && defined(__SSE2__)
     static __m128 msml__simd_expf(const __m128 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        const __m128 r = _mm_set1_ps(0x1.8p23f);
-        const __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
-        const __m128 n = _mm_sub_ps(z, r);
-        const __m128 b = _mm_sub_ps(_mm_sub_ps(x, _mm_mul_ps(n, _mm_set1_ps(0x1.62e4p-1f))), _mm_mul_ps(n, _mm_set1_ps(0x1.7f7d1cp-20f)));
-        const __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
-        const __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
-        const __m128i c = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
-        const __m128 u = _mm_mul_ps(b, b);
-        const __m128 j = _mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.0e4020p-7f), b), _mm_set1_ps(0x1.573e2ep-5f)),u),
+        __m128 r = _mm_set1_ps(0x1.8p23f);
+        __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
+        __m128 n = _mm_sub_ps(z, r);
+        __m128 b = _mm_sub_ps(_mm_sub_ps(x, _mm_mul_ps(n, _mm_set1_ps(0x1.62e4p-1f))), _mm_mul_ps(n, _mm_set1_ps(0x1.7f7d1cp-20f)));
+        __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
+        __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
+        __m128i c = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
+        __m128 u = _mm_mul_ps(b, b);
+        __m128 j = _mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.0e4020p-7f), b), _mm_set1_ps(0x1.573e2ep-5f)),u),
         _mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.555e66p-3f), b), _mm_set1_ps(0x1.fffdb6p-2f))), u),
         _mm_mul_ps(_mm_set1_ps(0x1.ffffecp-1f), b));
         if (!_mm_movemask_epi8(c)) return _mm_add_ps(_mm_mul_ps(j, k), k);
-        const __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),_mm_set1_epi32(0x82000000u));
-        const __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
-        const __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
-        const __m128i d = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
+        __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),_mm_set1_epi32(0x82000000u));
+        __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
+        __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
+        __m128i d = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
         return _mm_or_ps(
             _mm_and_ps(_mm_castsi128_ps(d), _mm_mul_ps(s1, s1)),
             _mm_andnot_ps(_mm_castsi128_ps(d),
@@ -2083,13 +2095,13 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
     }
 
     static __m128 msml__simd_tanh(__m128 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        const __m128 one = _mm_set1_ps(1.0f);
-        const __m128 neg_one = _mm_set1_ps(-1.0f);
-        const __m128 two = _mm_set1_ps(2.0f);
-        const __m128 neg_two = _mm_set1_ps(-2.0f);
-        const __m128 a = _mm_mul_ps(neg_two, x);
-        const __m128 b = msml__simd_expf(a);
-        const __m128 c = _mm_add_ps(one, b);
+        __m128 one = _mm_set1_ps(1.0f);
+        __m128 neg_one = _mm_set1_ps(-1.0f);
+        __m128 two = _mm_set1_ps(2.0f);
+        __m128 neg_two = _mm_set1_ps(-2.0f);
+        __m128 a = _mm_mul_ps(neg_two, x);
+        __m128 b = msml__simd_expf(a);
+        __m128 c = _mm_add_ps(one, b);
         __m128 inv = _mm_rcp_ps(c);
         inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
         inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
@@ -2245,12 +2257,20 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
             vy[3] = _mm_loadu_ps(y+i+(3<<2));
             acc[3] = _mm_add_ps(acc[3], _mm_mul_ps(vx[3], vy[3]));
         }
-        acc[1] = _mm_add_ps(acc[1], acc[3]);
-        *acc = _mm_add_ps(*acc, acc[2]);
-        *acc = _mm_add_ps(*acc, acc[1]);
-        *acc = _mm_hadd_ps(*acc, *acc);
-        *acc = _mm_hadd_ps(*acc, *acc);
-        float sum = _mm_cvtss_f32(*acc);
+        #ifdef __SSE3__
+            acc[1] = _mm_add_ps(acc[1], acc[3]);
+            *acc = _mm_add_ps(*acc, acc[2]);
+            *acc = _mm_add_ps(*acc, acc[1]);
+            *acc = _mm_hadd_ps(*acc, *acc);
+            *acc = _mm_hadd_ps(*acc, *acc);
+            float sum = _mm_cvtss_f32(*acc);
+        #else
+            __m128 shuf = _mm_shuffle_ps(*acc, *acc, _MM_SHUFFLE(2, 3, 0, 1));
+            __m128 sums = _mm_add_ps(*acc, shuf);
+            shuf = _mm_movehl_ps(shuf, sums);
+            sums = _mm_add_ss(sums, shuf);
+            float sum = _mm_cvtss_f32(sums);
+        #endif
         for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
         return sum;
     #else
@@ -2323,40 +2343,40 @@ static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 +
         const float32x4_t one = vdupq_n_f32(1.0f);
         const float32x4_t zero = vdupq_n_f32(0.0f);
         for (; i+3 < n; i += 4) {
-            const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t neg_x = vsubq_f32(zero, xx);
-            const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
-            const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
+            float32x4_t xx = vld1q_f32(x+i);
+            float32x4_t neg_x = vsubq_f32(zero, xx);
+            float32x4_t exp_neg_x = msml__simd_expf(neg_x);
+            float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
             vst1q_f32(o+i, vdivq_f32(one, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        const __m512 one = _mm512_set1_ps(1.0f);
-        const __m512 zero = _mm512_setzero_ps();
+        __m512 one = _mm512_set1_ps(1.0f);
+        __m512 zero = _mm512_setzero_ps();
         for (; i+15 < n; i += 16) {
-            const __m512 xx = _mm512_loadu_ps(x+i);
-            const __m512 neg_x = _mm512_sub_ps(zero, xx);
-            const __m512 exp_neg_x = msml__simd_expf(neg_x);
-            const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
+            __m512 xx = _mm512_loadu_ps(x+i);
+            __m512 neg_x = _mm512_sub_ps(zero, xx);
+            __m512 exp_neg_x = msml__simd_expf(neg_x);
+            __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
             _mm512_storeu_ps(o+i, _mm512_div_ps(one, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
-        const __m256 one = _mm256_set1_ps(1.0f);
-        const __m256 zero = _mm256_setzero_ps();
+        __m256 one = _mm256_set1_ps(1.0f);
+        __m256 zero = _mm256_setzero_ps();
         for (; i+7 < n; i += 8) {
-            const __m256 xx = _mm256_loadu_ps(x+i);
-            const __m256 neg_x = _mm256_sub_ps(zero, xx);
-            const __m256 exp_neg_x = msml__simd_expf(neg_x);
-            const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
+            __m256 xx = _mm256_loadu_ps(x+i);
+            __m256 neg_x = _mm256_sub_ps(zero, xx);
+            __m256 exp_neg_x = msml__simd_expf(neg_x);
+            __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
             _mm256_storeu_ps(o+i, _mm256_div_ps(one, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__SSE2__)
-        const __m128 one = _mm_set1_ps(1.0f);
-        const __m128 zero = _mm_setzero_ps();
+        __m128 one = _mm_set1_ps(1.0f);
+        __m128 zero = _mm_setzero_ps();
         for (; i+3 < n; i += 4) {
-            const __m128 xx = _mm_loadu_ps(x+i);
-            const __m128 neg_x = _mm_sub_ps(zero, xx);
-            const __m128 exp_neg_x = msml__simd_expf(neg_x);
-            const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
+            __m128 xx = _mm_loadu_ps(x+i);
+            __m128 neg_x = _mm_sub_ps(zero, xx);
+            __m128 exp_neg_x = msml__simd_expf(neg_x);
+            __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
             _mm_storeu_ps(o+i, _mm_div_ps(one, one_plus_exp_neg_x));
         }
     #endif
@@ -2400,23 +2420,23 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
 ) {
     int64_t i=0;
     #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
-        const float32x4_t one = vdupq_n_f32(1.0f);
-        const float32x4_t zero = vdupq_n_f32(0.0f);
+        float32x4_t one = vdupq_n_f32(1.0f);
+        float32x4_t zero = vdupq_n_f32(0.0f);
         for (; i+3 < n; i += 4) {
-            const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t neg_x = vsubq_f32(zero, xx);
-            const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
-            const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
+            float32x4_t xx = vld1q_f32(x+i);
+            float32x4_t neg_x = vsubq_f32(zero, xx);
+            float32x4_t exp_neg_x = msml__simd_expf(neg_x);
+            float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
             vst1q_f32(o+i, vdivq_f32(xx, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        const __m512 one = _mm512_set1_ps(1);
-        const __m512 zero = _mm512_setzero_ps();
+        __m512 one = _mm512_set1_ps(1);
+        __m512 zero = _mm512_setzero_ps();
         for (; i+15 < n; i += 16) {
-            const __m512 xx = _mm512_loadu_ps(x+i);
-            const __m512 neg_x = _mm512_sub_ps(zero, xx);
-            const __m512 exp_neg_x = msml__simd_expf(neg_x);
-            const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
+            __m512 xx = _mm512_loadu_ps(x+i);
+            __m512 neg_x = _mm512_sub_ps(zero, xx);
+            __m512 exp_neg_x = msml__simd_expf(neg_x);
+            __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
             _mm512_storeu_ps(o+i, _mm512_div_ps(xx, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
@@ -2430,13 +2450,13 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
             _mm256_storeu_ps(o+i, _mm256_div_ps(xx, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__SSE2__)
-        const __m128 one = _mm_set1_ps(1);
-        const __m128 zero = _mm_setzero_ps();
+        __m128 one = _mm_set1_ps(1);
+        __m128 zero = _mm_setzero_ps();
         for (; i+3 < n; i += 4) {
-            const __m128 xx = _mm_loadu_ps(x+i);
-            const __m128 neg_x = _mm_sub_ps(zero, xx);
-            const __m128 exp_neg_x = msml__simd_expf(neg_x);
-            const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
+            __m128 xx = _mm_loadu_ps(x+i);
+            __m128 neg_x = _mm_sub_ps(zero, xx);
+            __m128 exp_neg_x = msml__simd_expf(neg_x);
+            __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
             _mm_storeu_ps(o+i, _mm_div_ps(xx, one_plus_exp_neg_x));
         }
     #endif
@@ -2521,41 +2541,51 @@ static void MSML_HOTPROC msml__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
 ) {
     int64_t i=0;
     #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
-        const float32x4_t half = vdupq_n_f32(0.5f);
-        const float32x4_t one = vdupq_n_f32(1.0f);
-        const float32x4_t coeff1 = vdupq_n_f32(0.79788456080286535587989211986876f);
-        const float32x4_t coeff2 = vdupq_n_f32(MSML__GELU_COEFF);
+        float32x4_t half = vdupq_n_f32(0.5f);
+        float32x4_t one = vdupq_n_f32(1.0f);
+        float32x4_t coeff1 = vdupq_n_f32(0.79788456080286535587989211986876f);
+        float32x4_t coeff2 = vdupq_n_f32(MSML__GELU_COEFF);
         for (; i+3 < n; i += 4) {
-            const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t a = vaddq_f32(one, vmulq_f32(coeff2, vmulq_f32(xx, xx)));
-            const float32x4_t b = vaddq_f32(one, msml__simd_tanh(vmulq_f32(coeff1, vmulq_f32(xx, a))));
-            const float32x4_t c = vmulq_f32(half, vmulq_f32(xx, b));
+            float32x4_t xx = vld1q_f32(x+i);
+            float32x4_t a = vaddq_f32(one, vmulq_f32(coeff2, vmulq_f32(xx, xx)));
+            float32x4_t b = vaddq_f32(one, msml__simd_tanh(vmulq_f32(coeff1, vmulq_f32(xx, a))));
+            float32x4_t c = vmulq_f32(half, vmulq_f32(xx, b));
             vst1q_f32(o+i, c);
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        #error TODO
+        __m512 half = _mm512_set1_ps(0.5f);
+        __m512 one = _mm512_set1_ps(1.0f);
+        __m512 coeff1 = _mm512_set1_ps(0.79788456080286535587989211986876f);
+        __m512 coeff2 = _mm512_set1_ps(MSML__GELU_COEFF);
+        for (; i+15 < n; i += 16) {
+            __m512 xx = _mm512_loadu_ps(x+i);
+            __m512 a = _mm512_fmadd_ps(coeff2, _mm512_mul_ps(xx, xx), one);
+            __m512 b = _mm512_add_ps(one, msml__simd_tanh(_mm512_mul_ps(coeff1, _mm512_mul_ps(xx, a))));
+            __m512 c = _mm512_mul_ps(half, _mm512_mul_ps(xx, b));
+            _mm512_storeu_ps(o+i, c);
+        }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
-        const __m256 half = _mm256_set1_ps(0.5f);
-        const __m256 one = _mm256_set1_ps(1.0f);
-        const __m256 coeff1 = _mm256_set1_ps(0.79788456080286535587989211986876f);
-        const __m256 coeff2 = _mm256_set1_ps(MSML__GELU_COEFF);
+        __m256 half = _mm256_set1_ps(0.5f);
+        __m256 one = _mm256_set1_ps(1.0f);
+        __m256 coeff1 = _mm256_set1_ps(0.79788456080286535587989211986876f);
+        __m256 coeff2 = _mm256_set1_ps(MSML__GELU_COEFF);
         for (; i+7 < n; i += 8) {
-            const __m256 xx = _mm256_loadu_ps(x+i);
-            const __m256 a = _mm256_add_ps(one, _mm256_mul_ps(coeff2, _mm256_mul_ps(xx, xx)));
-            const __m256 b = _mm256_add_ps(one, msml__simd_tanh(_mm256_mul_ps(coeff1, _mm256_mul_ps(xx, a))));
-            const __m256 c = _mm256_mul_ps(half, _mm256_mul_ps(xx, b));
+            __m256 xx = _mm256_loadu_ps(x+i);
+            __m256 a = _mm256_fmadd_ps(coeff2, _mm256_mul_ps(xx, xx), one);
+            __m256 b = _mm256_add_ps(one, msml__simd_tanh(_mm256_mul_ps(coeff1, _mm256_mul_ps(xx, a))));
+            __m256 c = _mm256_mul_ps(half, _mm256_mul_ps(xx, b));
             _mm256_storeu_ps(o+i, c);
         }
     #elif MSML_INTRIN && defined(__SSE2__)
-        const __m128 half = _mm_set1_ps(0.5f);
-        const __m128 one = _mm_set1_ps(1.0f);
-        const __m128 coeff1 = _mm_set1_ps(0.79788456080286535587989211986876f);
-        const __m128 coeff2 = _mm_set1_ps(MSML__GELU_COEFF);
+        __m128 half = _mm_set1_ps(0.5f);
+        __m128 one = _mm_set1_ps(1.0f);
+        __m128 coeff1 = _mm_set1_ps(0.79788456080286535587989211986876f);
+        __m128 coeff2 = _mm_set1_ps(MSML__GELU_COEFF);
         for (; i+3 < n; i += 4) {
-            const __m128 xx = _mm_loadu_ps(x+i);
-            const __m128 a = _mm_add_ps(one, _mm_mul_ps(coeff2, _mm_mul_ps(xx, xx)));
-            const __m128 b = _mm_add_ps(one, msml__simd_tanh(_mm_mul_ps(coeff1, _mm_mul_ps(xx, a))));
-            const __m128 c = _mm_mul_ps(half, _mm_mul_ps(xx, b));
+            __m128 xx = _mm_loadu_ps(x+i);
+            __m128 a = _mm_add_ps(one, _mm_mul_ps(coeff2, _mm_mul_ps(xx, xx)));
+            __m128 b = _mm_add_ps(one, msml__simd_tanh(_mm_mul_ps(coeff1, _mm_mul_ps(xx, a))));
+            __m128 c = _mm_mul_ps(half, _mm_mul_ps(xx, b));
             _mm_storeu_ps(o+i, c);
         }
     #endif
