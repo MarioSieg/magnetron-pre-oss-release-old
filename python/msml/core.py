@@ -19,9 +19,9 @@ faulthandler.enable()
 ffi, C = load_native_msml_lib()  # Load the native MSML shared library
 
 # Define Python wrapper classes
-MAX_DIMS: int = 4
+MAX_DIMS: int = 6
 MAX_ARG_TENSORS: int = 2
-MSML_MAX_OP_PARAMS: int = 4
+MSML_MAX_OP_PARAMS: int = 6
 DIM_MAX: int = ((1 << 64) - 1) >> 1
 
 
@@ -253,7 +253,9 @@ class Tensor:
             1: C.msml_tensor_create_1d,
             2: C.msml_tensor_create_2d,
             3: C.msml_tensor_create_3d,
-            4: C.msml_tensor_create_4d
+            4: C.msml_tensor_create_4d,
+            5: C.msml_tensor_create_5d,
+            6: C.msml_tensor_create_6d
         }
         assert len(shape) in dispatch
         self.tensor = dispatch[len(shape)](ctx.ctx, dtype.value, *shape)

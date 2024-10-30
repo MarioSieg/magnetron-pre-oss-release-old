@@ -18,10 +18,10 @@
 
 #define MSML_DEFAULT_CHUNK_SIZE (1ull<<30)  /* Default size of memory chunk in bytes. 1 GiB */
 #define MSML_DEFAULT_CHUNK_CAP 128          /* Default capacity of memory chunk */
-#define MSML_MAX_DIMS 4                     /* Maximum number of dimensions for a tensor */
+#define MSML_MAX_DIMS 6                     /* Maximum number of dimensions for a tensor */
 #define MSML_MAX_TENSOR_NAME_LEN 64         /* Maximum length for tensor name */
 #define MSML_MAX_INPUT_TENSORS 2            /* Maximum number of input tensors for an operation */
-#define MSML_MAX_OP_PARAMS 4                /* Maximum number of parameters for an operation */
+#define MSML_MAX_OP_PARAMS 6                /* Maximum number of parameters for an operation */
 
 #ifndef MSML_EXPORT
 #   ifdef MSML_EXPORT_DLL
@@ -192,6 +192,8 @@ extern MSML_EXPORT msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dt
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */
 extern MSML_EXPORT msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4); /* Create 4D tensor */
+extern MSML_EXPORT msml_tensor_t* msml_tensor_create_5d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5); /* Create 5D tensor */
+extern MSML_EXPORT msml_tensor_t* msml_tensor_create_6d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6); /* Create 6D tensor */
 
 extern MSML_EXPORT msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
 
@@ -224,8 +226,8 @@ extern MSML_EXPORT bool msml_tensor_can_broadcast(const msml_tensor_t* a, const 
 extern MSML_EXPORT bool msml_tensor_is_transposed(const msml_tensor_t* t); /* Check if the tensor is transposed */
 extern MSML_EXPORT bool msml_tensor_is_permuted(const msml_tensor_t* t); /* Check if the tensor is permuted */
 extern MSML_EXPORT bool msml_tensor_is_contiguous(const msml_tensor_t* t); /* Check if the tensor memory is contiguous */
-extern MSML_EXPORT float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3); /* Get scalar value at physical index */
-extern MSML_EXPORT void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x); /* Set scalar value at physical index */
+extern MSML_EXPORT float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5); /* Get scalar value at physical index */
+extern MSML_EXPORT void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, float x); /* Set scalar value at physical index */
 extern MSML_EXPORT float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* t, int64_t v_idx); /* Get scalar value at virtual index */
 extern MSML_EXPORT void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern MSML_EXPORT bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b); /* Check if two tensors are equal without epsilon. */

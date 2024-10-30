@@ -81,11 +81,13 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
 #define impl_test_binary_op(name, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
-        for (int64_t i0=1; i0 <= 9; ++i0) \
-        for (int64_t i1=1; i1 <= 9; ++i1) \
-        for (int64_t i2=1; i2 <= 9; ++i2) \
-        for (int64_t i3=1; i3 <= 9; ++i3) { \
-            msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
+        for (int64_t i0=1; i0 <= 6; ++i0) \
+        for (int64_t i1=1; i1 <= 6; ++i1) \
+        for (int64_t i2=1; i2 <= 6; ++i2) \
+        for (int64_t i3=1; i3 <= 6; ++i3) \
+        for (int64_t i4=1; i4 <= 6; ++i4) \
+        for (int64_t i5=1; i5 <= 6; ++i5) { \
+            msml_tensor_t* x = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             msml_tensor_t* y = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, x); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill_random(y, -5.0f, 5.0f); \
@@ -108,12 +110,14 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
     TEST(compute_cpu, name##_scalar_broadcast) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         for (int64_t factor=2; factor <= 4; ++factor) \
-        for (int64_t i0=1; i0 <= 4; ++i0) \
-        for (int64_t i1=1; i1 <= 4; ++i1) \
-        for (int64_t i2=1; i2 <= 4; ++i2) \
-        for (int64_t i3=1; i3 <= 4; ++i3) { \
-            msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor); \
-            msml_tensor_t* y = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
+        for (int64_t i0=1; i0 <= 3; ++i0) \
+        for (int64_t i1=1; i1 <= 3; ++i1) \
+        for (int64_t i2=1; i2 <= 3; ++i2) \
+        for (int64_t i3=1; i3 <= 3; ++i3) \
+        for (int64_t i4=1; i4 <= 3; ++i4) \
+        for (int64_t i5=1; i5 <= 3; ++i5) { \
+            msml_tensor_t* x = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
+            msml_tensor_t* y = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill(y, 2.2f); \
             \

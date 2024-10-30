@@ -118,6 +118,72 @@ TEST(msml_tensor_t, init_4d) {
     msml_ctx_destroy(ctx);
 }
 
+TEST(msml_tensor_t, init_5d) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    msml_tensor_t* tensor = msml_tensor_create_5d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5, 3);
+    ASSERT_NE(tensor, nullptr);
+    ASSERT_EQ(msml_tensor_get_ctx(tensor), ctx);
+    ASSERT_EQ(msml_tensor_dtype(tensor), MSML_DTYPE_F32);
+    ASSERT_EQ(msml_tensor_rank(tensor), 5);
+    ASSERT_EQ(msml_tensor_shape(tensor)[0], 10);
+    ASSERT_EQ(msml_tensor_shape(tensor)[1], 4);
+    ASSERT_EQ(msml_tensor_shape(tensor)[2], 2);
+    ASSERT_EQ(msml_tensor_shape(tensor)[3], 5);
+    ASSERT_EQ(msml_tensor_shape(tensor)[4], 3);
+    ASSERT_EQ(msml_tensor_shape(tensor)[5], 1);
+    ASSERT_EQ(msml_tensor_data_size(tensor), 10 * 4 * 2 * 5 * 3 * sizeof(float));
+    ASSERT_EQ(msml_tensor_num_elements(tensor), 10 * 4 * 2 * 5 * 3);
+    ASSERT_EQ(msml_tensor_num_cols(tensor), 10);
+    ASSERT_EQ(msml_tensor_num_rows(tensor), 40*3);
+    ASSERT_EQ(msml_tensor_strides(tensor)[0], sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[1], 10*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[2], 10*4*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[3], 10*4*2*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[4], 10*4*2*5*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[5], 10*4*2*5*3*sizeof(float));
+
+    ASSERT_FALSE(msml_tensor_is_scalar(tensor));
+    ASSERT_FALSE(msml_tensor_is_vector(tensor));
+    ASSERT_FALSE(msml_tensor_is_matrix(tensor));
+    ASSERT_FALSE(msml_tensor_is_volume(tensor));
+
+    msml_ctx_destroy(ctx);
+}
+
+TEST(msml_tensor_t, init_6d) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+
+    msml_tensor_t* tensor = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5, 3, 2);
+    ASSERT_NE(tensor, nullptr);
+    ASSERT_EQ(msml_tensor_get_ctx(tensor), ctx);
+    ASSERT_EQ(msml_tensor_dtype(tensor), MSML_DTYPE_F32);
+    ASSERT_EQ(msml_tensor_rank(tensor), 6);
+    ASSERT_EQ(msml_tensor_shape(tensor)[0], 10);
+    ASSERT_EQ(msml_tensor_shape(tensor)[1], 4);
+    ASSERT_EQ(msml_tensor_shape(tensor)[2], 2);
+    ASSERT_EQ(msml_tensor_shape(tensor)[3], 5);
+    ASSERT_EQ(msml_tensor_shape(tensor)[4], 3);
+    ASSERT_EQ(msml_tensor_shape(tensor)[5], 2);
+    ASSERT_EQ(msml_tensor_data_size(tensor), 10 * 4 * 2 * 5 * 3 * 2 * sizeof(float));
+    ASSERT_EQ(msml_tensor_num_elements(tensor), 10 * 4 * 2 * 5 * 3 * 2);
+    ASSERT_EQ(msml_tensor_num_cols(tensor), 10);
+    ASSERT_EQ(msml_tensor_num_rows(tensor), 40*3*2);
+    ASSERT_EQ(msml_tensor_strides(tensor)[0], sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[1], 10*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[2], 10*4*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[3], 10*4*2*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[4], 10*4*2*5*sizeof(float));
+    ASSERT_EQ(msml_tensor_strides(tensor)[5], 10*4*2*5*3*sizeof(float));
+
+    ASSERT_FALSE(msml_tensor_is_scalar(tensor));
+    ASSERT_FALSE(msml_tensor_is_vector(tensor));
+    ASSERT_FALSE(msml_tensor_is_matrix(tensor));
+    ASSERT_FALSE(msml_tensor_is_volume(tensor));
+
+    msml_ctx_destroy(ctx);
+}
+
 TEST(msml_tensor_t, print) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
@@ -248,6 +314,8 @@ TEST(msml_tensor_t, permute) {
     msml_tensor_t* origin = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, 4, 1);
     msml_tensor_fill_random(origin, -1.0f, 1.0f);
     msml_op_param_t params[MSML_MAX_OP_PARAMS] {
+        msml_op_param_int(5),
+        msml_op_param_int(4),
         msml_op_param_int(3),
         msml_op_param_int(2),
         msml_op_param_int(1),
@@ -258,10 +326,12 @@ TEST(msml_tensor_t, permute) {
     ASSERT_FALSE(msml_tensor_is_transposed(permuted));
     ASSERT_FALSE(msml_tensor_is_permuted(origin));
     ASSERT_TRUE(msml_tensor_is_permuted(permuted));
-    ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(permuted)[3]);
-    ASSERT_EQ(msml_tensor_shape(origin)[1], msml_tensor_shape(permuted)[2]);
-    ASSERT_EQ(msml_tensor_shape(origin)[2], msml_tensor_shape(permuted)[1]);
-    ASSERT_EQ(msml_tensor_shape(origin)[3], msml_tensor_shape(permuted)[0]);
+    ASSERT_EQ(msml_tensor_shape(origin)[0], msml_tensor_shape(permuted)[5]);
+    ASSERT_EQ(msml_tensor_shape(origin)[1], msml_tensor_shape(permuted)[4]);
+    ASSERT_EQ(msml_tensor_shape(origin)[2], msml_tensor_shape(permuted)[3]);
+    ASSERT_EQ(msml_tensor_shape(origin)[3], msml_tensor_shape(permuted)[2]);
+    ASSERT_EQ(msml_tensor_shape(origin)[4], msml_tensor_shape(permuted)[1]);
+    ASSERT_EQ(msml_tensor_shape(origin)[5], msml_tensor_shape(permuted)[0]);
     ASSERT_EQ(msml_tensor_data_size(origin), msml_tensor_data_size(permuted));
     ASSERT_EQ(msml_tensor_num_elements(origin), msml_tensor_num_elements(permuted));
     ASSERT_EQ(msml_tensor_num_cols(origin), msml_tensor_num_rows(permuted));
