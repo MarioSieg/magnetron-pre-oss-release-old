@@ -1683,10 +1683,11 @@ void msml_tensor_print(const msml_tensor_t* t, bool with_header, bool with_data)
         double buf_size_cvt = 0.0;
         const char* buf_size_unit = NULL;
         msml__humanize_memory_size(msml_tensor_get_memory_usage(t), &buf_size_cvt, &buf_size_unit);
-        fprintf(f, "Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s\n",
+        fprintf(f, "Tensor '%s', DType: %s, Rank: %zu, Elements: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s\n",
             t->name,
             msml_dtype_info_of(t->dtype)->name,
             (size_t)t->rank,
+            (size_t)msml_tensor_num_elements(t),
             (size_t)x_d0,
             (size_t)x_d1,
             (size_t)x_d2,
@@ -1699,7 +1700,7 @@ void msml_tensor_print(const msml_tensor_t* t, bool with_header, bool with_data)
             buf_size_unit
         );
     }
-    if (with_data) {
+    if (with_data) { /* TODO: Adapt 6D tensor printing */
         const uint8_t* buf = (const uint8_t*)t->buf;
         if (x_d3 > 1) fprintf(f, "[\n");
         for (int64_t i3=0; i3 < x_d3; ++i3) {
