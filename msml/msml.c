@@ -3009,15 +3009,14 @@ static void MSML_HOTPROC msml__blas_add_f32(
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
     const int64_t rc = msml_tensor_num_rows(x);
-    /* Fast path for contiguous input tensors. */
-    if (y_s0 == sizeof(float)) {
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3035,15 +3034,28 @@ static void MSML_HOTPROC msml__blas_add_f32(
                 msml__bnd_chk(pp_x, b_x, msml_tensor_data_size(x));
                 msml__vadd_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
             }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
         }
     } else { /* Slow path for non-contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3057,6 +3069,24 @@ static void MSML_HOTPROC msml__blas_add_f32(
                 msml__bnd_chk(p_x+i, b_x, msml_tensor_data_size(x));
                 msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y));
                 p_r[i] = p_x[i] + *p_y; /* Apply scalar op. */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
             }
         }
     }
@@ -3079,15 +3109,14 @@ static void MSML_HOTPROC msml__blas_sub_f32(
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
     const int64_t rc = msml_tensor_num_rows(x);
-    /* Fast path for contiguous input tensors. */
-    if (y_s0 == sizeof(float)) {
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3105,15 +3134,28 @@ static void MSML_HOTPROC msml__blas_sub_f32(
                 msml__bnd_chk(pp_x, b_x, msml_tensor_data_size(x));
                 msml__vsub_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
             }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
         }
     } else { /* Slow path for non-contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3127,6 +3169,24 @@ static void MSML_HOTPROC msml__blas_sub_f32(
                 msml__bnd_chk(p_x+i, b_x, msml_tensor_data_size(x));
                 msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y));
                 p_r[i] = p_x[i] - *p_y; /* Apply scalar op. */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
             }
         }
     }
@@ -3149,15 +3209,14 @@ static void MSML_HOTPROC msml__blas_mul_f32(
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
     const int64_t rc = msml_tensor_num_rows(x);
-    /* Fast path for contiguous input tensors. */
-    if (y_s0 == sizeof(float)) {
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3175,15 +3234,28 @@ static void MSML_HOTPROC msml__blas_mul_f32(
                 msml__bnd_chk(pp_x, b_x, msml_tensor_data_size(x));
                 msml__vmul_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
             }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
         }
     } else { /* Slow path for non-contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3197,6 +3269,24 @@ static void MSML_HOTPROC msml__blas_mul_f32(
                 msml__bnd_chk(p_x+i, b_x, msml_tensor_data_size(x));
                 msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y));
                 p_r[i] = p_x[i] * *p_y; /* Apply scalar op. */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
             }
         }
     }
@@ -3219,15 +3309,14 @@ static void MSML_HOTPROC msml__blas_div_f32(
     msml__load_local_storage_group(y, y_d, shape)
     msml__load_local_storage_group(y, y_s, strides)
     const int64_t rc = msml_tensor_num_rows(x);
-    /* Fast path for contiguous input tensors. */
-    if (y_s0 == sizeof(float)) {
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3245,15 +3334,28 @@ static void MSML_HOTPROC msml__blas_div_f32(
                 msml__bnd_chk(pp_x, b_x, msml_tensor_data_size(x));
                 msml__vdiv_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
             }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
         }
     } else { /* Slow path for non-contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
-            /* Compute 5D indices for x, broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
-            const int64_t x_i5 = ri / (x_d4*x_d3*x_d2*x_d1);
-            const int64_t x_i4 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1)/(x_d3*x_d2*x_d1);
-            const int64_t x_i3 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1)/(x_d2*x_d1);
-            const int64_t x_i2 = (ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1)/x_d1;
-            const int64_t x_i1 = ri - x_i5*x_d4*x_d3*x_d2*x_d1 - x_i4*x_d3*x_d2*x_d1 - x_i3*x_d2*x_d1 - x_i2*x_d1;
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
             const int64_t y_i4 = x_i4 % y_d4;
             const int64_t y_i3 = x_i3 % y_d3;
@@ -3267,6 +3369,24 @@ static void MSML_HOTPROC msml__blas_div_f32(
                 msml__bnd_chk(p_x+i, b_x, msml_tensor_data_size(x));
                 msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y));
                 p_r[i] = p_x[i] / *p_y; /* Apply scalar op. */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
             }
         }
     }

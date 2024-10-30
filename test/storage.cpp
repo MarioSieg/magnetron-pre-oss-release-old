@@ -26,6 +26,7 @@ TEST(storage, load) {
     ASSERT_EQ(msml_tensor_data_size(B), 10 * 4 * 2 * 5 * 2 * 2 * sizeof(float));
     ASSERT_TRUE(msml_tensor_eq(A, B));
     msml_ctx_destroy(ctx);
+    ASSERT_TRUE(std::filesystem::remove("test_data/test.msml"));
 }
 
 TEST(storage, load_store_image) {
