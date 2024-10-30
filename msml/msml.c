@@ -3523,14 +3523,14 @@ msml_static_assert(MSML_MAX_DIMS % 4 == 0);
 msml_static_assert(MSML_DTYPE_COUNT_ <= 0xff);
 msml_static_assert(MSML_MAX_DIMS <= 0xff);
 
-static void msml__sto_write_file_header( /* File header must be same in every version. */
+static bool msml__sto_write_file_header( /* File header must be same in every version. */
     uint8_t** p,
     const uint8_t* end,
     uint32_t version,
     uint32_t num_tensors,
     uint32_t ud
 ) {
-    msml__assert(*p + MSML__STO_FILE_HEADER_SIZE < end, "Corrupted file header");
+    if (msml_unlikely(*p + MSML__STO_FILE_HEADER_SIZE >= end)) return false;
     const uint8_t* start = *p;
     uint32_t msml_magic;
     memcpy(&msml_magic, "MSML", sizeof(msml_magic));
@@ -3538,27 +3538,27 @@ static void msml__sto_write_file_header( /* File header must be same in every ve
     msml__sto_write_u32_le(p, version);
     msml__sto_write_u32_le(p, num_tensors);
     msml__sto_write_u32_le(p, ud);
-    msml__assert2(*p - start == MSML__STO_FILE_HEADER_SIZE);
+    return msml_likely(*p - start == MSML__STO_FILE_HEADER_SIZE);
 }
 
-static void msml__sto_read_file_header(  /* File header must be same in every version. */
+static bool msml__sto_read_file_header(  /* File header must be same in every version. */
     const uint8_t** p,
     const uint8_t* end,
     uint32_t* version,
     uint32_t* num_tensors,
     uint32_t* ud
 ) {
-    msml__assert(*p + MSML__STO_FILE_HEADER_SIZE < end, "Corrupted file header");
+    if (msml_unlikely(*p + MSML__STO_FILE_HEADER_SIZE >= end)) return false;
     const uint8_t* start = *p;
     uint32_t msml_magic = msml__sto_read_u32_le(p);
-    msml__assert(memcmp(&msml_magic, "MSML", sizeof(msml_magic)) == 0, "Invalid MSML magic");
+    if (msml_unlikely(memcmp(&msml_magic, "MSML", sizeof(msml_magic)) != 0)) return false;
     *version = msml__sto_read_u32_le(p);
     *num_tensors = msml__sto_read_u32_le(p);
     *ud = msml__sto_read_u32_le(p);
-    msml__assert2(*p - start == MSML__STO_FILE_HEADER_SIZE);
+    return msml_likely(*p - start == MSML__STO_FILE_HEADER_SIZE);
 }
 
-static void msml__sto_write_tensor_header(
+static bool msml__sto_write_tensor_header(
     uint8_t** p,
     const uint8_t* end,
     uint32_t version,
@@ -3568,7 +3568,7 @@ static void msml__sto_write_tensor_header(
     int64_t rank,
     const int64_t (*shape)[MSML_MAX_DIMS]
 ) {
-    msml__assert(*p + MSML__STO_TENSOR_HEADER_SIZE < end, "Corrupted tensor header");
+    if (msml_unlikely(*p + MSML__STO_TENSOR_HEADER_SIZE >= end)) return false;
     const uint8_t* start = *p;
     switch (version) {
         case 1: {
@@ -3582,16 +3582,16 @@ static void msml__sto_write_tensor_header(
             aux |= (rank & 0xff);
             msml__sto_write_u32_le(p, aux);
             for (size_t i=0; i < MSML_MAX_DIMS; ++i) {
-                msml__assert((*shape)[i] >= 1, "Malformed dimension");
+                if (msml_unlikely((*shape)[i] < 1)) return false;
                 msml__sto_write_u64_le(p, (uint64_t)(*shape)[i]);
             }
         } break;
-        default: msml__panic("Unsupported storage version");
+        default: return false;
     }
-    msml__assert2(*p - start == MSML__STO_TENSOR_HEADER_SIZE);
+    return msml_likely(*p - start == MSML__STO_TENSOR_HEADER_SIZE);
 }
 
-static void msml__sto_read_tensor_header(
+static bool msml__sto_read_tensor_header(
     const uint8_t** p,
     const uint8_t* end,
     uint32_t version,
@@ -3601,7 +3601,7 @@ static void msml__sto_read_tensor_header(
     int64_t* rank,
     int64_t (*shape)[MSML_MAX_DIMS]
 ) {
-    msml__assert(*p + MSML__STO_TENSOR_HEADER_SIZE < end, "Corrupted tensor header");
+    if (msml_unlikely (*p + MSML__STO_TENSOR_HEADER_SIZE >= end)) return false;
     const uint8_t* start = *p;
     switch (version) {
         case 1: {
@@ -3612,21 +3612,21 @@ static void msml__sto_read_tensor_header(
             *flags = (msml__tensor_flags_t)((aux >> 16) & 0xff);
             *dtype = (msml_dtype_t)((aux >> 8) & 0xff);
             *rank = (int64_t)(aux & 0xff);
-            msml__assert(*flags == 0 || (*flags <= 0xff && ((*flags & 1) == 0)) , "Malformed flags: %d", *flags);
-            msml__assert(*dtype >= 0 && *dtype < MSML_DTYPE_COUNT_, "Malformed DType: %d", *dtype);
-            msml__assert(*rank >= 1 && *rank <= MSML_MAX_DIMS, "Malformed rank: %lld", *rank);
+            if (msml_unlikely(!(*flags == 0 || (*flags <= 0xff && ((*flags & 1) == 0))))) return false;
+            if (msml_unlikely(!(*dtype >= 0 && *dtype < MSML_DTYPE_COUNT_))) return false;
+            if (msml_unlikely(!(*rank >= 1 && *rank <= MSML_MAX_DIMS))) return false;
             for (size_t i=0; i < MSML_MAX_DIMS; ++i) {
                 uint64_t u64 = msml__sto_read_u64_le(p);
-                msml__assert(u64>= 1 && u64 <= (uint64_t)INT64_MAX, "Malformed dimension");
+                if (msml_unlikely(!(u64>= 1 && u64 <= (uint64_t)INT64_MAX))) return false;
                 (*shape)[i] = (int64_t)u64;
             }
         } break;
-        default: msml__panic("Unsupported storage version");
+        default: return false;
     }
-    msml__assert2(*p - start == MSML__STO_TENSOR_HEADER_SIZE);
+    return msml_likely(*p - start == MSML__STO_TENSOR_HEADER_SIZE);
 }
 
-static void msml__sto_write_tensor_data(
+static bool msml__sto_write_tensor_data(
     uint8_t** p,
     const uint8_t* end,
     uint32_t version,
@@ -3634,20 +3634,20 @@ static void msml__sto_write_tensor_data(
     const void* data,
     int64_t size
 ) {
-    msml__assert(size > 0, "Malformed size");
-    msml__assert(*p + size <= end, "Corrupted tensor data");
+    if (msml_unlikely(!size)) return false;
+    if (msml_unlikely(*p + size > end)) return false;
     const uint8_t* start = *p;
     switch (version) {
         case 1: {
             memcpy(*p, data, size);
             *p += size;
         } break;
-        default: msml__panic("Unsupported storage version");
+        default: return false;
     }
-    msml__assert2(*p - start == size);
+    return msml_likely(*p - start == size);
 }
 
-static void msml__sto_read_tensor_data(
+static bool msml__sto_read_tensor_data(
     const uint8_t** p,
     const uint8_t* end,
     uint32_t version,
@@ -3655,17 +3655,17 @@ static void msml__sto_read_tensor_data(
     void* data,
     int64_t size
 ) {
-    msml__assert(size > 0, "Malformed size");
-    msml__assert(*p + size <= end, "Corrupted tensor data");
+    if (msml_unlikely(!size)) return false;
+    if (msml_unlikely(*p + size > end)) return false;
     const uint8_t* start = *p;
     switch (version) {
         case 1: {
             memcpy(data, *p, size); /* TODO: endianess conversion */
             *p += size;
         } break;
-        default: msml__panic("Unsupported storage version");
+        default: return false;
     }
-    msml__assert2(*p - start == size);
+    return msml_likely(*p - start == size);
 }
 
 static size_t msml__tensor_data_size(msml_dtype_t dtype, const int64_t (*shape)[MSML_MAX_DIMS]) {
@@ -3680,22 +3680,22 @@ static size_t msml__sto_total_size(const msml_tensor_t** tensors, size_t n) {
         total += MSML__STO_TENSOR_HEADER_SIZE;
         total += msml__tensor_data_size(tensors[i]->dtype, &tensors[i]->shape);
     }
-    msml__assert(total % 4 == 0, "Unaligned storage size: %zu", total);
+    msml__assert((total & 3) == 0, "Unaligned storage size: %zu", total);
     return total;
 }
 
 static uint8_t* msml__sto_write_buffered(const msml_tensor_t** tensors, size_t n_tensors, size_t* out_size) {
-    msml__assert2(n_tensors && n_tensors <= UINT32_MAX);
+    if (msml_unlikely(!tensors || !n_tensors || n_tensors > UINT32_MAX || !out_size)) return NULL;
     *out_size = msml__sto_total_size(tensors, n_tensors);
     uint8_t* base = (uint8_t*)msml_alloc(NULL, *out_size );
     uint8_t* needle = base;
     const uint8_t* end = base + *out_size ;
     uint32_t version = MSML_STORAGE_VERSION;
-    msml__sto_write_file_header(&needle, end, version, (uint32_t)n_tensors, 0);
+    if (msml_unlikely(!msml__sto_write_file_header(&needle, end, version, (uint32_t)n_tensors, 0))) goto error;
     for (size_t i=0; i < n_tensors; ++i) {
         const msml_tensor_t* t = tensors[i];
         msml__assert2(t != NULL);
-        msml__sto_write_tensor_header(
+        if (msml_unlikely(!msml__sto_write_tensor_header(
             &needle,
             end,
             version,
@@ -3704,26 +3704,29 @@ static uint8_t* msml__sto_write_buffered(const msml_tensor_t** tensors, size_t n
             t->dtype,
             t->rank,
             &t->shape
-        );
+        ))) goto error;
     }
     msml__assert2(needle - base == MSML__STO_FILE_HEADER_SIZE + n_tensors*MSML__STO_TENSOR_HEADER_SIZE);
     for (size_t i=0; i < n_tensors; ++i) {
         const msml_tensor_t* t = tensors[i];
-        msml__sto_write_tensor_data(&needle, end, version, t->dtype, t->buf, msml_tensor_data_size(t));
+        if (msml_unlikely(!msml__sto_write_tensor_data(&needle, end, version, t->dtype, t->buf, msml_tensor_data_size(t)))) goto error;
     }
     return base;
+    error:
+        msml_alloc(base, 0);
+        return NULL;
 }
 
 MSML_EXPORT msml_tensor_t** msml__sto_read_buffered(msml_ctx_t* ctx, const uint8_t* buf, size_t size, size_t* out_n_tensors) { /* Load stored tensors from buffer. Function is exported for fuzzing test. */
-    msml__assert(size > MSML__STO_FILE_HEADER_SIZE + MSML__STO_TENSOR_HEADER_SIZE + 1, "Malformed size"); /* At least one tensor with 1 element */
+    if (msml_unlikely(!ctx || !buf || !out_n_tensors || size <= MSML__STO_FILE_HEADER_SIZE + MSML__STO_TENSOR_HEADER_SIZE + 1)) return NULL;
     const uint8_t* needle = buf;
     const uint8_t* end = buf + size;
     uint32_t version;
     uint32_t n_tensors;
     uint32_t ud;
-    msml__sto_read_file_header(&needle, end, &version, &n_tensors, &ud);
-    msml__assert(version > 0 && version <= MSML_VERSION, "Unsupported storage version: %u", version);
-    msml__assert(n_tensors > 0, "Malformed number of tensors: %u", n_tensors);
+    if (msml_unlikely(!msml__sto_read_file_header(&needle, end, &version, &n_tensors, &ud))) return NULL;
+    if (msml_unlikely(!version || version > MSML_VERSION)) return NULL;
+    if (msml_unlikely(!n_tensors)) return NULL;
     msml_tensor_t** tensors = (msml_tensor_t**)msml_alloc(NULL, n_tensors*sizeof(*tensors));
     for (size_t i=0; i < n_tensors; ++i) {
         char name[MSML_MAX_TENSOR_NAME_LEN] = {0};
@@ -3731,17 +3734,20 @@ MSML_EXPORT msml_tensor_t** msml__sto_read_buffered(msml_ctx_t* ctx, const uint8
         msml_dtype_t dtype = 0;
         int64_t rank = 0;
         int64_t shape[MSML_MAX_DIMS] = {0};
-        msml__sto_read_tensor_header(&needle, end, version, &name, &flags, &dtype, &rank, &shape);
+        if (msml_unlikely(!msml__sto_read_tensor_header(&needle, end, version, &name, &flags, &dtype, &rank, &shape))) goto error;
         msml_tensor_t* t = msml__tensor_create(ctx, dtype, shape, rank, NULL, 0);
         msml_tensor_fmt_name(t, "%s", name);
         t->flags = flags | MSML_TFLAG_FROM_FS;
         size_t data_size = msml__tensor_data_size(dtype, &shape);
         msml__assert2(needle + data_size <= end && data_size == msml_tensor_data_size(t));
-        msml__sto_read_tensor_data(&needle, end, version, dtype, t->buf, data_size);
+        if (msml_unlikely(!msml__sto_read_tensor_data(&needle, end, version, dtype, t->buf, data_size))) goto error;
         tensors[i] = t;
     }
     *out_n_tensors = n_tensors;
     return tensors;
+    error:
+        msml_alloc(tensors, 0);
+        return NULL;
 }
 
 static bool msml__sto_has_msml_ext(const char* file) {
@@ -3756,7 +3762,8 @@ void msml_tensor_save(const msml_tensor_t* t, const char* file) {
     msml__assert(f, "Failed to open file stream: %s", file);
     size_t n_bytes = 0;
     uint8_t* ser = msml__sto_write_buffered(&t, 1, &n_bytes);
-    msml__assert2(n_bytes && fwrite(ser, 1, n_bytes, f) == n_bytes);
+    msml__assert(ser && n_bytes, "Failed to serialize tensor to file: %s", file);
+    msml__assert(fwrite(ser, 1, n_bytes, f) == n_bytes, "Failed to write %zu bytes to file: %s", n_bytes, file);
     msml_alloc(ser, 0);
     fflush(f);
     fclose(f);
@@ -3775,6 +3782,7 @@ msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file) {
     fclose(f), f = NULL;
     size_t n_tensors;
     msml_tensor_t** tensors = msml__sto_read_buffered(ctx, buf, n_bytes, &n_tensors);
+    msml__assert(tensors && n_tensors > 0, "Failed to load tensor from file: %s", file);
     msml_tensor_t* target = *tensors;
     msml_alloc(buf, 0);
     msml_alloc(tensors, 0);

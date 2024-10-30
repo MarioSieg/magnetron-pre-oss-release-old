@@ -10,7 +10,7 @@ if (NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 endif()
 
 add_executable(msml_fuzzer fuzzer.cpp)
-target_compile_options(msml_fuzzer PRIVATE -fsanitize=fuzzer)
+target_compile_options(msml_fuzzer PRIVATE -fsanitize=fuzzer -O3 -march=native)
 target_link_options(msml_fuzzer PRIVATE -fsanitize=fuzzer)
 target_link_libraries(msml_fuzzer msml)
 target_include_directories(msml_fuzzer PRIVATE ../msml)
