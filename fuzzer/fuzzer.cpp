@@ -1,7 +1,7 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
 // Command line options:
-// -jobs=64 -workers=64 -max_len=16384 -rss_limit_mb=16384 -max_total_time=3600
+// -jobs=64 -workers=64 -max_len=16384 -rss_limit_mb=16384 -max_total_time=3600 -exact_artifact_path="bin/fuzz"
 // 3600 = 1hr
 
 #include <cstddef>
