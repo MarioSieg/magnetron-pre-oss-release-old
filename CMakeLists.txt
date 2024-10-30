@@ -7,7 +7,7 @@ project(msml LANGUAGES C)
 set(CMAKE_C_STANDARD 99)
 option(MSML_BUILD_TESTS "Build tests" ON)
 option(MSML_BUILD_BENCHMARKS "Build benchmarks" ON)
-option(MSML_BUILD_FUZZERS "Build fuzzers" ON)
+option(MSML_BUILD_FUZZERS "Build fuzzers" OFF)
 option(MSML_ENABLE_IMAGE_SUPPORT "Enable creating tensor from images support" ON)
 
 if (${MSML_BUILD_TESTS})
