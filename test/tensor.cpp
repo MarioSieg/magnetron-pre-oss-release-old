@@ -307,6 +307,8 @@ TEST(msml_tensor_t, transpose) {
     ASSERT_EQ(msml_tensor_num_rows(origin), msml_tensor_num_cols(transposed));
     ASSERT_TRUE(msml_tensor_is_contiguous(origin));
     ASSERT_FALSE(msml_tensor_is_contiguous(transposed));
+
+    msml_ctx_destroy(ctx);
 }
 
 TEST(msml_tensor_t, permute) {
@@ -338,6 +340,8 @@ TEST(msml_tensor_t, permute) {
     ASSERT_EQ(msml_tensor_num_rows(origin), msml_tensor_num_cols(permuted));
     ASSERT_TRUE(msml_tensor_is_contiguous(origin));
     ASSERT_FALSE(msml_tensor_is_contiguous(permuted));
+
+    msml_ctx_destroy(ctx);
 }
 
 TEST(msml_tensor_t, isclose) {
