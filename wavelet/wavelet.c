@@ -1,6 +1,4 @@
-/*
-** (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-*/
+/* (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com> */
 
 /*
 **
@@ -24,7 +22,6 @@
 #include <time.h>
 #include <float.h>
 #include <ctype.h>
-#include <errno.h>
 
 #ifdef _MSC_VER
 #   include <intrin.h>
