@@ -3,7 +3,7 @@
 import gzip
 import struct
 import numpy as np
-from msml.core import Tensor
+import wavelet.core as wl
 
 def ubyte_load_data(src: str, num_samples: int) -> np.ndarray:
     with gzip.open(src) as gz:
@@ -27,4 +27,4 @@ def ubyte_load_labels(src: str, num_samples: int) -> np.ndarray:
     return res.reshape(num_samples)
 
 data = ubyte_load_data('../../datasets/mnist/images-idx3-ubyte.gz', 60000)
-Tensor.const(data=data.flatten().tolist(), shape=[60000, 28, 28]).save('mnist_images.msml')
+wl.Tensor.const(data=data.flatten().tolist(), shape=[60000, 28, 28]).save('mnist_images.wavelet')

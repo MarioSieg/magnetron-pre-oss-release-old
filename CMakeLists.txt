@@ -2,32 +2,32 @@
 
 cmake_minimum_required(VERSION 3.10)
 
-project(msml LANGUAGES C)
+project(wavelet LANGUAGES C)
 
 set(CMAKE_C_STANDARD 99)
-option(MSML_BUILD_TESTS "Build tests" ON)
-option(MSML_BUILD_BENCHMARKS "Build benchmarks" ON)
-option(MSML_BUILD_FUZZERS "Build fuzzers" OFF)
-option(MSML_ENABLE_IMAGE_SUPPORT "Enable creating tensor from images support" ON)
+option(WAVELET_BUILD_TESTS "Build tests" ON)
+option(WAVELET_BUILD_BENCHMARKS "Build benchmarks" ON)
+option(WAVELET_BUILD_FUZZERS "Build fuzzers" OFF)
+option(WAVELET_ENABLE_IMAGE_SUPPORT "Enable creating tensor from images support" ON)
 
-if (${MSML_BUILD_TESTS})
+if (${WAVELET_BUILD_TESTS})
     enable_testing()
     add_subdirectory(test)
 endif()
 
-if (${MSML_BUILD_FUZZERS})
+if (${WAVELET_BUILD_FUZZERS})
     add_subdirectory(fuzzer)
 endif()
 
-if (${MSML_BUILD_BENCHMARKS})
+if (${WAVELET_BUILD_BENCHMARKS})
     add_subdirectory(benchmark)
 endif()
 
-add_library(msml SHARED msml/msml.h msml/msml.c)
-target_include_directories(msml PRIVATE msml/optional)
+add_library(wavelet SHARED wavelet/wavelet.h wavelet/wavelet.c)
+target_include_directories(wavelet PRIVATE wavelet/optional)
 if (NOT WIN32)
-    target_link_libraries(msml m) # link math library
-    target_compile_options(msml PRIVATE
+    target_link_libraries(wavelet m) # link math library
+    target_compile_options(wavelet PRIVATE
         -Wall
         -Werror
         -std=c99
@@ -38,14 +38,14 @@ if (NOT WIN32)
         -std=gnu99
     )
     if (NOT APPLE) # TODO: IF x86-64
-        target_compile_options(msml PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)
+        target_compile_options(wavelet PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)
     endif()
     # Enable optimizations only for release builds
     if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-        target_compile_options(msml PRIVATE -O3 -flto)
-        target_link_options(msml PRIVATE -flto)
+        target_compile_options(wavelet PRIVATE -O3 -flto)
+        target_link_options(wavelet PRIVATE -flto)
     endif()
 endif()
-if (${MSML_ENABLE_IMAGE_SUPPORT})
-    target_compile_definitions(msml PRIVATE MSML_ENABLE_IMAGE_SUPPORT)
+if (${WAVELET_ENABLE_IMAGE_SUPPORT})
+    target_compile_definitions(wavelet PRIVATE WL_ENABLE_IMAGE_SUPPORT)
 endif()

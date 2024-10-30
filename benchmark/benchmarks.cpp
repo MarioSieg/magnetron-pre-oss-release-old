@@ -2,14 +2,13 @@
 
 // ON LINUX: Before running the benchmark, execute: linux_prepare_perf.sh to setup the system for performance measurements.
 
-#include <array>
 #include <functional>
 
-#include <msml.h>
+#include <wavelet.h>
 #define ANKERL_NANOBENCH_IMPLEMENT
 #include <nanobench.h>
 
-static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(msml_ctx_t* ctx) -> msml_tensor_t*>&& callback) -> void;
+static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(wl_ctx_t* ctx) -> wl_tensor_t*>&& callback) -> void;
 
 auto main() -> int {
     ankerl::nanobench::Bench matmul_bench {};
@@ -22,28 +21,28 @@ auto main() -> int {
         .relative(true);
     matmul_bench.performanceCounters(true);
 
-    run_bench(matmul_bench, "Tensor Add", [](msml_ctx_t* ctx) -> msml_tensor_t* {
+    run_bench(matmul_bench, "Tensor Add", [](wl_ctx_t* ctx) -> wl_tensor_t* {
         constexpr std::int64_t N = 128;
 
-        msml_tensor_t* A = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, N, N);
-        msml_tensor_fill(A, 1.0f);
+        wl_tensor_t* A = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N, N);
+        wl_tensor_fill(A, 1.0f);
 
-        msml_tensor_t* B = msml_tensor_create_2d(ctx, MSML_DTYPE_F32, N/2, N/2);
-        msml_tensor_fill(A, 1.0f);
+        wl_tensor_t* B = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N/2, N/2);
+        wl_tensor_fill(A, 1.0f);
 
-        msml_tensor_t* inputs[2] = {A, B};
-        msml_tensor_t* C = msml_tensor_operator(ctx, MSML_OP_ADD, inputs, 2, nullptr);
+        wl_tensor_t* inputs[2] = {A, B};
+        wl_tensor_t* C = wl_tensor_operator(ctx, WL_OP_ADD, inputs, 2, nullptr);
         return C;
     });
 }
 
-static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(msml_ctx_t* ctx) -> msml_tensor_t*>&& callback) -> void {
-    msml_ctx_t* ctx = msml_ctx_create2(4ull << 30);
-    msml_ctx_set_exec_mode(ctx, MSML_EXEC_MODE_DEFERRED);
-    msml_compute_graph_t* gra = msml_compute_graph_compile(ctx, std::invoke(callback, ctx), MSML_GRAPH_EVAL_ORDER_FORWARD, nullptr);
+static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(wl_ctx_t* ctx) -> wl_tensor_t*>&& callback) -> void {
+    wl_ctx_t* ctx = wl_ctx_create2(4ull << 30);
+    wl_ctx_set_exec_mode(ctx, WL_EXEC_MODE_DEFERRED);
+    wl_compute_graph_t* gra = wl_compute_graph_compile(ctx, std::invoke(callback, ctx), WL_GRAPH_EVAL_ORDER_FORWARD, nullptr);
     b.run(name, [gra]() -> void {
-        msml_compute_graph_execute(gra);
+        wl_compute_graph_execute(gra);
     });
     ankerl::nanobench::doNotOptimizeAway(gra);
-    msml_ctx_destroy(ctx);
+    wl_ctx_destroy(ctx);
 }

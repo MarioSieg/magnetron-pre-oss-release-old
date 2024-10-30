@@ -3,19 +3,19 @@
 #include "prelude.hpp"
 
 TEST(core, op_param_int) {
-    msml_op_param_t p = msml_op_param_int(1234);
-    ASSERT_TRUE(msml_op_param_is_int(p));
-    ASSERT_EQ(msml_op_param_unpack_int(p), 1234);
+    wl_op_param_t p = wl_op_param_int(1234);
+    ASSERT_TRUE(wl_op_param_is_int(p));
+    ASSERT_EQ(wl_op_param_unpack_int(p), 1234);
 }
 
 #if 0
 TEST(core, crc32) {
-    ASSERT_EQ(msml__crc32c("Hello, World!", std::strlen("Hello, World!")), 1297420392);
+    ASSERT_EQ(wl__crc32c("Hello, World!", std::strlen("Hello, World!")), 1297420392);
     uint8_t y = 0x3f;
-    ASSERT_EQ(msml__crc32c(& y, sizeof(y)), 1015883460);
-    ASSERT_EQ(msml__crc32c(nullptr, 0), 0);
-    ASSERT_EQ(msml__crc32c("AB", std::strlen("AB")), 3180610794);
-    ASSERT_EQ(msml__crc32c(
+    ASSERT_EQ(wl__crc32c(& y, sizeof(y)), 1015883460);
+    ASSERT_EQ(wl__crc32c(nullptr, 0), 0);
+    ASSERT_EQ(wl__crc32c("AB", std::strlen("AB")), 3180610794);
+    ASSERT_EQ(wl__crc32c(
             "Ich liebe Berliner Kebap, der ist einfach ultra schmackofatz, gerade um 4 Uhr Morgens nach einer langen Clubnacht.",
             std::strlen(
                     "Ich liebe Berliner Kebap, der ist einfach ultra schmackofatz, gerade um 4 Uhr Morgens nach einer langen Clubnacht.")), 60440201);
@@ -24,6 +24,6 @@ TEST(core, crc32) {
     for (std::size_t i = 0; i < huge.size(); ++i) {
         huge[i] = i % 0xff;
     }
-    ASSERT_EQ(msml__crc32c(huge.data(), huge.size()), 2008503331);
+    ASSERT_EQ(wl__crc32c(huge.data(), huge.size()), 2008503331);
 }
 #endif

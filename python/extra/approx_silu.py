@@ -3,11 +3,11 @@
 import approx
 import math
 
-from msml.core import Op
+import wavelet.core as wl
 
 
 def silu(x: float) -> float:
     return x / (1.0 + math.exp(-x))
 
 
-approx.plot_approximation_error('silu', silu, Op.SILU, domain=(-2, 2))
+approx.plot_approximation_error('silu', silu, wl.Op.SILU, domain=(-2, 2))

@@ -7,10 +7,10 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(googletest)
 
 file(GLOB_RECURSE TEST_SOURCES *.cpp)
-add_executable(msml_test ${TEST_SOURCES} ../msml/msml.hpp)
-target_link_libraries(msml_test msml)
-target_include_directories(msml_test PRIVATE ../msml)
+add_executable(wavelet_test ${TEST_SOURCES} ../wavelet/wavelet.hpp)
+target_link_libraries(wavelet_test wavelet)
+target_include_directories(wavelet_test PRIVATE ../wavelet)
 target_link_libraries(
-    msml_test
+    wavelet_test
     GTest::gtest_main
 )

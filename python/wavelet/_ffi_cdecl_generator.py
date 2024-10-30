@@ -2,9 +2,8 @@
 
 import datetime
 import re
-import core
 
-C_HDR_FILE: str = '../../msml/msml.h'
+C_HDR_FILE: str = '../../wavelet/wavelet.h'
 OUTPUT_FILE: str = '_ffi_cdecl.py'
 
 print(f'Generating {OUTPUT_FILE} from {C_HDR_FILE}...')
@@ -19,9 +18,9 @@ def comment_replacer(match):
 
 
 macro_substitutions: dict[str, str] = {
-    'MSML_EXPORT': ' ',
-    'MSML_MAX_DIMS': str(core.MAX_DIMS),
-    'MSML_MAX_OP_PARAMS': str(core.MSML_MAX_OP_PARAMS)
+    'WL_EXPORT': ' ',
+    'WL_MAX_DIMS': str(6), # SYNC with wavelet.h
+    'WL_MAX_OP_PARAMS': str(6) # SYNC with wavelet.h
 }
 
 enums_names: list[str] = []
@@ -58,7 +57,7 @@ with open(C_HDR_FILE, 'rt') as f:
     c_input = [line for line in c_input if keep_line(line)]  # remove empty lines
 
 out = f'# Autogenered by {__file__} {datetime.datetime.now()}, do NOT edit!\n\n'
-out += "__MSML_CDECLS: str = '''\n\n"
+out += "__WL_CDECLS: str = '''\n\n"
 for struct in struct_names:
     out += f'typedef struct {struct} {struct};\n'
 out += '\n'
