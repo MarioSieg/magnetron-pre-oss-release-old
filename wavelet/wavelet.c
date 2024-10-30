@@ -465,7 +465,7 @@ static inline uintptr_t wl__thread_id(void) {
     return tid;
 }
 
-static int64_t wl_hpc_clock_us(void) { /* High precision clock in microseconds. */
+static int64_t wl__hpc_clock_us(void) { /* High precision clock in microseconds. */
     #ifdef _WIN32
     #error "WAVELET does not support Windows yet."
     #else
@@ -474,40 +474,40 @@ static int64_t wl_hpc_clock_us(void) { /* High precision clock in microseconds. 
         return (int64_t)ts.tv_sec*1000000 + (int64_t)ts.tv_nsec/1000;
     #endif
 }
-static int64_t wl_hpc_clock_elapsed_us(int64_t start) { /* High precision clock elapsed time in microseconds. */
-    return llabs(wl_hpc_clock_us() - start);
+static int64_t wl__hpc_clock_elapsed_us(int64_t start) { /* High precision clock elapsed time in microseconds. */
+    return llabs(wl__hpc_clock_us() - start);
 }
-static double wl_hpc_clock_elapsed_ms(int64_t start) { /* High precision clock elapsed time in milliseconds. */
-    return (double)wl_hpc_clock_elapsed_us(start) * 1.0e-3;
+static double wl__hpc_clock_elapsed_ms(int64_t start) { /* High precision clock elapsed time in milliseconds. */
+    return (double)wl__hpc_clock_elapsed_us(start) * 1.0e-3;
 }
 
-typedef uint32_t wl_bitset_t;
-wl_static_assert(sizeof(wl_bitset_t) == 4);
-#define wl_bitset_size(n) (((n)+((4<<3)-1))>>5)
-#define wl_bitset_get(sets, i) (!!(sets[(i)>>5]&(1u<<((i)&((4<<3)-1)))))
-#define wl_bitset_set(sets, i) (sets[(i)>>5]|=(1u<<((i)&((4<<3)-1))))
-#define wl_bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&((4<<3)-1))))
-#define wl_bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&((4<<3)-1))))
+typedef uint32_t wl__bitset_t;
+wl_static_assert(sizeof(wl__bitset_t) == 4);
+#define wl__bitset_size(n) (((n)+((4<<3)-1))>>5)
+#define wl__bitset_get(sets, i) (!!(sets[(i)>>5]&(1u<<((i)&((4<<3)-1)))))
+#define wl__bitset_set(sets, i) (sets[(i)>>5]|=(1u<<((i)&((4<<3)-1))))
+#define wl__bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&((4<<3)-1))))
+#define wl__bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&((4<<3)-1))))
 
 static uint32_t WL__AINLINE wl__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    #   if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
+        #if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
             x = (uint32_t)__builtin_bswap32((int32_t)x);
-    #   else
+        #else
             x = (x & 0xff000000) >> 24 |
             (x & 0xff0000) >> 8 |
             (x & 0xff00) << 8 |
             (x & 0xff) << 24;
-    #   endif
+        #endif
     #endif
     return x;
 }
 
 static uint64_t WL__AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-    #   if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
+        #if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
             x = (uint64_t)__builtin_bswap64((int64_t)x);
-    #   else
+        #else
             x = (x & 0xff00000000000000) >> 56 |
             (x & 0xff000000000000) >> 40 |
             (x & 0xff0000000000) >> 24 |
@@ -516,7 +516,7 @@ static uint64_t WL__AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianes
             (x & 0xff0000) << 24 |
             (x & 0xff00) << 40 |
             (x & 0xff) << 56;
-    #   endif
+        #endif
     #endif
     return x;
 }
@@ -528,45 +528,45 @@ static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
 }
 
 #ifdef __aarch64__
-    static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
-        uint64x2_t r;
-        __asm__ __volatile__(
-            "pmull %0.1q, %2.1d, %3.1d\n"
-            "eor %0.16b, %0.16b, %1.16b\n"
-            : "=w"(r), "+w"(c) : "w"(a), "w"(b)
-        );
-        return r;
-    }
-    static uint64x2_t WL__AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
-        uint64x2_t r;
-        __asm__ __volatile__(
-            "pmull2 %0.1q, %2.2d, %3.2d\n"
-            "eor %0.16b, %0.16b, %1.16b\n"
-            : "=w"(r), "+w"(c) : "w"(a), "w"(b)
-        );
-        return r;
-    }
+static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+    register uint64x2_t r;
+    __asm__ __volatile__(
+        "pmull %0.1q, %2.1d, %3.1d\n"
+        "eor %0.16b, %0.16b, %1.16b\n"
+        : "=w"(r), "+w"(c) : "w"(a), "w"(b)
+    );
+    return r;
+}
+static uint64x2_t WL__AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+    register uint64x2_t r;
+    __asm__ __volatile__(
+        "pmull2 %0.1q, %2.2d, %3.2d\n"
+        "eor %0.16b, %0.16b, %1.16b\n"
+        : "=w"(r), "+w"(c) : "w"(a), "w"(b)
+    );
+    return r;
+}
 #elif defined(__x86_64__) || defined(_M_X64)
-    static uint32_t wl__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
-        uint64_t stack = ~(uint64_t)1;
-        uint32_t acc, low;
-        for (; n > 191; n = (n>>1) - 16) stack = (stack<<1) + (n & 1);
-        stack = ~stack;
-        acc = ((uint32_t)0x80000000) >> (n & 31);
-        for (n >>= 5; n; --n) acc = _mm_crc32_u32(acc, 0);
-        while ((low = stack & 1), stack >>= 1) {
-            __m128i x = _mm_cvtsi32_si128(acc);
-            uint64_t y = _mm_cvtsi128_si64(_mm_clmulepi64_si128(x, x, 0));
-            acc = _mm_crc32_u64(0, y << low);
-        }
-        return acc;
+static uint32_t wl__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
+    uint64_t stack = ~(uint64_t)1;
+    uint32_t acc, low;
+    for (; n > 191; n = (n>>1) - 16) stack = (stack<<1) + (n & 1);
+    stack = ~stack;
+    acc = ((uint32_t)0x80000000) >> (n & 31);
+    for (n >>= 5; n; --n) acc = _mm_crc32_u32(acc, 0);
+    while ((low = stack & 1), stack >>= 1) {
+        __m128i x = _mm_cvtsi32_si128(acc);
+        uint64_t y = _mm_cvtsi128_si64(_mm_clmulepi64_si128(x, x, 0));
+        acc = _mm_crc32_u64(0, y << low);
     }
-    static __m128i WL__AINLINE wl__clmul_scalar(uint32_t a, uint32_t b) {
-        return _mm_clmulepi64_si128(_mm_cvtsi32_si128(a), _mm_cvtsi32_si128(b), 0);
-    }
-    static __m128i WL__AINLINE wl__crc_shift(uint32_t crc, size_t sz) {
-        return wl__clmul_scalar(crc, wl__xnmodp((sz<<3) - 33));
-    }
+    return acc;
+}
+static __m128i WL__AINLINE wl__clmul_scalar(uint32_t a, uint32_t b) {
+    return _mm_clmulepi64_si128(_mm_cvtsi32_si128(a), _mm_cvtsi32_si128(b), 0);
+}
+static __m128i WL__AINLINE wl__crc_shift(uint32_t crc, size_t sz) {
+    return wl__clmul_scalar(crc, wl__xnmodp((sz<<3) - 33));
+}
 #endif
 
 static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 checksum with CRC32c polynomial. */
@@ -720,13 +720,13 @@ static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 c
     #endif
 }
 
-typedef enum wl_format_type {
+typedef enum wl__format_type {
     WL__FMT_EOF, WL__FMT_ERR, WL__FMT_LIT, WL__FMT_INT,
     WL__FMT_UINT, WL__FMT_NUM, WL__FMT_STR, WL__FMT_CHAR,
     WL__FMT_PTR
-} wl_format_type; /* Format types for formatted output */
+} wl__format_type; /* Format types for formatted output */
 
-typedef uint32_t wl_format_flags; /* Flags for formatting output */
+typedef uint32_t wl__format_flags; /* Flags for formatting output */
 
 /* Format flags */
 #define WL__FMT_F_LEFT  0x0100 /* Left-align the output */
@@ -747,7 +747,7 @@ typedef uint32_t wl_format_flags; /* Flags for formatting output */
 
 #define WL__FMT_SH_WIDTH 16    /* Shift width for formatting */
 #define WL__FMT_SH_PREC  24    /* Shift precision for formatting */
-#define WL__FMT_TYPE(sf) ((wl_format_type)((sf) & 15))  /* Extract format type */
+#define WL__FMT_TYPE(sf) ((wl__format_type)((sf) & 15))  /* Extract format type */
 #define WL__FMT_WIDTH(sf) (((sf) >> WL__FMT_SH_WIDTH) & 255u) /* Extract width */
 #define WL__FMT_PREC(sf) ((((sf) >> WL__FMT_SH_PREC) & 255u) - 1u) /* Extract precision */
 #define WL__FMT_FP(sf) (((sf) >> 4) & 3) /* Extract floating-point format */
@@ -768,11 +768,11 @@ typedef uint32_t wl_format_flags; /* Flags for formatting output */
 #define WL__FMT_X (WL__FMT_UINT|WL__FMT_T_HEX) /* 'x' format */
 #define WL__FMT_G14 (WL__FMT_G | ((14+1) << WL__FMT_SH_PREC)) /* 'g' format with precision 14 */
 
-static char* wl__fmt_f64(wl_format_flags sf, double n, char* p);
+static char* wl__fmt_f64(wl__format_flags sf, double n, char* p);
 
 typedef struct wl__hashset_t {
     size_t len;
-    wl_bitset_t* used;
+    wl__bitset_t* used;
     const wl_tensor_t** keys;
     bool is_pool;
 } wl__hashset_t;
@@ -799,45 +799,50 @@ static size_t wl__hashset_compute_hash_size(size_t sz) {
     }
     return l < sizeof(prime_lut)/sizeof(*prime_lut) ? prime_lut[l] : sz|1;
 }
+
 static wl__hashset_t wl__hashset_create(size_t size) {
     size = wl__hashset_compute_hash_size(size);
     wl__hashset_t set = {
         .len = size,
-        .used = (wl_bitset_t*)wl_alloc(NULL, wl_bitset_size(size)*sizeof(*set.used)),
+        .used = (wl__bitset_t*)wl_alloc(NULL, wl__bitset_size(size)*sizeof(*set.used)),
         .keys = (const wl_tensor_t**)wl_alloc(NULL, size*sizeof(*set.keys)),
         .is_pool = false
     };
-    memset(set.used, 0, wl_bitset_size(size)*sizeof(*set.used));
+    memset(set.used, 0, wl__bitset_size(size)*sizeof(*set.used));
     return set;
 }
+
 static wl__hashset_t wl__hashset_create_pooled(wl_ctx_t* ctx, size_t size) {
     size = wl__hashset_compute_hash_size(size);
     wl__hashset_t set = {
         .len = size,
-        .used = (wl_bitset_t*)wl_ctx_pool_alloc_aligned(ctx, wl_bitset_size(size)*sizeof(*set.used), __alignof__(*set.used)),
+        .used = (wl__bitset_t*)wl_ctx_pool_alloc_aligned(ctx, wl__bitset_size(size)*sizeof(*set.used), __alignof__(*set.used)),
         .keys = (const wl_tensor_t**)wl_ctx_pool_alloc_aligned(ctx, size*sizeof(*set.keys), __alignof__(*set.used)),
         .is_pool = true
     };
-    memset(set.used, 0, wl_bitset_size(size)*sizeof(*set.used));
+    memset(set.used, 0, wl__bitset_size(size)*sizeof(*set.used));
     return set;
 }
+
 static size_t wl__hashset_lookup(wl__hashset_t* set, const wl_tensor_t* key) {
     size_t k = wl__hashset_hash_fn(key) % set->len, i = k;
-    while (wl_bitset_get(set->used, i) && set->keys[i] != key) { /* Linear probing. */
+    while (wl__bitset_get(set->used, i) && set->keys[i] != key) { /* Linear probing. */
         i = (i+1) % set->len;
         if (i == k) return WL__HASHSET_FULL;
     }
     return i;
 }
+
 static bool wl__hashset_contains_key(wl__hashset_t* set, const wl_tensor_t* key) {
     size_t i = wl__hashset_lookup(set, key);
-    return wl_bitset_get(set->used, i) && i != WL__HASHSET_FULL;
+    return wl__bitset_get(set->used, i) && i != WL__HASHSET_FULL;
 }
+
 static size_t wl__hashset_insert(wl__hashset_t* set, const wl_tensor_t* key) {
     size_t k = wl__hashset_hash_fn(key) % set->len, i = k;
     do { /* Linear probing. */
-        if (!wl_bitset_get(set->used, i)) { /* Insert key. */
-            wl_bitset_set(set->used, i);
+        if (!wl__bitset_get(set->used, i)) { /* Insert key. */
+            wl__bitset_set(set->used, i);
             set->keys[i] = key;
             return i;
         }
@@ -846,9 +851,11 @@ static size_t wl__hashset_insert(wl__hashset_t* set, const wl_tensor_t* key) {
     } while (i != k);
     wl__panic("Insertion target not found");
 }
+
 static void wl__hashset_reset(wl__hashset_t* set) {
-    memset(set->used, 0, wl_bitset_size(set->len)*sizeof(*set->used));
+    memset(set->used, 0, wl__bitset_size(set->len)*sizeof(*set->used));
 }
+
 static void wl_hashset_destroy(wl__hashset_t* set) {
     wl__assert2(!set->is_pool); /* Cannot destroy pooled hashset. */
     wl_alloc(set->used, 0);
@@ -856,19 +863,19 @@ static void wl_hashset_destroy(wl__hashset_t* set) {
 }
 
 static bool WL__AINLINE wl__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
-#ifdef _MSC_VER
-    int64_t high;
-    int64_t low = _mul128(a, b, &high);
-    int64_t sign = low >> 63;
-    *out = low;
-    return high != sign;
-#else
-#if __SIZEOF_LONG_LONG__ == 8 && __SIZEOF_LONG__ == 8
-    return __builtin_smulll_overflow(a, b, (long long*)out);
-#else
-    return __builtin_smull_overflow(a, b, out);
-#endif
-#endif
+    #ifdef _MSC_VER
+        int64_t high;
+        int64_t low = _mul128(a, b, &high);
+        int64_t sign = low >> 63;
+        *out = low;
+        return high != sign;
+    #else
+    #if __SIZEOF_LONG_LONG__ == 8 && __SIZEOF_LONG__ == 8
+        return __builtin_smulll_overflow(a, b, (long long*)out);
+    #else
+        return __builtin_smull_overflow(a, b, out);
+    #endif
+    #endif
 }
 
 /* Generate n uniform random floats within [min, max]. */
@@ -954,12 +961,12 @@ static void wl__system_host_info_query(wl_ctx_t* ctx); /* Query host system info
 static void wl__blas_compute_dispatch_table_install(wl_ctx_t* ctx); /* Install BLAS dispatch table. */
 
 #if defined(__x86_64__) || defined(_M_X64)
-    static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_feature_t feature) {
-        const uint8_t* leafs = wl__x86_64_feature_leaves, *regs = wl__x86_64_feature_regs;
-        const uint32_t* masks = wl__x86_64_feature_masks;
-        const uint32_t (*features)[8][4] = &ctx->sys.x86_64_cpu_features;
-        return (*features)[leafs[feature]][regs[feature]] & masks[feature];
-    }
+static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_feature_t feature) {
+    const uint8_t* leafs = wl__x86_64_feature_leaves, *regs = wl__x86_64_feature_regs;
+    const uint32_t* masks = wl__x86_64_feature_masks;
+    const uint32_t (*features)[8][4] = &ctx->sys.x86_64_cpu_features;
+    return (*features)[leafs[feature]][regs[feature]] & masks[feature];
+}
 #endif
 
 #if WL_ENABLE_IMAGE_SUPPORT
@@ -970,7 +977,7 @@ static void wl__blas_compute_dispatch_table_install(wl_ctx_t* ctx); /* Install B
 
 wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__log_info("Creating WAVELET context...");
-    int64_t time_stamp_start = wl_hpc_clock_us();
+    int64_t time_stamp_start = wl__hpc_clock_us();
 
     /* Print WAVELET version and compiler info. */
     const char* compiler_name = "Unknown";
@@ -1062,7 +1069,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__blas_compute_dispatch_table_install(ctx);
 
     /* Print context initialization time. */
-    wl__log_info("WAVELET context initialized in %.05f ms.", wl_hpc_clock_elapsed_ms(time_stamp_start));
+    wl__log_info("WAVELET context initialized in %.05f ms.", wl__hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
 }
 
@@ -1183,7 +1190,7 @@ uint32_t wl_pack_color_f32(float r, float g, float b) {
     (void)prefix##2; \
     (void)prefix##3; \
     (void)prefix##4; \
-    (void)prefix##5; \
+    (void)prefix##5
 
 const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type) {
     static const wl_dtype_info_t infos[WL_DTYPE_COUNT_] = {
@@ -1197,27 +1204,27 @@ const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type) {
 
 const char* wl_op_get_name(wl_op_t op) {
     #define _(enumerator, mnemonic, argcount) #enumerator
-        static const char* const names[WL_OP__COUNT] = {
-            wl_op_def(_, WL_SEP)
-        };
+    static const char* const names[WL_OP__COUNT] = {
+        wl_op_def(_, WL_SEP)
+    };
     #undef _
     return names[op];
 }
 
 const char* wl_op_get_mnemonic(wl_op_t op) {
     #define _(enumerator, mnemonic, argcount) mnemonic
-        static const char* const mnemonics[WL_OP__COUNT] = {
-            wl_op_def(_, WL_SEP)
-        };
+    static const char* const mnemonics[WL_OP__COUNT] = {
+        wl_op_def(_, WL_SEP)
+    };
     #undef _
     return mnemonics[op];
 }
 
 uint8_t wl_op_get_argcount(wl_op_t op) {
     #define _(enumerator, mnemonic, argcount) ((argcount)&0xff)
-        static const uint8_t arg_counts[WL_OP__COUNT] = {
-            wl_op_def(_, WL_SEP)
-        };
+    static const uint8_t arg_counts[WL_OP__COUNT] = {
+        wl_op_def(_, WL_SEP)
+    };
     #undef _
     return arg_counts[op];
 }
@@ -1682,8 +1689,8 @@ size_t wl_tensor_get_memory_usage(const wl_tensor_t* t) {
 void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
     wl__assert(t->dtype == WL_DTYPE_F32, "Tensor must be F32");
     wl__assert2(with_header || with_data);
-    wl__load_local_storage_group(t, x_d, shape)
-    wl__load_local_storage_group(t, x_s, strides)
+    wl__load_local_storage_group(t, x_d, shape);
+    wl__load_local_storage_group(t, x_s, strides);
     FILE* f = stdout;
     if (with_header) {
         double buf_size_cvt = 0.0;
@@ -2657,9 +2664,9 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_d, shape)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
     for (int64_t i5 = 0; i5 < x_d5; ++i5) {
         for (int64_t i4 = 0; i4 < x_d4; ++i4) {
             for (int64_t i3 = 0; i3 < x_d3; ++i3) {
@@ -2687,8 +2694,8 @@ static void WL__HOTPROC wl__blas_step_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2709,8 +2716,8 @@ static void WL__HOTPROC wl__blas_softmax_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2731,8 +2738,8 @@ static void WL__HOTPROC wl__blas_softmax_dv_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2753,8 +2760,8 @@ static void WL__HOTPROC wl__blas_sigmoid_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2775,8 +2782,8 @@ static void WL__HOTPROC wl__blas_sigmoid_dv_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2797,8 +2804,8 @@ static void WL__HOTPROC wl__blas_hard_sigmoid_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2819,8 +2826,8 @@ static void WL__HOTPROC wl__blas_silu_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2841,8 +2848,8 @@ static void WL__HOTPROC wl__blas_silu_dv_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2863,8 +2870,8 @@ static void WL__HOTPROC wl__blas_tanh_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2885,8 +2892,8 @@ static void WL__HOTPROC wl__blas_tanh_dv_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2907,8 +2914,8 @@ static void WL__HOTPROC wl__blas_relu_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2929,8 +2936,8 @@ static void WL__HOTPROC wl__blas_relu_dv_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2951,8 +2958,8 @@ static void WL__HOTPROC wl__blas_gelu_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2973,8 +2980,8 @@ static void WL__HOTPROC wl__blas_gelu_dv_f32(
     const wl_tensor_t* const x = inputs[0];
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_s, strides)
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
@@ -2996,12 +3003,12 @@ static void WL__HOTPROC wl__blas_add_f32(
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
     const uint8_t* const b_y = (const uint8_t*)y->buf;
-    wl__load_local_storage_group(r, r_d, shape)
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_d, shape)
-    wl__load_local_storage_group(x, x_s, strides)
-    wl__load_local_storage_group(y, y_d, shape)
-    wl__load_local_storage_group(y, y_s, strides)
+    wl__load_local_storage_group(r, r_d, shape);
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    wl__load_local_storage_group(y, y_d, shape);
+    wl__load_local_storage_group(y, y_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     int64_t x_i1 = 0;
     int64_t x_i2 = 0;
@@ -3096,12 +3103,12 @@ static void WL__HOTPROC wl__blas_sub_f32(
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
     const uint8_t* const b_y = (const uint8_t*)y->buf;
-    wl__load_local_storage_group(r, r_d, shape)
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_d, shape)
-    wl__load_local_storage_group(x, x_s, strides)
-    wl__load_local_storage_group(y, y_d, shape)
-    wl__load_local_storage_group(y, y_s, strides)
+    wl__load_local_storage_group(r, r_d, shape);
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    wl__load_local_storage_group(y, y_d, shape);
+    wl__load_local_storage_group(y, y_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     int64_t x_i1 = 0;
     int64_t x_i2 = 0;
@@ -3196,12 +3203,12 @@ static void WL__HOTPROC wl__blas_mul_f32(
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
     const uint8_t* const b_y = (const uint8_t*)y->buf;
-    wl__load_local_storage_group(r, r_d, shape)
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_d, shape)
-    wl__load_local_storage_group(x, x_s, strides)
-    wl__load_local_storage_group(y, y_d, shape)
-    wl__load_local_storage_group(y, y_s, strides)
+    wl__load_local_storage_group(r, r_d, shape);
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    wl__load_local_storage_group(y, y_d, shape);
+    wl__load_local_storage_group(y, y_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     int64_t x_i1 = 0;
     int64_t x_i2 = 0;
@@ -3296,12 +3303,12 @@ static void WL__HOTPROC wl__blas_div_f32(
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
     const uint8_t* const b_y = (const uint8_t*)y->buf;
-    wl__load_local_storage_group(r, r_d, shape)
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_d, shape)
-    wl__load_local_storage_group(x, x_s, strides)
-    wl__load_local_storage_group(y, y_d, shape)
-    wl__load_local_storage_group(y, y_s, strides)
+    wl__load_local_storage_group(r, r_d, shape);
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    wl__load_local_storage_group(y, y_d, shape);
+    wl__load_local_storage_group(y, y_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     int64_t x_i1 = 0;
     int64_t x_i2 = 0;
@@ -3397,12 +3404,12 @@ static void WL__HOTPROC wl__blas_matmul_f32(
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
     const uint8_t* const b_y = (const uint8_t*)y->buf;
-    wl__load_local_storage_group(r, r_d, shape)
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_d, shape)
-    wl__load_local_storage_group(x, x_s, strides)
-    wl__load_local_storage_group(y, y_d, shape)
-    wl__load_local_storage_group(y, y_s, strides)
+    wl__load_local_storage_group(r, r_d, shape);
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    wl__load_local_storage_group(y, y_d, shape);
+    wl__load_local_storage_group(y, y_s, strides);
     for (int64_t i3=0; i3 < r_d3; ++i3) {
         for (int64_t i2=0; i2 < r_d2; ++i2) {
             for (int64_t i1=0; i1 < r_d1; ++i1) {
@@ -3439,12 +3446,12 @@ static void WL__HOTPROC wl__blas_matmul_f32(
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
     const uint8_t* const b_y = (const uint8_t*)y->buf;
-    wl__load_local_storage_group(r, r_d, shape)
-    wl__load_local_storage_group(r, r_s, strides)
-    wl__load_local_storage_group(x, x_d, shape)
-    wl__load_local_storage_group(x, x_s, strides)
-    wl__load_local_storage_group(y, y_d, shape)
-    wl__load_local_storage_group(y, y_s, strides)
+    wl__load_local_storage_group(r, r_d, shape);
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    wl__load_local_storage_group(y, y_d, shape);
+    wl__load_local_storage_group(y, y_s, strides);
     wl__assert2(x_d2 == 1 && x_d3 == 1);
     wl__assert2(y_d2 == 1 && y_d3 == 1);
     const float* A = (const float*)b_x;
@@ -4560,7 +4567,7 @@ static char* wl__wint(char* p, int32_t k) {
 #define WL__ND_MUL2K_DIV1E9(val) ((uint32_t)((val) / 1000000000))
 
 /* Multiply nd by 2^k and add carry_in (ndlo is assumed to be zero). */
-static uint32_t nd_mul2k(uint32_t* nd, uint32_t ndhi, uint32_t k, uint32_t carry_in, wl_format_flags sf) {
+static uint32_t nd_mul2k(uint32_t* nd, uint32_t ndhi, uint32_t k, uint32_t carry_in, wl__format_flags sf) {
     uint32_t i, ndlo = 0, start = 1;
     /* Performance hacks. */
     if (k > WL__ND_MUL2K_MAX_SHIFT*2 && WL__FMT_FP(sf) != WL__FMT_FP(WL__FMT_T_FP_F)) {
@@ -4591,7 +4598,7 @@ static uint32_t nd_mul2k(uint32_t* nd, uint32_t ndhi, uint32_t k, uint32_t carry
 }
 
 /* Divide nd by 2^k (ndlo is assumed to be zero). */
-static uint32_t nd_div2k(uint32_t* nd, uint32_t ndhi, uint32_t k, wl_format_flags sf) {
+static uint32_t nd_div2k(uint32_t* nd, uint32_t ndhi, uint32_t k, wl__format_flags sf) {
     uint32_t ndlo = 0, stop1 = ~0, stop2 = ~0;
     /* Performance hacks. */
     if (!ndhi) {
@@ -4696,7 +4703,7 @@ static bool nd_similar(uint32_t* nd, uint32_t ndhi, uint32_t* ref, size_t hilen,
 }
 
 /* Format f64 according to format flags. */
-static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
+static char* wl__fmt_f64(wl__format_flags sf, double n, char* p) {
     size_t width = WL__FMT_WIDTH(sf), prec = WL__FMT_PREC(sf), len;
     union {
         uint64_t u64;
