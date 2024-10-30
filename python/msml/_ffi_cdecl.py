@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/msml/python/msml/_ffi_cdecl_generator.py 2024-10-25 16:36:48.418129, do NOT edit!
+# Autogenered by /home/mario/Documents/msml/python/msml/_ffi_cdecl_generator.py 2024-10-30 14:46:43.906833, do NOT edit!
 
 __MSML_CDECLS: str = '''
 
@@ -49,7 +49,9 @@ extern   msml_tensor_t* msml_tensor_create_1d(msml_ctx_t* ctx, msml_dtype_t type
 extern   msml_tensor_t* msml_tensor_create_2d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2);
 extern   msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
 extern   msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
-extern   msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[4]);
+extern   msml_tensor_t* msml_tensor_create_5d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
+extern   msml_tensor_t* msml_tensor_create_6d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6);
+extern   msml_tensor_t* msml_tensor_operator(msml_ctx_t* ctx, msml_op_t op, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[6]);
 extern   void msml_tensor_copy_buffer_from(msml_tensor_t* t, const void* data, size_t size);
 extern   void msml_tensor_fill(msml_tensor_t* t, float x);
 extern   void msml_tensor_fill_random(msml_tensor_t* t, float min, float max);
@@ -78,8 +80,8 @@ extern   bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tenso
 extern   bool msml_tensor_is_transposed(const msml_tensor_t* t);
 extern   bool msml_tensor_is_permuted(const msml_tensor_t* t);
 extern   bool msml_tensor_is_contiguous(const msml_tensor_t* t);
-extern   float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3);
-extern   void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x);
+extern   float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
+extern   void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, float x);
 extern   float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* t, int64_t v_idx);
 extern   void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_idx, float x);
 extern   bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b);

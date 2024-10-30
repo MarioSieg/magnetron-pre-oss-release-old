@@ -2,6 +2,7 @@
 
 import datetime
 import re
+import core
 
 C_HDR_FILE: str = '../../msml/msml.h'
 OUTPUT_FILE: str = '_ffi_cdecl.py'
@@ -19,8 +20,8 @@ def comment_replacer(match):
 
 macro_substitutions: dict[str, str] = {
     'MSML_EXPORT': ' ',
-    'MSML_MAX_DIMS': str(4),
-    'MSML_MAX_OP_PARAMS': str(4)
+    'MSML_MAX_DIMS': str(core.MAX_DIMS),
+    'MSML_MAX_OP_PARAMS': str(core.MSML_MAX_OP_PARAMS)
 }
 
 enums_names: list[str] = []

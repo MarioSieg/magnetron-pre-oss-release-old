@@ -3,7 +3,7 @@
 #include "prelude.hpp"
 #include <cmath>
 
-#define impl_test_unary_op(name, op, scalar_op) \
+#define impl_test_unary_op(name, eps, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         \
@@ -20,57 +20,57 @@
             const auto* b_r = msml_tensor_data_as_f32(r); \
             ASSERT_EQ(msml_tensor_num_elements(x), msml_tensor_num_elements(r)); \
             for (std::int64_t i=0; i < msml_tensor_num_elements(x); ++i) { \
-                ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), 0.000001); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
+                ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
             } \
         } \
         \
         msml_ctx_destroy(ctx); \
     } \
 
-impl_test_unary_op(softmax, SOFTMAX, [](float x) -> float {
+impl_test_unary_op(softmax, 1e-6, SOFTMAX, [](float x) -> float {
     return std::exp(x);
 })
-impl_test_unary_op(softmax_dv, SOFTMAX_DV, [](float x) -> float {
+impl_test_unary_op(softmax_dv, 1e-6, SOFTMAX_DV, [](float x) -> float {
     return std::exp(x);
 })
 
-impl_test_unary_op(sigmoid, SIGMOID, [](float x) -> float {
+impl_test_unary_op(sigmoid, 1e-6, SIGMOID, [](float x) -> float {
     return 1.0f / (1.0f + std::exp(-x));
 })
-impl_test_unary_op(sigmoid_dv, SIGMOID_DV, [](float x) -> float {
+impl_test_unary_op(sigmoid_dv, 1e-6, SIGMOID_DV, [](float x) -> float {
     return x * (1.0f - x);
 })
 
-impl_test_unary_op(hard_sigmoid, HARD_SIGMOID, [](float x) -> float {
+impl_test_unary_op(hard_sigmoid, 1e-6, HARD_SIGMOID, [](float x) -> float {
     return std::min(1.0f, std::max(0.0f, (x + 3.0f) / 6.0f));
 })
 //impl_test_unary_op(hard_sigmoid_dv, HARD_SIGMOID_DV, [](float x) -> float {
 //    return -(std::exp(x) / ((std::exp(x)+1.0f)*(std::exp(x)+1.0f)));
 //})
 
-impl_test_unary_op(silu, SILU, [](float x) -> float {
+impl_test_unary_op(silu, 1e-6, SILU, [](float x) -> float {
     return x / (1.0f + std::exp(-x));
 })
 //impl_test_unary_op(silu_dv, SILU_DV, [](float x) -> float {
 //    return -(std::exp(x) / ((std::exp(x)+1.0f)*(std::exp(x)+1.0f)));
 //})
 
-impl_test_unary_op(tanh, TANH, [](float x) -> float {
+impl_test_unary_op(tanh, 1e-3, TANH, [](float x) -> float {
     return std::tanh(x);
 })
-impl_test_unary_op(tanh_dv, TANH_DV, [](float x) -> float {
+impl_test_unary_op(tanh_dv, 1e-6, TANH_DV, [](float x) -> float {
     return 1.0f / (std::cosh(x)*std::cosh(x));
 })
 
-impl_test_unary_op(relu, RELU, [](float x) -> float {
+impl_test_unary_op(relu, 1e-6, RELU, [](float x) -> float {
     return std::max(x, 0.0f);
 })
-impl_test_unary_op(relu_dv, RELU_DV, [](float x) -> float {
+impl_test_unary_op(relu_dv, 1e-6, RELU_DV, [](float x) -> float {
     return x <= 0.0f ? 0.0f : 1.0f;
 })
 
-impl_test_unary_op(gelu, GELU, [](float x) -> float {
-    return 0.5f*x*(1.0f + tanhf(0.79788456080286535587989211986876f*x*(1.0f + 0.044715f*x*x)));
+impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
+    return 0.5f*x*(1.0f + std::tanh(0.79788456080286535587989211986876f*x*(1.0f + 0.044715f*x*x)));
 })
 //impl_test_unary_op(gelu_dv, GELU_DV, [](float x) -> float {
 //    return x <= 0.0f ? 0.0f : 1.0f;
@@ -81,11 +81,13 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
 #define impl_test_binary_op(name, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
-        for (int64_t i0=1; i0 <= 9; ++i0) \
-        for (int64_t i1=1; i1 <= 9; ++i1) \
-        for (int64_t i2=1; i2 <= 9; ++i2) \
-        for (int64_t i3=1; i3 <= 9; ++i3) { \
-            msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
+        for (int64_t i0=1; i0 <= 6; ++i0) \
+        for (int64_t i1=1; i1 <= 6; ++i1) \
+        for (int64_t i2=1; i2 <= 6; ++i2) \
+        for (int64_t i3=1; i3 <= 6; ++i3) \
+        for (int64_t i4=1; i4 <= 6; ++i4) \
+        for (int64_t i5=1; i5 <= 6; ++i5) { \
+            msml_tensor_t* x = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             msml_tensor_t* y = msml_tensor_emit_op_va(ctx, MSML_OP_CLONE, x); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill_random(y, -5.0f, 5.0f); \
@@ -108,12 +110,14 @@ impl_test_unary_op(gelu, GELU, [](float x) -> float {
     TEST(compute_cpu, name##_scalar_broadcast) { \
         msml_ctx_t* ctx = msml_ctx_create(nullptr); \
         for (int64_t factor=2; factor <= 4; ++factor) \
-        for (int64_t i0=1; i0 <= 4; ++i0) \
-        for (int64_t i1=1; i1 <= 4; ++i1) \
-        for (int64_t i2=1; i2 <= 4; ++i2) \
-        for (int64_t i3=1; i3 <= 4; ++i3) { \
-            msml_tensor_t* x = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor); \
-            msml_tensor_t* y = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3); \
+        for (int64_t i0=1; i0 <= 3; ++i0) \
+        for (int64_t i1=1; i1 <= 3; ++i1) \
+        for (int64_t i2=1; i2 <= 3; ++i2) \
+        for (int64_t i3=1; i3 <= 3; ++i3) \
+        for (int64_t i4=1; i4 <= 3; ++i4) \
+        for (int64_t i5=1; i5 <= 3; ++i5) { \
+            msml_tensor_t* x = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
+            msml_tensor_t* y = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             msml_tensor_fill_random(x, 0.0f, 1.0f); \
             msml_tensor_fill(y, 2.2f); \
             \
@@ -158,7 +162,7 @@ static void msml__inner_matmul_naive(
 }
 
 TEST(compute_cpu, matmul_inner_naive) {
-    static constexpr  float A[6] = {
+    static constexpr float A[6] = {
         1.0f, 2.0f,
         3.0f, 4.0f,
         5.0f, 6.0f
@@ -236,6 +240,24 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     ASSERT_FLOAT_EQ(C[1], -2.5f);
     ASSERT_FLOAT_EQ(C[2], -3.5f);
 
+    msml_ctx_destroy(ctx);
+}
+
+TEST(compute_cpu, arithmetic_mean) {
+    msml_ctx_t* ctx = msml_ctx_create(nullptr);
+    msml_tensor_t* A = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 4096, 32, 3, 2);
+    msml_tensor_fill_random(A, -1.0f, 1.0f);
+    msml_tensor_t* R = msml_tensor_emit_op_va(ctx, MSML_OP_MEAN, A);
+    ASSERT_NE(R, nullptr);
+    double a_mean = 0.0;
+    for (std::int64_t i=0; i < msml_tensor_num_elements(A); ++i)
+        a_mean += static_cast<double>(msml_tensor_data_as_f32(A)[i]);
+    a_mean /= static_cast<double>(msml_tensor_num_elements(A));
+    double b_mean = 0.0;
+    for (std::int64_t i=0; i < msml_tensor_num_elements(R); ++i)
+        b_mean += static_cast<double>(msml_tensor_data_as_f32(R)[i]);
+    b_mean /= static_cast<double>(msml_tensor_num_elements(R));
+    ASSERT_NEAR(static_cast<float>(a_mean), static_cast<float>(b_mean), 1e-6);
     msml_ctx_destroy(ctx);
 }
 

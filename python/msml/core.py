@@ -1,4 +1,6 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
+# Implements core functionality: Context, Tensors and Operations.
+
 # To debug Python to C FFI calls:
 # $ cp examples/perceptron.py tmp.py && gdb -ex r --args python3 tmp.py
 # See also https://wiki.python.org/moin/DebuggingWithGdb
@@ -17,9 +19,9 @@ faulthandler.enable()
 ffi, C = load_native_msml_lib()  # Load the native MSML shared library
 
 # Define Python wrapper classes
-MAX_DIMS: int = 4
+MAX_DIMS: int = 6
 MAX_ARG_TENSORS: int = 2
-MSML_MAX_OP_PARAMS: int = 4
+MSML_MAX_OP_PARAMS: int = 6
 DIM_MAX: int = ((1 << 64) - 1) >> 1
 
 
@@ -62,6 +64,7 @@ class Op(Enum):
     VIEW = auto()
     TRANSPOSE = auto()
     PERMUTE = auto()
+    MEAN = auto()
     STEP = auto()
     SOFTMAX = auto()
     SOFTMAX_DV = auto()
@@ -250,14 +253,16 @@ class Tensor:
             1: C.msml_tensor_create_1d,
             2: C.msml_tensor_create_2d,
             3: C.msml_tensor_create_3d,
-            4: C.msml_tensor_create_4d
+            4: C.msml_tensor_create_4d,
+            5: C.msml_tensor_create_5d,
+            6: C.msml_tensor_create_6d
         }
         assert len(shape) in dispatch
         self.tensor = dispatch[len(shape)](ctx.ctx, dtype.value, *shape)
         self.name = f'Tensor {self.shape}' if name is None else name
 
     @staticmethod
-    def _new_op(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
+    def operator(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
         c_para: ffi.CData
         c_para_ptr: ffi.CData = ffi.NULL
         if params is not None:
@@ -322,6 +327,9 @@ class Tensor:
         assert self.dtype == DType.F32, 'Invalid data type'
         return ffi.unpack(C.msml_tensor_data_as_f32(self.tensor), self.num_elements)
 
+    def unpack_scalar(self) -> float:
+        return self.data_as_f32()[0]
+
     @property
     def data_size(self) -> int:
         """Returns the size of the tensor buffer in bytes."""
@@ -358,9 +366,9 @@ class Tensor:
         return C.msml_tensor_is_matrix(self.tensor)
 
     @property
-    def is_higher_order_3d(self) -> bool:
+    def is_volume(self) -> bool:
         """Checks if the tensor is a higher-order 3D tensor."""
-        return C.msml_tensor_is_higher_order_3d(self.tensor)
+        return C.msml_tensor_is_volume(self.tensor)
 
     @property
     def is_transposed(self) -> bool:
@@ -385,50 +393,24 @@ class Tensor:
         return C.msml_tensor_can_broadcast(self.tensor, other.tensor)
 
     @property
-    def image_width(self) -> int:
+    def width(self) -> int:
         """Returns the width of the image tensor. (Equals to the first dimension)"""
         return self.shape[2]
 
     @property
-    def image_height(self) -> int:
+    def height(self) -> int:
         """Returns the height of the image tensor. (Equals to the second dimension)"""
         return self.shape[1]
 
     @property
-    def image_channels(self) -> int:
+    def channels(self) -> int:
         """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
         return self.shape[0]
 
-    def virtual_to_physical_index(self, v_idx: int) -> list[int]:
-        """Converts a virtual index to a physical index."""
-        p_idx = ffi.new(f'int64_t[{MAX_DIMS}]')
-        C.msml_tensor_virtual_to_physical_index(self.tensor, v_idx, p_idx)
-        return list(p_idx)
-
-    def physical_to_virtual_index(self, p_idx: list[int]) -> int:
-        """Converts a physical index to a virtual index."""
-        assert len(p_idx) == MAX_DIMS
-        return C.msml_tensor_physical_to_virtual_index(self.tensor, p_idx)
-
+    @property
     def is_contiguous(self) -> bool:
         """Checks if the tensor is contiguous in memory."""
         return C.msml_tensor_is_contiguous(self.tensor)
-
-    def get_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int) -> float:
-        """Returns the scalar value at a physical index."""
-        return C.msml_tensor_get_scalar_physical_index(self.tensor, d0, d1, d2, d3)
-
-    def set_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int, x: float) -> None:
-        """Sets the scalar value at a physical index."""
-        C.msml_tensor_set_scalar_physical_index(self.tensor, d0, d1, d2, d3, x)
-
-    def get_scalar_virtual_index(self, v_idx: int) -> float:
-        """Returns the scalar value at a virtual index."""
-        return C.msml_tensor_get_scalar_virtual_index(self.tensor, v_idx)
-
-    def set_scalar_virtual_index(self, v_idx: int, x: float) -> None:
-        """Sets the scalar value at a virtual index."""
-        C.msml_tensor_set_scalar_virtual_index(self.tensor, v_idx, x)
 
     def is_close(self, other: 'Tensor', eps: float = -1.0, print_eq_percent: bool = False) -> (bool, float):
         """Checks if the tensor is close to another tensor within a given epsilon."""
@@ -452,7 +434,7 @@ class Tensor:
     def save_image(self, file_path: str) -> None:
         """Saves the tensor as an JPG image to a file."""
         assert self.rank == 3, 'Tensor must be a 3D image tensor'
-        assert self.image_channels in (1, 3, 4), 'Invalid number of color channels'
+        assert self.channels in (1, 3, 4), 'Invalid number of color channels'
         C.msml_tensor_save_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
@@ -474,11 +456,11 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def with_data(shape: list[int], data: list[float], dtype: DType = DType.F32, ctx: Context = Context.G,
-                  name: str | None = None) -> 'Tensor':
+    def const(data: list[float], shape: list[int] | None = None, dtype: DType = DType.F32, ctx: Context = Context.G,
+              name: str | None = None) -> 'Tensor':
         """Creates a tensor with the given data."""
         tensor = Tensor(None)
-        tensor._new(ctx, shape, dtype, name)
+        tensor._new(ctx, shape if shape is not None else [len(data)], dtype, name)
         size: int = len(data) * ffi.sizeof('float')
         C.msml_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(data)}]', data), size)
         return tensor
@@ -523,15 +505,15 @@ class Tensor:
 
     def clone(self) -> 'Tensor':
         """Create new tensor with same shape and data as input. (deep clone)"""
-        return self._new_op(Op.CLONE, None, self)
+        return self.operator(Op.CLONE, None, self)
 
     def view(self) -> 'Tensor':
         """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
-        return self._new_op(Op.VIEW, None, self)
+        return self.operator(Op.VIEW, None, self)
 
     def transpose(self) -> 'Tensor':
         """Transposes the tensor."""
-        return self._new_op(Op.TRANSPOSE, None, self)
+        return self.operator(Op.TRANSPOSE, None, self)
 
     def permute(self, axes: list[int]) -> 'Tensor':
         """Permutes the tensor according to the given axes."""
@@ -540,59 +522,63 @@ class Tensor:
             assert 0 <= axes[i] < MAX_DIMS, f'Invalid axis: {axes[i]}'
             for j in range(i + 1, MAX_DIMS):  # All axes must be unique
                 assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
-        return self._new_op(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
+        return self.operator(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
+
+    def mean(self) -> 'Tensor':
+        """Applies the arithmetic mean to the tensor and reduces to scalar."""
+        return self.operator(Op.MEAN, None, self)
 
     def step(self) -> 'Tensor':
         """Applies the heaviside step function to the tensor."""
-        return self._new_op(Op.STEP, None, self)
+        return self.operator(Op.STEP, None, self)
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """Applies the softmax function to the tensor."""
-        return self._new_op(Op.SOFTMAX_DV if derivative else Op.SOFTMAX, None, self)
+        return self.operator(Op.SOFTMAX_DV if derivative else Op.SOFTMAX, None, self)
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """Applies the sigmoid function to the tensor."""
-        return self._new_op(Op.SIGMOID_DV if derivative else Op.SIGMOID, None, self)
+        return self.operator(Op.SIGMOID_DV if derivative else Op.SIGMOID, None, self)
 
     def hard_sigmoid(self) -> 'Tensor':
         """Applies the hard sigmoid function to the tensor."""
-        return self._new_op(Op.HARD_SIGMOID, None, self)
+        return self.operator(Op.HARD_SIGMOID, None, self)
 
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
-        return self._new_op(Op.SILU_DV if derivative else Op.SILU, None, self)
+        return self.operator(Op.SILU_DV if derivative else Op.SILU, None, self)
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """Applies the hyperbolic tangent function to the tensor."""
-        return self._new_op(Op.TANH_DV if derivative else Op.TANH, None, self)
+        return self.operator(Op.TANH_DV if derivative else Op.TANH, None, self)
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
-        return self._new_op(Op.RELU_DV if derivative else Op.RELU, None, self)
+        return self.operator(Op.RELU_DV if derivative else Op.RELU, None, self)
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""
-        return self._new_op(Op.GELU_DV if derivative else Op.GELU, None, self)
+        return self.operator(Op.GELU_DV if derivative else Op.GELU, None, self)
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
         """Adds two tensors element-wise."""
-        return self._new_op(Op.ADD, None, self, other)
+        return self.operator(Op.ADD, None, self, other)
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
         """Subtracts two tensors element-wise."""
-        return self._new_op(Op.SUB, None, self, other)
+        return self.operator(Op.SUB, None, self, other)
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors element-wise. (Hadamard product)"""
-        return self._new_op(Op.MUL, None, self, other)
+        return self.operator(Op.MUL, None, self, other)
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
         """Divides two tensors element-wise."""
-        return self._new_op(Op.DIV, None, self, other)
+        return self.operator(Op.DIV, None, self, other)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """Multiplies two tensors using matrix multiplication."""
-        return self._new_op(Op.MATMUL, None, self, other)
+        return self.operator(Op.MATMUL, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:
         """Checks if two tensors are equal."""

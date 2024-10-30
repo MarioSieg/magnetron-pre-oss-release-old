@@ -34,8 +34,7 @@
 #   include <arm_neon.h>
 #   include <arm_acle.h>
 #elif defined(__x86_64__) || defined(_M_X64)
-#   include <nmmintrin.h>
-#   include <wmmintrin.h>
+#   include <immintrin.h>
 #   ifndef _MSC_VER
 #       include <cpuid.h>
 #   endif
@@ -58,6 +57,7 @@ msml_static_assert(sizeof(0ull) == 8);
 
 #define MSML_MAX_CPUS 8192
 #define MSML_MAX_NUMA_NODES 64
+#define MSML_STORAGE_EXT ".msml"
 
 #ifdef MSML_ENABLE_IMAGE_SUPPORT
 #   define STBI_MALLOC(sz) msml_alloc(NULL, (sz))
@@ -303,7 +303,7 @@ struct msml_ctx_t {
     void* ud; /* User data. */
 };
 
-typedef enum msml_tensor_flags_t {
+typedef enum msml__tensor_flags_t {
     MSML_TFLAG_NONE = 0,
     MSML_TFLAG_VIEW = 1<<0,         /* Tensor is a view. */
     MSML_TFLAG_OP_INPUT = 1<<1,     /* Tensor is an operation input. */
@@ -311,7 +311,8 @@ typedef enum msml_tensor_flags_t {
     MSML_TFLAG_EXEC_EAGER = 1<<3,   /* Tensor is executed eagerly. */
     MSML_TFLAG_IMAGE = 1<<4,        /* Tensor was loaded from an image. */
     MSML_TFLAG_FROM_FS = 1<<5,      /* Tensor was loaded from the file system. Also true for MSML_TFLAG_IMAGE. */
-} msml_tensor_flags_t;
+} msml__tensor_flags_t;
+msml_static_assert(MSML_TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
 
 struct msml_tensor_t {
     msml_ctx_t* ctx;
@@ -321,7 +322,7 @@ struct msml_tensor_t {
     msml_dtype_t dtype;
     void* buf;
     int64_t num_elems;
-    msml_tensor_flags_t flags;
+    msml__tensor_flags_t flags;
     msml_op_t op;
     msml_tensor_t* op_inputs[MSML_MAX_INPUT_TENSORS];
     msml_op_param_t op_params[MSML_MAX_OP_PARAMS];
@@ -1181,10 +1182,14 @@ uint32_t msml_pack_color_f32(float r, float g, float b) {
     const int64_t prefix##1 = (xk)->var[1]; \
     const int64_t prefix##2 = (xk)->var[2]; \
     const int64_t prefix##3 = (xk)->var[3]; \
+    const int64_t prefix##4 = (xk)->var[4]; \
+    const int64_t prefix##5 = (xk)->var[5]; \
     (void)prefix##0; \
     (void)prefix##1; \
     (void)prefix##2; \
-    (void)prefix##3;
+    (void)prefix##3; \
+    (void)prefix##4; \
+    (void)prefix##5; \
 
 const msml_dtype_info_t* msml_dtype_info_of(msml_dtype_t type) {
     static const msml_dtype_info_t infos[MSML_DTYPE_COUNT_] = {
@@ -1364,6 +1369,17 @@ static bool msml__validate_op_transpose(msml_op_t op, msml_tensor_t* result, msm
     return true;
 }
 
+static bool msml__validate_op_scalar(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
+    if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
+    msml__validate_expr_gen(inputs[0]->strides[0] == sizeof(float), "Mean");
+    msml__validate_expr_gen(result->shape[0] == 1, "Mean");
+    msml__validate_expr_gen(result->shape[1] == inputs[0]->shape[1], "Mean");
+    msml__validate_expr_gen(result->shape[2] == inputs[0]->shape[2], "Mean");
+    msml__validate_expr_gen(result->shape[3] == inputs[0]->shape[3], "Mean");
+    return true;
+}
+
 static bool msml__validate_op_matmul(msml_op_t op, msml_tensor_t* result, msml_tensor_t** inputs, uint32_t n_inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     if (msml_unlikely(!msml__validate_inputs(op, inputs, n_inputs))) return false;
     msml__validate_expr_gen(inputs[0]->shape[1] == inputs[1]->shape[0], "Input tensor shapes must be compatible for matrix multiplication.");
@@ -1381,6 +1397,7 @@ static bool (*msml__op_get_validator_routine(msml_op_t op))(msml_op_t, msml_tens
         [MSML_OP_VIEW] = &msml__validate_op_unary,
         [MSML_OP_TRANSPOSE] = &msml__validate_op_transpose,
         [MSML_OP_PERMUTE] = &msml__validate_op_transpose,
+        [MSML_OP_MEAN] = &msml__validate_op_scalar,
         [MSML_OP_STEP] = &msml__validate_op_unary,
         [MSML_OP_SOFTMAX] = &msml__validate_op_unary,
         [MSML_OP_SOFTMAX_DV] = &msml__validate_op_unary,
@@ -1411,6 +1428,11 @@ static msml_tensor_t* msml__result_constructor_routine_nop(msml_tensor_t** input
     return NULL;
 }
 
+static msml_tensor_t* msml__result_constructor_routine_isomorph_same_shape(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    (void)params;
+    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, inputs[0]->rank, NULL, 0);
+}
+
 static msml_tensor_t* msml__result_constructor_routine_isomorph(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     (void)params;
     return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, MSML_MAX_DIMS, NULL, 0);
@@ -1419,6 +1441,15 @@ static msml_tensor_t* msml__result_constructor_routine_isomorph(msml_tensor_t** 
 static msml_tensor_t* msml__result_constructor_routine_view(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
     (void)params;
     return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, MSML_MAX_DIMS, inputs[0], 0);
+}
+
+static msml_tensor_t* msml__result_constructor_routine_scalar(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
+    int64_t shape[MSML_MAX_DIMS];
+    *shape = 1;
+    #pragma GCC unroll 5
+    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i)
+        shape[i] = inputs[0]->shape[i];
+    return msml__tensor_create(inputs[0]->ctx, inputs[0]->dtype, shape, MSML_MAX_DIMS, NULL, 0);
 }
 
 static msml_tensor_t* msml__result_constructor_routine_transposed(msml_tensor_t** inputs, const msml_op_param_t(*params)[MSML_MAX_OP_PARAMS]) {
@@ -1457,10 +1488,11 @@ static msml_tensor_t* msml__result_constructor_routine_matmul(msml_tensor_t** in
 static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(msml_tensor_t**, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) {
     static msml_tensor_t* (*const routines[])(msml_tensor_t**, const msml_op_param_t(*)[MSML_MAX_OP_PARAMS]) = {
         [MSML_OP_NOP] = &msml__result_constructor_routine_nop,
-        [MSML_OP_CLONE] = &msml__result_constructor_routine_isomorph,
+        [MSML_OP_CLONE] = &msml__result_constructor_routine_isomorph_same_shape,
         [MSML_OP_VIEW] = &msml__result_constructor_routine_view,
         [MSML_OP_TRANSPOSE] = &msml__result_constructor_routine_transposed,
         [MSML_OP_PERMUTE] = &msml__result_constructor_routine_permuted,
+        [MSML_OP_MEAN] = &msml__result_constructor_routine_scalar,
         [MSML_OP_STEP] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_SOFTMAX] = &msml__result_constructor_routine_isomorph,
         [MSML_OP_SOFTMAX_DV] = &msml__result_constructor_routine_isomorph,
@@ -1487,6 +1519,19 @@ static msml_tensor_t* (*msml__op_get_result_constructor_routine(msml_op_t op))(m
 
 #undef msml__validate_inputs
 
+static MSML_AINLINE int64_t msml__tensor_data_size(const msml_tensor_t* t) { return t->num_elems*msml_dtype_info_of(t->dtype)->size; }
+int64_t msml_tensor_data_size(const msml_tensor_t* t) { return msml__tensor_data_size(t); }
+static MSML_AINLINE int64_t msml__tensor_num_elements(const msml_tensor_t* t) { return t->num_elems; }
+int64_t msml_tensor_num_elements(const msml_tensor_t* t) { return t->num_elems; }
+static MSML_AINLINE int64_t msml__tensor_num_rows(const msml_tensor_t* t) {
+    msml_static_assert(MSML_MAX_DIMS == 6);
+    msml__load_local_storage_group(t, d, shape);
+    return d1*d2*d3*d4*d5;
+}
+int64_t msml_tensor_num_rows(const msml_tensor_t* t) { return msml__tensor_num_rows(t); }
+static MSML_AINLINE int64_t msml__tensor_num_cols(const msml_tensor_t* t) { return *t->shape; }
+int64_t msml_tensor_num_cols(const msml_tensor_t* t) { return *t->shape; }
+
 static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, const int64_t* dims, int64_t rank, msml_tensor_t* view, size_t view_offs) {
     msml__assert(dims != NULL && rank >= 0 && rank <= MSML_MAX_DIMS, "Rank must be within (0, %d]", MSML_MAX_DIMS);
     if (view && view->view) { /* Accumulate relative view offset. */
@@ -1498,7 +1543,7 @@ static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, co
     for (int64_t i=0; i < rank; ++i) /* Calculate buffer size and check for overflow. */
         msml__assert2(dims[i] > 0 && !msml__imull64_ov(dims[i], elems_total, &elems_total)); /* Overflow in buffer size. Max: INT64_MAX. Reduce dimensions. */
     int64_t bytes_total = elems_total*scalar_size;
-    msml__assert2(!view || !bytes_total || bytes_total + view_offs <= msml_tensor_data_size(view)); /* Slice must be within viewed tensor data range. */
+    msml__assert2(!view || !bytes_total || bytes_total + view_offs <= msml__tensor_data_size(view)); /* Slice must be within viewed tensor data range. */
     msml_tensor_t* t = (msml_tensor_t*)msml_ctx_pool_alloc(ctx, sizeof(*t) + (view ? 0 : bytes_total)); /* Allocate memory for tensor struct and data */
     memset(t, 0, sizeof(*t));
     *t = (msml_tensor_t) {
@@ -1511,9 +1556,11 @@ static msml_tensor_t* msml__tensor_create(msml_ctx_t* ctx, msml_dtype_t type, co
         .view = view,
         .view_offs = view_offs,
     };
+    #pragma GCC unroll 6
     for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
         t->shape[i] = i < rank ? dims[i] : 1;
     *t->strides = scalar_size;
+    #pragma GCC unroll 5
     for (uint32_t i=1; i < MSML_MAX_DIMS; ++i)    /* Calculate strides and check for overflow. */
         msml__assert2(!msml__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
     t->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(t + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
@@ -1534,6 +1581,14 @@ msml_tensor_t* msml_tensor_create_3d(msml_ctx_t* ctx, msml_dtype_t type, int64_t
 
 msml_tensor_t* msml_tensor_create_4d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4) {
     return msml__tensor_create(ctx, type, (int64_t[]) {d1, d2, d3, d4}, 4, NULL, 0);
+}
+
+msml_tensor_t* msml_tensor_create_5d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5) {
+    return msml__tensor_create(ctx, type, (int64_t[]) {d1, d2, d3, d4, d5}, 5, NULL, 0);
+}
+
+msml_tensor_t* msml_tensor_create_6d(msml_ctx_t* ctx, msml_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6) {
+    return msml__tensor_create(ctx, type, (int64_t[]) {d1, d2, d3, d4, d5, d6}, 6, NULL, 0);
 }
 
 struct msml__blas_compute_info_t {
@@ -1596,19 +1651,18 @@ void msml_tensor_set_arg(msml_tensor_t* t, size_t slot, msml_tensor_t* arg) {
 }
 
 void msml_tensor_copy_buffer_from(msml_tensor_t* t, const void* data, size_t size) {
-    msml__assert(size == (size_t) msml_tensor_data_size(t), "Buffer size mismatch: %zu != %lld", size,
-                 msml_tensor_data_size(t));
+    msml__assert(size == (size_t) msml__tensor_data_size(t), "Buffer size mismatch: %zu != %lld", size, msml__tensor_data_size(t));
     memcpy(t->buf, data, size);
 }
 
 void msml_tensor_fill(msml_tensor_t* t, float x) {
     if (x == 0.0f) {
-        memset(t->buf, 0, msml_tensor_data_size(t));
+        memset(t->buf, 0, msml__tensor_data_size(t));
         return;
     }
     switch (t->dtype) {
         case MSML_DTYPE_F32: {
-            int64_t n = msml_tensor_num_elements(t);
+            int64_t n = msml__tensor_num_elements(t);
             float* buf = (float*)t->buf;
             for (int64_t i=0; i < n; ++i) buf[i] = x;
         } break;
@@ -1619,7 +1673,7 @@ void msml_tensor_fill(msml_tensor_t* t, float x) {
 void msml_tensor_fill_random(msml_tensor_t* t, float min, float max) {
     switch (t->dtype) {
         case MSML_DTYPE_F32: {
-            int64_t n = msml_tensor_num_elements(t);
+            int64_t n = msml__tensor_num_elements(t);
             float* buf = (float*)t->buf;
             msml__prng_generate_n(t->ctx, buf, n, min, max);
         } break;
@@ -1628,7 +1682,7 @@ void msml_tensor_fill_random(msml_tensor_t* t, float min, float max) {
 }
 
 size_t msml_tensor_get_memory_usage(const msml_tensor_t* t) {
-    return sizeof(*t) + msml_tensor_data_size(t);
+    return sizeof(*t) + msml__tensor_data_size(t);
 }
 
 void msml_tensor_print(const msml_tensor_t* t, bool with_header, bool with_data) {
@@ -1641,23 +1695,28 @@ void msml_tensor_print(const msml_tensor_t* t, bool with_header, bool with_data)
         double buf_size_cvt = 0.0;
         const char* buf_size_unit = NULL;
         msml__humanize_memory_size(msml_tensor_get_memory_usage(t), &buf_size_cvt, &buf_size_unit);
-        fprintf(f, "Tensor '%s', DType: %s, Rank: %zu, Shape: [%zu %zu %zu %zu], Strides: [%zu %zu %zu %zu], Mem: %.03f %s\n",
+        fprintf(f, "Tensor '%s', DType: %s, Rank: %zu, Elements: %zu, Shape: [%zu %zu %zu %zu %zu %zu], Strides: [%zu %zu %zu %zu %zu %zu], Mem: %.03f %s\n",
             t->name,
             msml_dtype_info_of(t->dtype)->name,
             (size_t)t->rank,
+            (size_t)msml__tensor_num_elements(t),
             (size_t)x_d0,
             (size_t)x_d1,
             (size_t)x_d2,
             (size_t)x_d3,
+            (size_t)x_d4,
+            (size_t)x_d5,
             (size_t)x_s0,
             (size_t)x_s1,
             (size_t)x_s2,
             (size_t)x_s3,
+            (size_t)x_s4,
+            (size_t)x_s5,
             buf_size_cvt,
             buf_size_unit
         );
     }
-    if (with_data) {
+    if (with_data) { /* TODO: Adapt 6D tensor printing */
         const uint8_t* buf = (const uint8_t*)t->buf;
         if (x_d3 > 1) fprintf(f, "[\n");
         for (int64_t i3=0; i3 < x_d3; ++i3) {
@@ -1674,7 +1733,7 @@ void msml_tensor_print(const msml_tensor_t* t, bool with_header, bool with_data)
                     if (x_d0 > 1) fprintf(f, "[ ");
                     for (int64_t i0=0; i0 < x_d0; ++i0) {
                         const float* const p_x = (const float*)(buf + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_s3);
-                        msml__bnd_chk(p_x, buf, msml_tensor_data_size(t));
+                        msml__bnd_chk(p_x, buf, msml__tensor_data_size(t));
                         char fmt_buf[128];
                         memset(fmt_buf, 0, sizeof(fmt_buf));
                         *msml__fmt_f64(MSML_FMT_G14, (double)*p_x, fmt_buf) = '\0';
@@ -1720,40 +1779,35 @@ float* msml_tensor_data_as_f32(const msml_tensor_t* t) {
     return (float*)t->buf;
 }
 
-int64_t msml_tensor_data_size(const msml_tensor_t* t) {
-    return t->num_elems*msml_dtype_info_of(t->dtype)->size;
-}
-
-int64_t msml_tensor_num_elements(const msml_tensor_t* t) {
-    return t->num_elems;
-}
-
-int64_t msml_tensor_num_rows(const msml_tensor_t* t) {
-    int64_t rows=t->shape[1];
-    for (int64_t i=2; i < MSML_MAX_DIMS; ++i)
-        rows *= t->shape[i];
-    return rows;
-}
-
-int64_t msml_tensor_num_cols(const msml_tensor_t* t) { return t->shape[0]; }
-
 bool msml_tensor_is_scalar(const msml_tensor_t* t) {
-    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
+    #pragma GCC unroll 6
+    for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
+        if (t->shape[i] != 1)
+            return false;
     return true;
 }
 
 bool msml_tensor_is_vector(const msml_tensor_t* t) {
-    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
+    #pragma GCC unroll 5
+    for (uint32_t i=1; i < MSML_MAX_DIMS; ++i)
+        if (t->shape[i] != 1)
+            return false;
     return true;
 }
 
 bool msml_tensor_is_matrix(const msml_tensor_t* t) {
-    for (uint32_t i=2; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
+    #pragma GCC unroll 4
+    for (uint32_t i=2; i < MSML_MAX_DIMS; ++i)
+        if (t->shape[i] != 1)
+            return false;
     return true;
 }
 
 bool msml_tensor_is_volume(const msml_tensor_t* t) {
-    for (uint32_t i=3; i < MSML_MAX_DIMS; ++i) if (t->shape[i] != 1) return false;
+    #pragma GCC unroll 3
+    for (uint32_t i=3; i < MSML_MAX_DIMS; ++i)
+        if (t->shape[i] != 1)
+            return false;
     return true;
 }
 
@@ -1766,6 +1820,7 @@ bool msml_tensor_are_strides_eq(const msml_tensor_t* a, const msml_tensor_t* b) 
 }
 
 bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b) {
+    #pragma GCC unroll 6
     for (uint32_t i=0; i < MSML_MAX_DIMS; ++i)
         if ((b->shape[i] % a->shape[i]) != 0)
             return false;
@@ -1775,41 +1830,48 @@ bool msml_tensor_can_broadcast(const msml_tensor_t* a, const msml_tensor_t* b) {
 bool msml_tensor_is_transposed(const msml_tensor_t* t) { return t->strides[0] > t->strides[1]; }
 
 bool msml_tensor_is_permuted(const msml_tensor_t* t) {
-    return
-        t->strides[0] > t->strides[1]
-        || t->strides[1] > t->strides[2]
-        || t->strides[2] > t->strides[3];
+    #pragma GCC unroll 5
+    for (uint32_t i=0; i < MSML_MAX_DIMS-1; ++i)
+        if (t->strides[i] > t->strides[i+1])
+            return true;
+    return false;
 }
 
 static MSML_AINLINE void msml_tensor_virtual_to_physical_index(const msml_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[MSML_MAX_DIMS]) {
+    msml_static_assert(MSML_MAX_DIMS == 6);
     msml__load_local_storage_group(t, d, shape);
-    (*p_idx)[3] = v_idx / (d2*d1*d0);
-    (*p_idx)[2] = (v_idx - (*p_idx)[3]*d2*d1*d0) / (d1*d0);
-    (*p_idx)[1] = (v_idx - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0) / d0;
-    (*p_idx)[0] =  v_idx - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0 - (*p_idx)[1]*d0;
+    (*p_idx)[5] = v_idx / (d4*d3*d2*d1*d0);
+    (*p_idx)[4] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0) / (d3*d2*d1*d0);
+    (*p_idx)[3] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0) / (d2*d1*d0);
+    (*p_idx)[2] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0) / (d1*d0);
+    (*p_idx)[1] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0) / d0;
+    (*p_idx)[0] =  v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0 - (*p_idx)[1]*d0;
 }
 
 static MSML_AINLINE int64_t msml_tensor_physical_to_virtual_index(const msml_tensor_t* t, const int64_t (*p_idx)[MSML_MAX_DIMS]) {
-    msml__load_local_storage_group(t, t_s, strides)
-    return (*p_idx)[0]*t_s0 + (*p_idx)[1]*t_s1 + (*p_idx)[2]*t_s2 + (*p_idx)[3]*t_s3;
+    msml_static_assert(MSML_MAX_DIMS == 6);
+    msml__load_local_storage_group(t, s, strides);
+    return (*p_idx)[0]*s0 + (*p_idx)[1]*s1 + (*p_idx)[2]*s2 + (*p_idx)[3]*s3 + (*p_idx)[4]*s4 + (*p_idx)[5]*s5;
 }
 
 bool msml_tensor_is_contiguous(const msml_tensor_t* t) {
     return *t->strides == msml_dtype_info_of(t->dtype)->size;
 }
 
-float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3) {
-    msml__load_local_storage_group(t, t_s, strides)
-    const uint8_t* dst = (const uint8_t*)t->buf + d0*t_s0 + d1*t_s0 + d2*t_s0 + d3*t_s0;
+float msml_tensor_get_scalar_physical_index(const msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5) {
+    msml_static_assert(MSML_MAX_DIMS == 6);
+    msml__load_local_storage_group(t, s, strides);
+    const uint8_t* dst = (const uint8_t*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5;
     switch (t->dtype) {
-        case MSML_DTYPE_F32: return *(float*)dst;
+        case MSML_DTYPE_F32: return *(const float*)dst;
         default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
     }
 }
 
-void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, float x) {
-    msml__load_local_storage_group(t, t_s, strides)
-    uint8_t* dst = (uint8_t*)t->buf + d0*t_s0 + d1*t_s0 + d2*t_s0 + d3*t_s0;
+void msml_tensor_set_scalar_physical_index(msml_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, float x) {
+    msml_static_assert(MSML_MAX_DIMS == 6);
+    msml__load_local_storage_group(t, s, strides);
+    uint8_t* dst = (uint8_t*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5;
     switch (t->dtype) {
         case MSML_DTYPE_F32: *(float*)dst = x; break;
         default: msml__panic("Unsupported data type: %s", msml_dtype_info_of(t->dtype)->name);
@@ -1820,7 +1882,7 @@ float msml_tensor_get_scalar_virtual_index(const msml_tensor_t* t, int64_t v_idx
     if (!msml_tensor_is_contiguous(t)) {
         int64_t physical_idx[MSML_MAX_DIMS];
         msml_tensor_virtual_to_physical_index(t, v_idx, &physical_idx);
-        return msml_tensor_get_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3]);
+        return msml_tensor_get_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], physical_idx[4], physical_idx[5]);
     }
     switch (t->dtype) {
         case MSML_DTYPE_F32:
@@ -1834,7 +1896,7 @@ void msml_tensor_set_scalar_virtual_index(msml_tensor_t* t, int64_t v_idx, float
     if (!msml_tensor_is_contiguous(t)) {
         int64_t physical_idx[MSML_MAX_DIMS];
         msml_tensor_virtual_to_physical_index(t, v_idx, &physical_idx);
-        msml_tensor_set_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], x);
+        msml_tensor_set_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], physical_idx[4], physical_idx[5], x);
         return;
     }
     switch (t->dtype) {
@@ -1851,7 +1913,7 @@ bool msml_tensor_eq(const msml_tensor_t* a, const msml_tensor_t* b) {
     if (a->rank != b->rank) return false;
     if (memcmp(a->shape, b->shape, sizeof(a->shape)) != 0) return false;
     if (a->num_elems != b->num_elems) return false;
-    int64_t n = msml_tensor_num_elements(a);
+    int64_t n = msml__tensor_num_elements(a);
     switch (a->dtype) {
         case MSML_DTYPE_F32: {
             const float* buf_a = (const float*)a->buf;
@@ -1873,7 +1935,7 @@ bool msml_tensor_is_close(const msml_tensor_t* a, const msml_tensor_t* b, float 
     if (memcmp(a->shape, b->shape, sizeof(a->shape)) != 0) return false;
     if (a->num_elems != b->num_elems) return false;
     eps = eps < 0.0f ? FLT_EPSILON : eps;
-    int64_t n = msml_tensor_num_elements(a);
+    int64_t n = msml__tensor_num_elements(a);
     int64_t n_eq = 0;
     switch (a->dtype) {
         case MSML_DTYPE_F32: {
@@ -1937,77 +1999,89 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
 
 #if MSML_INTRIN && defined(__aarch64__) && defined(__ARM_NEON)
     static float32x4_t msml__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
-        const float32x4_t r = vdupq_n_f32(0x1.8p23f);
-        const float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
-        const float32x4_t n = vsubq_f32(z, r);
-        const float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n, vdupq_n_f32(0x1.7f7d1cp-20f));
-        const uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
-        const float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
-        const uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
-        const float32x4_t u = vmulq_f32(b, b);
-        const float32x4_t j = vfmaq_f32(
+        float32x4_t r = vdupq_n_f32(0x1.8p23f);
+        float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
+        float32x4_t n = vsubq_f32(z, r);
+        float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n, vdupq_n_f32(0x1.7f7d1cp-20f));
+        uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
+        float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
+        uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
+        float32x4_t u = vmulq_f32(b, b);
+        float32x4_t j = vfmaq_f32(
             vmulq_f32(vdupq_n_f32(0x1.ffffecp-1f), b),
             vfmaq_f32(vfmaq_f32(vdupq_n_f32(0x1.fffdb6p-2f), vdupq_n_f32(0x1.555e66p-3f), b),
             vfmaq_f32(vdupq_n_f32(0x1.573e2ep-5f), vdupq_n_f32(0x1.0e4020p-7f), b), u), u);
         if (!vpaddd_u64(vreinterpretq_u64_u32(c))) return vfmaq_f32(k, j, k);
-        const uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
-        const float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
-        const float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
+        uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
+        float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
+        float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
         return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
                vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
     }
 
     static float32x4_t msml__simd_tanh(float32x4_t x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        const float32x4_t one = vdupq_n_f32(1.0f);
-        const float32x4_t neg_one = vdupq_n_f32(-1.0f);
-        const float32x4_t two = vdupq_n_f32(2.0f);
-        const float32x4_t neg_two = vdupq_n_f32(-2.0f);
-        const float32x4_t a = vmulq_f32(neg_two, x);
-        const float32x4_t b = msml__simd_expf(a);
-        const float32x4_t c = vaddq_f32(one, b);
+        float32x4_t one = vdupq_n_f32(1.0f);
+        float32x4_t neg_one = vdupq_n_f32(-1.0f);
+        float32x4_t two = vdupq_n_f32(2.0f);
+        float32x4_t neg_two = vdupq_n_f32(-2.0f);
+        float32x4_t a = vmulq_f32(neg_two, x);
+        float32x4_t b = msml__simd_expf(a);
+        float32x4_t c = vaddq_f32(one, b);
         float32x4_t inv = vrecpeq_f32(c);
-        inv = vmulq_f32(vrecpsq_f32(c, inv), inv);
-        inv = vmulq_f32(vrecpsq_f32(c, inv), inv);
+        inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
+        inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
         return vaddq_f32(neg_one, vmulq_f32(two, inv));
     }
 #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+
     static __m512 msml__simd_expf(const __m512 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        const __m512 r = _mm512_set1_ps(0x1.8p23f);
-        const __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
-        const __m512 n = _mm512_sub_ps(z, r);
-        const __m512 b = _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.7f7d1cp-20f), _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.62e4p-1f), x));
-        const __mmask16 d = _mm512_cmp_ps_mask(_mm512_abs_ps(n), _mm512_set1_ps(192), _CMP_GT_OQ);
-        const __m512 u = _mm512_mul_ps(b, b);
-        const __m512 j = _mm512_fmadd_ps(
+        __m512 r = _mm512_set1_ps(0x1.8p23f);
+        __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
+        __m512 n = _mm512_sub_ps(z, r);
+        __m512 b = _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.7f7d1cp-20f), _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.62e4p-1f), x));
+        __mmask16 d = _mm512_cmp_ps_mask(_mm512_abs_ps(n), _mm512_set1_ps(192), _CMP_GT_OQ);
+        __m512 u = _mm512_mul_ps(b, b);
+        __m512 j = _mm512_fmadd_ps(
             _mm512_fmadd_ps(_mm512_fmadd_ps(_mm512_set1_ps(0x1.0e4020p-7f), b, _mm512_set1_ps(0x1.573e2ep-5f)), u,
             _mm512_fmadd_ps(_mm512_set1_ps(0x1.555e66p-3f), b, _mm512_set1_ps(0x1.fffdb6p-2f))), u, _mm512_fmadd_ps(_mm512_set1_ps(0x1.ffffecp-1f), b, _mm512_set1_ps(1.0F))
         );
-        const __m512 res = _mm512_scalef_ps(j, n);
+        __m512 res = _mm512_scalef_ps(j, n);
         if (_mm512_kortestz(d, d)) return res;
-        const __m512 zero = _mm512_setzero_ps();
-        const __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
+        __m512 zero = _mm512_setzero_ps();
+        __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
         return _mm512_mask_blend_ps(d, res, alt);
     }
 
     static __m512 msml__simd_tanh(__m512 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-
+        __m512 one = _mm512_set1_ps(1.0f);
+        __m512 neg_one = _mm512_set1_ps(-1.0f);
+        __m512 two = _mm512_set1_ps(2.0f);
+        __m512 neg_two = _mm512_set1_ps(-2.0f);
+        __m512 a = _mm512_mul_ps(neg_two, x);
+        __m512 b = msml__simd_expf(a);
+        __m512 c = _mm512_add_ps(one, b);
+        __m512 inv = _mm512_rcp14_ps(c);
+        inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        return _mm512_fmadd_ps(two, inv, neg_one);
     }
+
 #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
     static __m256 msml__simd_expf(const __m256 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        const __m256 r = _mm256_set1_ps(0x1.8p23f);
-        const __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
-        const __m256 n = _mm256_sub_ps(z, r);
-        const __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
-        const __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
-        const __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
-        const __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n),_mm256_set1_ps(126), _CMP_GT_OQ));
-        const __m256 u = _mm256_mul_ps(b, b);
-        const __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
+        __m256 r = _mm256_set1_ps(0x1.8p23f);
+        __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
+        __m256 n = _mm256_sub_ps(z, r);
+        __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
+        __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
+        __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
+        __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(126), _CMP_GT_OQ));
+        __m256 u = _mm256_mul_ps(b, b);
+        __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
         if (!_mm256_movemask_ps(_mm256_castsi256_ps(c))) return _mm256_fmadd_ps(j, k, k);
-        const __m256i g = _mm256_and_si256(_mm256_castps_si256(_mm256_cmp_ps(n, _mm256_setzero_ps(), _CMP_LE_OQ)),_mm256_set1_epi32(0x82000000u));
-        const __m256 s1 = _mm256_castsi256_ps(_mm256_add_epi32(g, _mm256_set1_epi32(0x7f000000u)));
-        const __m256 s2 = _mm256_castsi256_ps(_mm256_sub_epi32(e, g));
-        const __m256i d = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(192), _CMP_GT_OQ));
+        __m256i g = _mm256_and_si256(_mm256_castps_si256(_mm256_cmp_ps(n, _mm256_setzero_ps(), _CMP_LE_OQ)),_mm256_set1_epi32(0x82000000u));
+        __m256 s1 = _mm256_castsi256_ps(_mm256_add_epi32(g, _mm256_set1_epi32(0x7f000000u)));
+        __m256 s2 = _mm256_castsi256_ps(_mm256_sub_epi32(e, g));
+        __m256i d = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(192), _CMP_GT_OQ));
         return _mm256_or_ps(
             _mm256_and_ps(_mm256_castsi256_ps(d), _mm256_mul_ps(s1, s1)),
             _mm256_andnot_ps(
@@ -2020,26 +2094,36 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
     }
 
     static __m256 msml__simd_tanh(__m256 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-
+        __m256 one = _mm256_set1_ps(1.0f);
+        __m256 neg_one = _mm256_set1_ps(-1.0f);
+        __m256 two = _mm256_set1_ps(2.0f);
+        __m256 neg_two = _mm256_set1_ps(-2.0f);
+        __m256 a = _mm256_mul_ps(neg_two, x);
+        __m256 b = msml__simd_expf(a);
+        __m256 c = _mm256_add_ps(one, b);
+        __m256 inv = _mm256_rcp_ps(c);
+        inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        return _mm256_fmadd_ps(two, inv, neg_one);
     }
 #elif MSML_INTRIN && defined(__SSE2__)
     static __m128 msml__simd_expf(const __m128 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        const __m128 r = _mm_set1_ps(0x1.8p23f);
-        const __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
-        const __m128 n = _mm_sub_ps(z, r);
-        const __m128 b = _mm_sub_ps(_mm_sub_ps(x, _mm_mul_ps(n, _mm_set1_ps(0x1.62e4p-1f))), _mm_mul_ps(n, _mm_set1_ps(0x1.7f7d1cp-20f)));
-        const __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
-        const __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
-        const __m128i c = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
-        const __m128 u = _mm_mul_ps(b, b);
-        const __m128 j = _mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.0e4020p-7f), b), _mm_set1_ps(0x1.573e2ep-5f)),u),
+        __m128 r = _mm_set1_ps(0x1.8p23f);
+        __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
+        __m128 n = _mm_sub_ps(z, r);
+        __m128 b = _mm_sub_ps(_mm_sub_ps(x, _mm_mul_ps(n, _mm_set1_ps(0x1.62e4p-1f))), _mm_mul_ps(n, _mm_set1_ps(0x1.7f7d1cp-20f)));
+        __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
+        __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
+        __m128i c = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
+        __m128 u = _mm_mul_ps(b, b);
+        __m128 j = _mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.0e4020p-7f), b), _mm_set1_ps(0x1.573e2ep-5f)),u),
         _mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.555e66p-3f), b), _mm_set1_ps(0x1.fffdb6p-2f))), u),
         _mm_mul_ps(_mm_set1_ps(0x1.ffffecp-1f), b));
         if (!_mm_movemask_epi8(c)) return _mm_add_ps(_mm_mul_ps(j, k), k);
-        const __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),_mm_set1_epi32(0x82000000u));
-        const __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
-        const __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
-        const __m128i d = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
+        __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),_mm_set1_epi32(0x82000000u));
+        __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
+        __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
+        __m128i d = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
         return _mm_or_ps(
             _mm_and_ps(_mm_castsi128_ps(d), _mm_mul_ps(s1, s1)),
             _mm_andnot_ps(_mm_castsi128_ps(d),
@@ -2049,7 +2133,17 @@ void msml_tensor_set_user_data(msml_tensor_t* t, void* ud) { t->ud = ud; }
     }
 
     static __m128 msml__simd_tanh(__m128 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-
+        __m128 one = _mm_set1_ps(1.0f);
+        __m128 neg_one = _mm_set1_ps(-1.0f);
+        __m128 two = _mm_set1_ps(2.0f);
+        __m128 neg_two = _mm_set1_ps(-2.0f);
+        __m128 a = _mm_mul_ps(neg_two, x);
+        __m128 b = msml__simd_expf(a);
+        __m128 c = _mm_add_ps(one, b);
+        __m128 inv = _mm_rcp_ps(c);
+        inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+        return _mm_add_ps(neg_one, _mm_mul_ps(two, inv));
     }
 #endif
 
@@ -2201,12 +2295,20 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
             vy[3] = _mm_loadu_ps(y+i+(3<<2));
             acc[3] = _mm_add_ps(acc[3], _mm_mul_ps(vx[3], vy[3]));
         }
-        acc[1] = _mm_add_ps(acc[1], acc[3]);
-        *acc = _mm_add_ps(*acc, acc[2]);
-        *acc = _mm_add_ps(*acc, acc[1]);
-        *acc = _mm_hadd_ps(*acc, *acc);
-        *acc = _mm_hadd_ps(*acc, *acc);
-        float sum = _mm_cvtss_f32(*acc);
+        #ifdef __SSE3__
+            acc[1] = _mm_add_ps(acc[1], acc[3]);
+            *acc = _mm_add_ps(*acc, acc[2]);
+            *acc = _mm_add_ps(*acc, acc[1]);
+            *acc = _mm_hadd_ps(*acc, *acc);
+            *acc = _mm_hadd_ps(*acc, *acc);
+            float sum = _mm_cvtss_f32(*acc);
+        #else
+            __m128 shuf = _mm_shuffle_ps(*acc, *acc, _MM_SHUFFLE(2, 3, 0, 1));
+            __m128 sums = _mm_add_ps(*acc, shuf);
+            shuf = _mm_movehl_ps(shuf, sums);
+            sums = _mm_add_ss(sums, shuf);
+            float sum = _mm_cvtss_f32(sums);
+        #endif
         for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
         return sum;
     #else
@@ -2214,6 +2316,16 @@ static float MSML_UNUSED MSML_HOTPROC msml__vdot_f32(
         for (int64_t i=0; i < n; ++i) r += (double)x[i] * (double)y[i];
         return (float)r;
     #endif
+}
+
+static float MSML_HOTPROC msml__vsum_f32( /* Σx. */
+    const int64_t n,
+    const float* const x
+) {
+    double sum = 0.0;
+    for (int64_t i=0; i < n; ++i)
+        sum += (double)x[i];
+    return (float)sum;
 }
 
 static void MSML_HOTPROC msml__vstep_f32( /* Heaviside step function. */
@@ -2269,40 +2381,40 @@ static void MSML_HOTPROC msml__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 +
         const float32x4_t one = vdupq_n_f32(1.0f);
         const float32x4_t zero = vdupq_n_f32(0.0f);
         for (; i+3 < n; i += 4) {
-            const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t neg_x = vsubq_f32(zero, xx);
-            const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
-            const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
+            float32x4_t xx = vld1q_f32(x+i);
+            float32x4_t neg_x = vsubq_f32(zero, xx);
+            float32x4_t exp_neg_x = msml__simd_expf(neg_x);
+            float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
             vst1q_f32(o+i, vdivq_f32(one, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        const __m512 one = _mm512_set1_ps(1.0f);
-        const __m512 zero = _mm512_setzero_ps();
+        __m512 one = _mm512_set1_ps(1.0f);
+        __m512 zero = _mm512_setzero_ps();
         for (; i+15 < n; i += 16) {
-            const __m512 xx = _mm512_loadu_ps(x+i);
-            const __m512 neg_x = _mm512_sub_ps(zero, xx);
-            const __m512 exp_neg_x = msml__simd_expf(neg_x);
-            const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
+            __m512 xx = _mm512_loadu_ps(x+i);
+            __m512 neg_x = _mm512_sub_ps(zero, xx);
+            __m512 exp_neg_x = msml__simd_expf(neg_x);
+            __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
             _mm512_storeu_ps(o+i, _mm512_div_ps(one, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
-        const __m256 one = _mm256_set1_ps(1.0f);
-        const __m256 zero = _mm256_setzero_ps();
+        __m256 one = _mm256_set1_ps(1.0f);
+        __m256 zero = _mm256_setzero_ps();
         for (; i+7 < n; i += 8) {
-            const __m256 xx = _mm256_loadu_ps(x+i);
-            const __m256 neg_x = _mm256_sub_ps(zero, xx);
-            const __m256 exp_neg_x = msml__simd_expf(neg_x);
-            const __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
+            __m256 xx = _mm256_loadu_ps(x+i);
+            __m256 neg_x = _mm256_sub_ps(zero, xx);
+            __m256 exp_neg_x = msml__simd_expf(neg_x);
+            __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
             _mm256_storeu_ps(o+i, _mm256_div_ps(one, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__SSE2__)
-        const __m128 one = _mm_set1_ps(1.0f);
-        const __m128 zero = _mm_setzero_ps();
+        __m128 one = _mm_set1_ps(1.0f);
+        __m128 zero = _mm_setzero_ps();
         for (; i+3 < n; i += 4) {
-            const __m128 xx = _mm_loadu_ps(x+i);
-            const __m128 neg_x = _mm_sub_ps(zero, xx);
-            const __m128 exp_neg_x = msml__simd_expf(neg_x);
-            const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
+            __m128 xx = _mm_loadu_ps(x+i);
+            __m128 neg_x = _mm_sub_ps(zero, xx);
+            __m128 exp_neg_x = msml__simd_expf(neg_x);
+            __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
             _mm_storeu_ps(o+i, _mm_div_ps(one, one_plus_exp_neg_x));
         }
     #endif
@@ -2329,16 +2441,6 @@ static void MSML_HOTPROC msml__vhard_sigmoid_f32( /* σ^ : ℝ -> (0, 1), x |-> 
     }
 }
 
-static void MSML_HOTPROC msml__vhard_sigmoid_dv_f32( /* σ^ : ℝ -> (0, 1), x |-> min(1, max(0, (x + 3)/6)) */
-    const int64_t n,
-    float* const o,
-    const float* const x
-) {
-    for (int64_t i=0; i < n; ++i) {
-        msml__panic("NYI!");
-    }
-}
-
 static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)) */
     const int64_t n,
     float* const o,
@@ -2346,23 +2448,23 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
 ) {
     int64_t i=0;
     #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
-        const float32x4_t one = vdupq_n_f32(1.0f);
-        const float32x4_t zero = vdupq_n_f32(0.0f);
+        float32x4_t one = vdupq_n_f32(1.0f);
+        float32x4_t zero = vdupq_n_f32(0.0f);
         for (; i+3 < n; i += 4) {
-            const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t neg_x = vsubq_f32(zero, xx);
-            const float32x4_t exp_neg_x = msml__simd_expf(neg_x);
-            const float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
+            float32x4_t xx = vld1q_f32(x+i);
+            float32x4_t neg_x = vsubq_f32(zero, xx);
+            float32x4_t exp_neg_x = msml__simd_expf(neg_x);
+            float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
             vst1q_f32(o+i, vdivq_f32(xx, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        const __m512 one = _mm512_set1_ps(1);
-        const __m512 zero = _mm512_setzero_ps();
+        __m512 one = _mm512_set1_ps(1);
+        __m512 zero = _mm512_setzero_ps();
         for (; i+15 < n; i += 16) {
-            const __m512 xx = _mm512_loadu_ps(x+i);
-            const __m512 neg_x = _mm512_sub_ps(zero, xx);
-            const __m512 exp_neg_x = msml__simd_expf(neg_x);
-            const __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
+            __m512 xx = _mm512_loadu_ps(x+i);
+            __m512 neg_x = _mm512_sub_ps(zero, xx);
+            __m512 exp_neg_x = msml__simd_expf(neg_x);
+            __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
             _mm512_storeu_ps(o+i, _mm512_div_ps(xx, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
@@ -2376,13 +2478,13 @@ static void MSML_HOTPROC msml__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(
             _mm256_storeu_ps(o+i, _mm256_div_ps(xx, one_plus_exp_neg_x));
         }
     #elif MSML_INTRIN && defined(__SSE2__)
-        const __m128 one = _mm_set1_ps(1);
-        const __m128 zero = _mm_setzero_ps();
+        __m128 one = _mm_set1_ps(1);
+        __m128 zero = _mm_setzero_ps();
         for (; i+3 < n; i += 4) {
-            const __m128 xx = _mm_loadu_ps(x+i);
-            const __m128 neg_x = _mm_sub_ps(zero, xx);
-            const __m128 exp_neg_x = msml__simd_expf(neg_x);
-            const __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
+            __m128 xx = _mm_loadu_ps(x+i);
+            __m128 neg_x = _mm_sub_ps(zero, xx);
+            __m128 exp_neg_x = msml__simd_expf(neg_x);
+            __m128 one_plus_exp_neg_x = _mm_add_ps(one, exp_neg_x);
             _mm_storeu_ps(o+i, _mm_div_ps(xx, one_plus_exp_neg_x));
         }
     #endif
@@ -2412,11 +2514,17 @@ static void MSML_HOTPROC msml__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x
             vst1q_f32(o+i, msml__simd_tanh(vld1q_f32(x+i)));
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        #error TODO
+        for (; i+15 < n; i += 16) {
+            _mm512_storeu_ps(o+i, msml__simd_tanh(_mm512_loadu_ps(x+i)));
+        }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
-        #error TODO
+        for (; i+7 < n; i += 8) {
+            _mm256_storeu_ps(o+i, msml__simd_tanh(_mm256_loadu_ps(x+i)));
+        }
     #elif MSML_INTRIN && defined(__SSE2__)
-        #error TODO
+        for (; i+3 < n; i += 4) {
+            _mm_storeu_ps(o+i, msml__simd_tanh(_mm_loadu_ps(x+i)));
+        }
     #endif
     for (; i < n; ++i) {
         o[i] = tanhf(x[i]);
@@ -2461,23 +2569,53 @@ static void MSML_HOTPROC msml__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
 ) {
     int64_t i=0;
     #if MSML_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
-        const float32x4_t half = vdupq_n_f32(0.5f);
-        const float32x4_t one = vdupq_n_f32(1.0f);
-        const float32x4_t coeff1 = vdupq_n_f32(0.79788456080286535587989211986876f);
-        const float32x4_t coeff2 = vdupq_n_f32(MSML__GELU_COEFF);
+        float32x4_t half = vdupq_n_f32(0.5f);
+        float32x4_t one = vdupq_n_f32(1.0f);
+        float32x4_t coeff1 = vdupq_n_f32(0.79788456080286535587989211986876f);
+        float32x4_t coeff2 = vdupq_n_f32(MSML__GELU_COEFF);
         for (; i+3 < n; i += 4) {
-            const float32x4_t xx = vld1q_f32(x+i);
-            const float32x4_t a = vaddq_f32(one, vmulq_f32(coeff2, vmulq_f32(xx, xx)));
-            const float32x4_t b = vaddq_f32(one, msml__simd_tanh(vmulq_f32(coeff1, vmulq_f32(xx, a))));
-            const float32x4_t c = vmulq_f32(half, vmulq_f32(xx, b));
+            float32x4_t xx = vld1q_f32(x+i);
+            float32x4_t a = vaddq_f32(one, vmulq_f32(coeff2, vmulq_f32(xx, xx)));
+            float32x4_t b = vaddq_f32(one, msml__simd_tanh(vmulq_f32(coeff1, vmulq_f32(xx, a))));
+            float32x4_t c = vmulq_f32(half, vmulq_f32(xx, b));
             vst1q_f32(o+i, c);
         }
     #elif MSML_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
-        #error TODO
+        __m512 half = _mm512_set1_ps(0.5f);
+        __m512 one = _mm512_set1_ps(1.0f);
+        __m512 coeff1 = _mm512_set1_ps(0.79788456080286535587989211986876f);
+        __m512 coeff2 = _mm512_set1_ps(MSML__GELU_COEFF);
+        for (; i+15 < n; i += 16) {
+            __m512 xx = _mm512_loadu_ps(x+i);
+            __m512 a = _mm512_fmadd_ps(coeff2, _mm512_mul_ps(xx, xx), one);
+            __m512 b = _mm512_add_ps(one, msml__simd_tanh(_mm512_mul_ps(coeff1, _mm512_mul_ps(xx, a))));
+            __m512 c = _mm512_mul_ps(half, _mm512_mul_ps(xx, b));
+            _mm512_storeu_ps(o+i, c);
+        }
     #elif MSML_INTRIN && defined(__AVX2__) && defined(__FMA__)
-        #error TODO
+        __m256 half = _mm256_set1_ps(0.5f);
+        __m256 one = _mm256_set1_ps(1.0f);
+        __m256 coeff1 = _mm256_set1_ps(0.79788456080286535587989211986876f);
+        __m256 coeff2 = _mm256_set1_ps(MSML__GELU_COEFF);
+        for (; i+7 < n; i += 8) {
+            __m256 xx = _mm256_loadu_ps(x+i);
+            __m256 a = _mm256_fmadd_ps(coeff2, _mm256_mul_ps(xx, xx), one);
+            __m256 b = _mm256_add_ps(one, msml__simd_tanh(_mm256_mul_ps(coeff1, _mm256_mul_ps(xx, a))));
+            __m256 c = _mm256_mul_ps(half, _mm256_mul_ps(xx, b));
+            _mm256_storeu_ps(o+i, c);
+        }
     #elif MSML_INTRIN && defined(__SSE2__)
-        #error TODO
+        __m128 half = _mm_set1_ps(0.5f);
+        __m128 one = _mm_set1_ps(1.0f);
+        __m128 coeff1 = _mm_set1_ps(0.79788456080286535587989211986876f);
+        __m128 coeff2 = _mm_set1_ps(MSML__GELU_COEFF);
+        for (; i+3 < n; i += 4) {
+            __m128 xx = _mm_loadu_ps(x+i);
+            __m128 a = _mm_add_ps(one, _mm_mul_ps(coeff2, _mm_mul_ps(xx, xx)));
+            __m128 b = _mm_add_ps(one, msml__simd_tanh(_mm_mul_ps(coeff1, _mm_mul_ps(xx, a))));
+            __m128 c = _mm_mul_ps(half, _mm_mul_ps(xx, b));
+            _mm_storeu_ps(o+i, c);
+        }
     #endif
     for (; i < n; ++i) {
         o[i] = 0.5f*x[i]*(1.0f + tanhf(0.79788456080286535587989211986876f*x[i]*(1.0f + MSML__GELU_COEFF*x[i]*x[i])));
@@ -2513,113 +2651,439 @@ static void msml__blas_clone(
     msml__assert2(msml_tensor_is_shape_eq(x, r));
     uint8_t* const b_r = (uint8_t*)r->buf;
     const uint8_t* const b_x = (const uint8_t*)x->buf;
+    memcpy(b_r, b_x, msml__tensor_data_size(r));
+}
+
+static void MSML_HOTPROC msml__blas_mean_f32( /* Σx/n Arithmetic mean */
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_d, shape)
+    msml__load_local_storage_group(x, x_s, strides)
+    for (int64_t i5 = 0; i5 < x_d5; ++i5) {
+        for (int64_t i4 = 0; i4 < x_d4; ++i4) {
+            for (int64_t i3 = 0; i3 < x_d3; ++i3) {
+                for (int64_t i2 = 0; i2 < x_d2; ++i2) {
+                    for (int64_t i1 = 0; i1 < x_d1; ++i1) {
+                        float* const p_r = (float*)(b_r + i1*r_s1  + i2*r_s2  + i3*r_s3 + i4*r_s4 + i5*r_s5);
+                        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+                        *p_r = msml__vsum_f32(
+                            x_d0,
+                            (const float*)(b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5)
+                        ) / (float)x_d0;
+                    }
+                }
+            }
+        }
+    }
+}
+
+static void MSML_HOTPROC msml__blas_step_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vstep_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_softmax_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vsoftmax_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_softmax_dv_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vsoftmax_dv_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_sigmoid_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vsigmoid_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_sigmoid_dv_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vsigmoid_dv_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_hard_sigmoid_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vhard_sigmoid_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_silu_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vsilu_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_silu_dv_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vsilu_dv_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_tanh_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vtanh_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_tanh_dv_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vtanh_dv_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_relu_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vrelu_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_relu_dv_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vrelu_dv_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_gelu_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vgelu_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_gelu_dv_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const msml_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    const int64_t cc = msml__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        msml__bnd_chk(p_r, b_r, msml__tensor_data_size(r));
+        msml__bnd_chk(p_x, b_x, msml__tensor_data_size(x));
+        msml__vgelu_dv_f32(cc, p_r, p_x);
+    }
+}
+
+static void MSML_HOTPROC msml__blas_add_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    const msml_tensor_t* const x = inputs[0];
+    const msml_tensor_t* const y = inputs[1];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    const uint8_t* const b_y = (const uint8_t*)y->buf;
     msml__load_local_storage_group(r, r_d, shape)
     msml__load_local_storage_group(r, r_s, strides)
     msml__load_local_storage_group(x, x_d, shape)
     msml__load_local_storage_group(x, x_s, strides)
-    const int64_t ti = bci->thread_idx;
-    const int64_t tc = bci->n_threads;
-    if (msml_tensor_is_contiguous(r) && msml_tensor_is_contiguous(x)) { /* Fast path for contiguous input and output tensors. */
-        const int64_t ne = msml_tensor_num_elements(x);
-        const int64_t rc = (ne+tc-1) / tc;
-        const int64_t rs = rc * ti;
-        const int64_t re = msml_min(rs + rc, ne);
-        if (msml_likely(rs < re)) memcpy(b_r + rs*sizeof(float), b_x + rs*sizeof(float), (re - rs)*sizeof(float));
-        return;
-    }
-    const int64_t nr = x_d1;
-    const int64_t dr = (nr+tc-1) / tc;
-    const int64_t rs = dr * ti;
-    const int64_t re = msml_min(rs + dr, nr);
-    if (x_d0 == r_d0 && x_s0 == sizeof(float) && r_s0 == sizeof(float)) {
-        const int64_t rw = x_d0 * (int64_t)sizeof(float);
-        for (int64_t i3 = 0; i3 < x_d3; ++i3) {
-            for (int64_t i2 = 0; i2 < x_d2; ++i2) {
-                for (int64_t i1 = rs; i1 < re; ++i1) {
-                    memcpy(
-                        b_r + i1*r_s1 + i2*r_s2 + i3*r_s3,
-                        b_x + i1*x_s1 + i2*x_s2 + i3*x_s3,
-                        rw
-                    );
+    msml__load_local_storage_group(y, y_d, shape)
+    msml__load_local_storage_group(y, y_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+            const int64_t pa = x_d0 / y_d0;
+            for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
+                float* const pp_r = p_r + i*y_d0; /* Compute result ptr. */
+                const float* const pp_x = p_x + i*y_d0; /* Compute x ptr. */
+                msml__bnd_chk(pp_r, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(pp_x, b_x, msml__tensor_data_size(x));
+                msml__vadd_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
                 }
             }
         }
-        return;
-    }
-    if (msml_tensor_is_contiguous(r)) { /* Fast path for contiguous output tensor. */
-        int64_t id = 0;
-        const int64_t rw = x_d0 * (int64_t)sizeof(float);
-        if (x_d0 == sizeof(float)) {
-            for (int64_t i3 = 0; i3 < x_d3; ++i3) {
-                for (int64_t i2 = 0; i2 < x_d2; ++i2) {
-                    id += rw * rs;
-                    for (int64_t i1 = rs; i1 < re; ++i1) {
-                        const uint8_t* const p_x = b_x + i1*x_s1 + i2*x_s2 + i3*x_s3;
-                        memcpy(b_r + id, p_x, rw);
-                        id += rw;
-                    }
-                    id += rw * (x_d1 - re);
-                }
+    } else { /* Slow path for non-contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
+                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                msml__bnd_chk(p_r+i, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(p_x+i, b_x, msml__tensor_data_size(x));
+                msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+                p_r[i] = p_x[i] + *p_y; /* Apply scalar op. */
             }
-        } else {
-            for (int64_t i3 = 0; i3 < x_d3; ++i3) {
-                for (int64_t i2 = 0; i2 < x_d2; ++i2) {
-                    id += rw * rs;
-                    for (int64_t i1 = rs; i1 < re; ++i1) {
-                        for (int64_t i0 = 0; i0 < x_d0; i0++) {
-                            const uint8_t* const p_x = b_x + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_d3;
-                            memcpy(b_r + id, p_x, sizeof(float));
-                            id += sizeof(float);
-                        }
-                    }
-                    id += rw * (x_d1 - re);
-                }
-            }
-        }
-        return;
-    }
-    int64_t r_i0 = 0, r_i1 = 0, r_i2 = 0, r_i3 = 0;
-    for (int64_t i3 = 0; i3 < x_d3; ++i3) {
-        for (int64_t i2 = 0; i2 < x_d2; ++i2) {
-            r_i0 += x_d0 * rs;
-            while (r_i0 >= r_d0) {
-                r_i0 -= r_d0;
-                if (++r_i1 == r_d1) {
-                    r_i1 = 0;
-                    if (++r_i2 == r_d2) {
-                        r_i2 = 0;
-                        if (++r_i3 == r_d3) {
-                            r_i3 = 0;
-                        }
-                    }
-                }
-            }
-            for (int64_t i1 = rs; i1 < re; i1++) {
-                for (int64_t i0 = 0; i0 < x_d0; i0++) {
-                    *(float*)((b_x + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_s3)) = *(const float*)(b_r + r_i0*r_s0 + r_i1*r_s1 + r_i2*r_s2 + r_i3*r_s3);
-                    if (++r_i0 == r_d0) {
-                        r_i0 = 0;
-                        if (++r_i1 == r_d1) {
-                            r_i1 = 0;
-                            if (++r_i2 == r_d2) {
-                                r_i2 = 0;
-                                if (++r_i3 == r_d3) {
-                                    r_i3 = 0;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            r_i0 += x_d0 * (x_d1 - re);
-            while (r_i0 >= r_d0) {
-                r_i0 -= r_d0;
-                if (++r_i1 == r_d1) {
-                    r_i1 = 0;
-                    if (++r_i2 == r_d2) {
-                        r_i2 = 0;
-                        if (++r_i3 == r_d3) {
-                            r_i3 = 0;
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
                         }
                     }
                 }
@@ -2628,117 +3092,305 @@ static void msml__blas_clone(
     }
 }
 
-#define msml__blas_impl_unary_op(name, T, vec_op) \
-    static void MSML_HOTPROC msml__blas_##name( \
-        const msml__blas_compute_info_t* const bci, \
-        msml_tensor_t* const r, \
-        const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */ \
-    ) { \
-        (void)bci; \
-        const msml_tensor_t* const x = inputs[0]; \
-        uint8_t* const b_r = (uint8_t*)r->buf; \
-        const uint8_t* const b_x = (const uint8_t*)x->buf; \
-        msml__load_local_storage_group(r, r_s, strides) \
-        msml__load_local_storage_group(x, x_s, strides) \
-        const int64_t rc = msml_tensor_num_rows(x); \
-        const int64_t cc = msml_tensor_num_cols(x); \
-        for (int64_t ri=0; ri < rc; ++ri) { \
-            T* const p_r = (T*)(b_r + ri*r_s1); \
-            const T* const p_x = (const T*)(b_x + ri*x_s1); \
-            msml__bnd_chk(p_r, b_r, msml_tensor_data_size(r)); \
-            msml__bnd_chk(p_x, b_x, msml_tensor_data_size(x)); \
-            vec_op(cc, p_r, p_x); \
-        } \
+static void MSML_HOTPROC msml__blas_sub_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    const msml_tensor_t* const x = inputs[0];
+    const msml_tensor_t* const y = inputs[1];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    msml__load_local_storage_group(r, r_d, shape)
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_d, shape)
+    msml__load_local_storage_group(x, x_s, strides)
+    msml__load_local_storage_group(y, y_d, shape)
+    msml__load_local_storage_group(y, y_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+            const int64_t pa = x_d0 / y_d0;
+            for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
+                float* const pp_r = p_r + i*y_d0; /* Compute result ptr. */
+                const float* const pp_x = p_x + i*y_d0; /* Compute x ptr. */
+                msml__bnd_chk(pp_r, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(pp_x, b_x, msml__tensor_data_size(x));
+                msml__vsub_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
+        }
+    } else { /* Slow path for non-contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
+                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                msml__bnd_chk(p_r+i, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(p_x+i, b_x, msml__tensor_data_size(x));
+                msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+                p_r[i] = p_x[i] - *p_y; /* Apply scalar op. */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
+        }
     }
+}
 
-#define msml__blas_impl_binary_op(name, T, vec_op, scalar_op) \
-    static void MSML_HOTPROC msml__blas_##name( \
-        const msml__blas_compute_info_t* const bci, \
-        msml_tensor_t* const r, \
-        const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */ \
-    ) { \
-        const msml_tensor_t* const x = inputs[0]; \
-        const msml_tensor_t* const y = inputs[1]; \
-        uint8_t* const b_r = (uint8_t*)r->buf; \
-        const uint8_t* const b_x = (const uint8_t*)x->buf; \
-        const uint8_t* const b_y = (const uint8_t*)y->buf; \
-        msml__load_local_storage_group(r, r_d, shape) \
-        msml__load_local_storage_group(r, r_s, strides) \
-        msml__load_local_storage_group(x, x_d, shape) \
-        msml__load_local_storage_group(x, x_s, strides) \
-        msml__load_local_storage_group(y, y_d, shape) \
-        msml__load_local_storage_group(y, y_s, strides) \
-        const int64_t rc = msml_tensor_num_rows(x);  \
-        const int64_t ti = bci->thread_idx;  \
-        const int64_t tc = bci->n_threads;  \
-        const int64_t rpt = (rc + tc - 1)/tc;  \
-        const int64_t rs = rpt * ti;  \
-        const int64_t re = msml_min(rs+rpt, rc); \
-        if (y_s0 == sizeof(T)) { \
-            for (int64_t ri=rs; ri < re; ++ri) { \
-                const int64_t x_i3 = ri / (x_d2*x_d1); \
-                const int64_t x_i2 = (ri - x_i3*x_d2*x_d1)/x_d1; \
-                const int64_t x_i1 = ri - x_i3*x_d2*x_d1 - x_i2*x_d1; \
-                const int64_t y_i3 = x_i3 % y_d3; \
-                const int64_t y_i2 = x_i2 % y_d2; \
-                const int64_t y_i1 = x_i1 % y_d1; \
-                T* const p_r = (T*)(b_r + x_i3*r_s3 + x_i2*r_s2 + x_i1*r_s1); \
-                const T* const p_x = (const T*)(b_x + x_i3*x_s3 + x_i2*x_s2 + x_i1*x_s1); \
-                const T* const p_y = (const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1); \
-                msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y)); \
-                const int64_t pa = x_d0 / y_d0; \
-                for (int64_t i=0; i < pa; ++i) { \
-                    T* const pp_r = p_r + i*y_d0; \
-                    const T* const pp_x = p_x + i*y_d0; \
-                    msml__bnd_chk(pp_r, b_r, msml_tensor_data_size(r)); \
-                    msml__bnd_chk(pp_x, b_x, msml_tensor_data_size(x)); \
-                    vec_op(y_d0, pp_r, pp_x, p_y); \
-                } \
-            } \
-        } else { \
-            for (int64_t ri=rs; ri < re; ++ri) { \
-                const int64_t x_i3 = ri / (x_d2*x_d1); \
-                const int64_t x_i2 = (ri - x_i3*x_d2*x_d1)/x_d1; \
-                const int64_t x_i1 = ri - x_i3*x_d2*x_d1 - x_i2*x_d1; \
-                const int64_t y_i3 = x_i3 % y_d3; \
-                const int64_t y_i2 = x_i2 % y_d2; \
-                const int64_t y_i1 = x_i1 % y_d1; \
-                T* const p_r = (T*)(b_r + x_i3*r_s3 + x_i2*r_s2 + x_i1*r_s1); \
-                const T* const p_x = (const T*)(b_x + x_i3*x_s3 + x_i2*x_s2 + x_i1*x_s1); \
-                for (int64_t i=0; i < r_d0; ++i) { \
-                    const T* const p_y = (const T*)(b_y + y_i3*y_s3 + y_i2*y_s2 + y_i1*y_s1 + i%y_d0*y_s0); \
-                    msml__bnd_chk(p_r+i, b_r, msml_tensor_data_size(r)); \
-                    msml__bnd_chk(p_x+i, b_x, msml_tensor_data_size(x)); \
-                    msml__bnd_chk(p_y, b_y, msml_tensor_data_size(y)); \
-                    p_r[i] = p_x[i] scalar_op *p_y; \
-                } \
-            } \
-        } \
+static void MSML_HOTPROC msml__blas_mul_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    const msml_tensor_t* const x = inputs[0];
+    const msml_tensor_t* const y = inputs[1];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    msml__load_local_storage_group(r, r_d, shape)
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_d, shape)
+    msml__load_local_storage_group(x, x_s, strides)
+    msml__load_local_storage_group(y, y_d, shape)
+    msml__load_local_storage_group(y, y_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+            const int64_t pa = x_d0 / y_d0;
+            for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
+                float* const pp_r = p_r + i*y_d0; /* Compute result ptr. */
+                const float* const pp_x = p_x + i*y_d0; /* Compute x ptr. */
+                msml__bnd_chk(pp_r, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(pp_x, b_x, msml__tensor_data_size(x));
+                msml__vmul_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
+        }
+    } else { /* Slow path for non-contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
+                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                msml__bnd_chk(p_r+i, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(p_x+i, b_x, msml__tensor_data_size(x));
+                msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+                p_r[i] = p_x[i] * *p_y; /* Apply scalar op. */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
+        }
     }
+}
 
-msml__blas_impl_unary_op(step_f32, float, msml__vstep_f32)
-msml__blas_impl_unary_op(softmax_f32, float, msml__vsoftmax_f32)
-msml__blas_impl_unary_op(softmax_dv_f32, float, msml__vsoftmax_dv_f32)
-msml__blas_impl_unary_op(sigmoid_f32, float, msml__vsigmoid_f32)
-msml__blas_impl_unary_op(sigmoid_dv_f32, float, msml__vsigmoid_dv_f32)
-msml__blas_impl_unary_op(hard_sigmoid_f32, float, msml__vhard_sigmoid_f32)
-msml__blas_impl_unary_op(hard_sigmoid_dv_f32, float, msml__vhard_sigmoid_dv_f32)
-msml__blas_impl_unary_op(silu_f32, float, msml__vsilu_f32)
-msml__blas_impl_unary_op(silu_dv_f32, float, msml__vsilu_dv_f32)
-msml__blas_impl_unary_op(tanh_f32, float, msml__vtanh_f32)
-msml__blas_impl_unary_op(tanh_dv_f32, float, msml__vtanh_dv_f32)
-msml__blas_impl_unary_op(relu_f32, float, msml__vrelu_f32)
-msml__blas_impl_unary_op(relu_dv_f32, float, msml__vrelu_dv_f32)
-msml__blas_impl_unary_op(gelu_f32, float, msml__vgelu_f32)
-msml__blas_impl_unary_op(gelu_dv_f32, float, msml__vgelu_dv_f32)
-
-msml__blas_impl_binary_op(add_f32, float, msml__vadd_f32, +)
-msml__blas_impl_binary_op(sub_f32, float, msml__vsub_f32, -)
-msml__blas_impl_binary_op(mul_f32, float, msml__vmul_f32, *)
-msml__blas_impl_binary_op(div_f32, float, msml__vdiv_f32, /)
-
-#undef msml__blas_impl_binary_op
-#undef msml__blas_impl_unary_op
+static void MSML_HOTPROC msml__blas_div_f32(
+    const msml__blas_compute_info_t* const bci,
+    msml_tensor_t* const r,
+    const msml_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    const msml_tensor_t* const x = inputs[0];
+    const msml_tensor_t* const y = inputs[1];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    msml__load_local_storage_group(r, r_d, shape)
+    msml__load_local_storage_group(r, r_s, strides)
+    msml__load_local_storage_group(x, x_d, shape)
+    msml__load_local_storage_group(x, x_s, strides)
+    msml__load_local_storage_group(y, y_d, shape)
+    msml__load_local_storage_group(y, y_s, strides)
+    const int64_t rc = msml__tensor_num_rows(x);
+    int64_t x_i1 = 0;
+    int64_t x_i2 = 0;
+    int64_t x_i3 = 0;
+    int64_t x_i4 = 0;
+    int64_t x_i5 = 0;
+    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+            const int64_t pa = x_d0 / y_d0;
+            for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
+                float* const pp_r = p_r + i*y_d0; /* Compute result ptr. */
+                const float* const pp_x = p_x + i*y_d0; /* Compute x ptr. */
+                msml__bnd_chk(pp_r, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(pp_x, b_x, msml__tensor_data_size(x));
+                msml__vdiv_f32(y_d0, pp_r, pp_x, p_y);  /* Apply micro kernel vector op */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
+        }
+    } else { /* Slow path for non-contiguous input tensors. */
+        for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
+            /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
+            const int64_t y_i5 = x_i5 % y_d5;
+            const int64_t y_i4 = x_i4 % y_d4;
+            const int64_t y_i3 = x_i3 % y_d3;
+            const int64_t y_i2 = x_i2 % y_d2;
+            const int64_t y_i1 = x_i1 % y_d1;
+            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
+            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
+                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                msml__bnd_chk(p_r+i, b_r, msml__tensor_data_size(r));
+                msml__bnd_chk(p_x+i, b_x, msml__tensor_data_size(x));
+                msml__bnd_chk(p_y, b_y, msml__tensor_data_size(y));
+                p_r[i] = p_x[i] / *p_y; /* Apply scalar op. */
+            }
+            /* Incremental index computation. */
+            ++x_i1;
+            if (x_i1 >= x_d1) {
+                x_i1 = 0;
+                ++x_i2;
+                if (x_i2 >= x_d2) {
+                    x_i2 = 0;
+                    ++x_i3;
+                    if (x_i3 >= x_d3) {
+                        x_i3 = 0;
+                        ++x_i4;
+                        if (x_i4 >= x_d4) {
+                            x_i4 = 0;
+                            ++x_i5;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 #if 0 /* Naive matrix multiplication, but no broadcasting support. */
 static void MSML_HOTPROC msml__blas_matmul_f32(
@@ -2809,18 +3461,18 @@ static void MSML_HOTPROC msml__blas_matmul_f32(
     const int64_t K = y_d0;
     for (int64_t i = 0; i < M * N; ++i) {
         float* p_c = C + i;
-        msml__bnd_chk(p_c, C, msml_tensor_data_size(r));
+        msml__bnd_chk(p_c, C, msml__tensor_data_size(r));
         C[i] = 0.0f;
     }
     for (int64_t i = 0; i < M; ++i) {
         for (int64_t k = 0; k < K; ++k) {
             const float* p_x = A + (i*K + k);
-            msml__bnd_chk(p_x, A, msml_tensor_data_size(x));
+            msml__bnd_chk(p_x, A, msml__tensor_data_size(x));
             for (int64_t j = 0; j < N; ++j) {
                 float* p_r = C + i*N + j;
                 const float* p_y = B + k*N + j;
-                msml__bnd_chk(p_r, C, msml_tensor_data_size(r));
-                msml__bnd_chk(p_y, B, msml_tensor_data_size(y));
+                msml__bnd_chk(p_r, C, msml__tensor_data_size(r));
+                msml__bnd_chk(p_y, B, msml__tensor_data_size(y));
                 *p_r += *p_x * *p_y;
             }
         }
@@ -2834,6 +3486,7 @@ static void msml__blas_compute_dispatch_table_default(void (*(*const dispatch_lu
     (*dispatch_lut)[MSML_OP_VIEW] = &msml__blas_nop; /* View is a no-op */
     (*dispatch_lut)[MSML_OP_TRANSPOSE] = &msml__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[MSML_OP_PERMUTE] = &msml__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[MSML_OP_MEAN] = &msml__blas_mean_f32;
     (*dispatch_lut)[MSML_OP_STEP] = &msml__blas_step_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX] = &msml__blas_softmax_f32;
     (*dispatch_lut)[MSML_OP_SOFTMAX_DV] = &msml__blas_softmax_dv_f32;
@@ -3006,7 +3659,7 @@ void MSML_COLDPROC msml_compute_graph_dump_to_dot(const msml_compute_graph_t* gr
         if (*node->name) fprintf(f, "%s (%s)|", node->name, msml_dtype_info_of(node->dtype)->name);
         else fprintf(f, "(%s)|", msml_dtype_info_of(node->dtype)->name);
         fprintf(f, "IN #%zu [%zu, %zu]", i, (size_t)node->shape[0], (size_t)node->shape[1]);
-        size_t n = msml_tensor_num_elements(node);
+        size_t n = msml__tensor_num_elements(node);
         if (n < 4) {
             fprintf(f, " | (");
             for (size_t j=0; j < n; ++j) {
@@ -3372,15 +4025,322 @@ static void msml__system_host_info_query(msml_ctx_t* ctx) {
     if (msml_unlikely(!*ctx->sys.cpu_name)) snprintf(ctx->sys.cpu_name, sizeof(ctx->sys.cpu_name), "Unknown");
 }
 
+static MSML_AINLINE void msml__sto_write_u32_le(uint8_t** p, uint32_t x) {
+    x = msml__bswap32(x);
+    memcpy(*p, &x, sizeof(x));
+    *p += sizeof(x);
+}
+
+static MSML_AINLINE void msml__sto_write_u64_le(uint8_t** p, uint64_t x) {
+    x = msml__bswap64(x);
+    memcpy(*p, &x, sizeof(x));
+    *p += sizeof(x);
+}
+
+static MSML_AINLINE uint32_t msml__sto_read_u32_le(const uint8_t** p) {
+    uint32_t x;
+    memcpy(&x, *p, sizeof(x));
+    x = msml__bswap32(x);
+    *p += sizeof(x);
+    return x;
+}
+
+static MSML_AINLINE uint64_t msml__sto_read_u64_le(const uint8_t** p) {
+    uint64_t x;
+    memcpy(&x, *p, sizeof(x));
+    x = msml__bswap64(x);
+    *p += sizeof(x);
+    return x;
+}
+
+#define MSML__STO_FILE_HEADER_SIZE (sizeof(uint32_t) * 4)
+#define MSML__STO_TENSOR_HEADER_SIZE (MSML_MAX_TENSOR_NAME_LEN + sizeof(uint32_t) + sizeof(int64_t)*MSML_MAX_DIMS)
+msml_static_assert(MSML_MAX_TENSOR_NAME_LEN % 8 == 0);
+msml_static_assert(MSML_DTYPE_COUNT_ <= 0xff);
+msml_static_assert(MSML_MAX_DIMS <= 0xff);
+#define msml__sto_sanitize(exp, ret) do { if (msml_unlikely(!(exp))) { msml_log_error("MSML storage sanitize error: " #exp); return (ret); } } while (0)
+
+static bool msml__sto_write_file_header( /* Write file header -  file header must be same in every version. */
+    uint8_t** p,
+    const uint8_t* end,
+    uint32_t version,
+    uint32_t num_tensors,
+    uint32_t ud
+) {
+    msml__sto_sanitize(*p + MSML__STO_FILE_HEADER_SIZE < end, false);
+    const uint8_t* start = *p;
+    uint32_t msml_magic;
+    memcpy(&msml_magic, "MSML", sizeof(msml_magic));
+    msml__sto_write_u32_le(p, msml_magic);
+    msml__sto_write_u32_le(p, version);
+    msml__sto_write_u32_le(p, num_tensors);
+    msml__sto_write_u32_le(p, ud);
+    return msml_likely(*p - start == MSML__STO_FILE_HEADER_SIZE);
+}
+
+static bool msml__sto_read_file_header(  /* Read file header - file header must be same in every version. */
+    const uint8_t** p,
+    const uint8_t* end,
+    uint32_t* version,
+    uint32_t* num_tensors,
+    uint32_t* ud
+) {
+    msml__sto_sanitize(*p + MSML__STO_FILE_HEADER_SIZE < end, false);
+    const uint8_t* start = *p;
+    uint32_t msml_magic = msml__sto_read_u32_le(p);
+    msml__sto_sanitize(memcmp(&msml_magic, "MSML", sizeof(msml_magic)) == 0, false);
+    *version = msml__sto_read_u32_le(p);
+    *num_tensors = msml__sto_read_u32_le(p);
+    *ud = msml__sto_read_u32_le(p);
+    return msml_likely(*p - start == MSML__STO_FILE_HEADER_SIZE);
+}
+
+static bool msml__sto_write_tensor_header(
+    uint8_t** p,
+    const uint8_t* end,
+    uint32_t version,
+    const char (*name)[MSML_MAX_TENSOR_NAME_LEN],
+    msml__tensor_flags_t flags,
+    msml_dtype_t dtype,
+    int64_t rank,
+    const int64_t (*shape)[MSML_MAX_DIMS]
+) {
+    msml__sto_sanitize(*p + MSML__STO_TENSOR_HEADER_SIZE < end, false);
+    const uint8_t* start = *p;
+    switch (version) {
+        case 1: {
+            uint64_t name_u64[sizeof(*name)/sizeof(uint64_t)];
+            memcpy(name_u64, *name, sizeof(*name));
+            for (size_t i=0; i < sizeof(name_u64)/sizeof(*name_u64); ++i)   /* Write name as multiple u64 */
+                msml__sto_write_u64_le(p, name_u64[i]);
+            uint32_t aux = 0;   /* Pack small fields into aux field */
+            aux |= (flags & 0xff) << 16;
+            aux |= (dtype & 0xff) << 8;
+            aux |= (rank & 0xff);
+            msml__sto_write_u32_le(p, aux);     /* Write aux field */
+            for (size_t i=0; i < MSML_MAX_DIMS; ++i) {      /* Write shape */
+                msml__sto_sanitize((*shape)[i] >= 1 && (*shape)[i] < INT64_MAX, false);
+                msml__sto_write_u64_le(p, (uint64_t)(*shape)[i]);
+            }
+        } break;
+        default: return false;
+    }
+    return msml_likely(*p - start == MSML__STO_TENSOR_HEADER_SIZE);
+}
+
+static bool msml__sto_read_tensor_header(
+    const uint8_t** p,
+    const uint8_t* end,
+    uint32_t version,
+    char (*name)[MSML_MAX_TENSOR_NAME_LEN],
+    msml__tensor_flags_t* flags,
+    msml_dtype_t* dtype,
+    int64_t* rank,
+    int64_t (*shape)[MSML_MAX_DIMS]
+) {
+    msml__sto_sanitize(*p + MSML__STO_TENSOR_HEADER_SIZE < end, false);
+    const uint8_t* start = *p;
+    switch (version) {
+        case 1: {
+            uint64_t name_u64[sizeof(*name)/sizeof(uint64_t)];
+            for (size_t i=0; i < sizeof(name_u64)/sizeof(*name_u64); ++i) /* Read name as multiple u64 */
+                name_u64[i] = msml__sto_read_u64_le(p);
+            uint32_t aux = msml__sto_read_u32_le(p); /* Read aux field */
+            *flags = (msml__tensor_flags_t)((aux >> 16) & 0xff);
+            *dtype = (msml_dtype_t)((aux >> 8) & 0xff);
+            *rank = (int64_t)(aux & 0xff);
+            msml__sto_sanitize(*flags == 0 || (*flags <= 0xff && ((*flags & 1) == 0)), false); /* Check fields */
+            msml__sto_sanitize(*dtype >= 0 && *dtype < MSML_DTYPE_COUNT_, false);
+            msml__sto_sanitize(*rank >= 1 && *rank <= MSML_MAX_DIMS, false);
+            for (size_t i=0; i < MSML_MAX_DIMS; ++i) {  /* Read shape */
+                uint64_t u64 = msml__sto_read_u64_le(p);
+                msml__sto_sanitize(u64>= 1 && u64 <= (uint64_t)INT64_MAX, false);
+                (*shape)[i] = (int64_t)u64;
+            }
+            msml__sto_sanitize(INT64_MAX/(*shape)[1] > (*shape)[0], false); /* Check for shape overflow */
+            msml__sto_sanitize(INT64_MAX/(*shape)[2] > (*shape)[0]*(*shape)[1], false);
+            msml__sto_sanitize(INT64_MAX/(*shape)[3] > (*shape)[0]*(*shape)[1]*(*shape)[2], false);
+        } break;
+        default: return false;
+    }
+    return msml_likely(*p - start == MSML__STO_TENSOR_HEADER_SIZE);
+}
+
+static bool msml__sto_write_tensor_data(
+    uint8_t** p,
+    const uint8_t* end,
+    uint32_t version,
+    msml_dtype_t dtype,
+    const void* data,
+    int64_t size
+) {
+    msml__sto_sanitize(size > 0, false);
+    msml__sto_sanitize(*p + size <= end, false);
+    const uint8_t* start = *p;
+    switch (version) {
+        case 1: {
+            memcpy(*p, data, size);
+            *p += size;
+        } break;
+        default: return false;
+    }
+    return msml_likely(*p - start == size);
+}
+
+static bool msml__sto_read_tensor_data(
+    const uint8_t** p,
+    const uint8_t* end,
+    uint32_t version,
+    msml_dtype_t dtype,
+    void* data,
+    int64_t size
+) {
+    msml__sto_sanitize(size > 0, false);
+    msml__sto_sanitize(*p + size <= end, false);
+    const uint8_t* start = *p;
+    switch (version) {
+        case 1: {
+            memcpy(data, *p, size); /* TODO: endianess conversion */
+            *p += size;
+        } break;
+        default: return false;
+    }
+    return msml_likely(*p - start == size);
+}
+
+static size_t msml__accumulate_data_size(msml_dtype_t dtype, const int64_t (*shape)[MSML_MAX_DIMS]) {
+    size_t size = msml_dtype_info_of(dtype)->size;
+    #pragma GCC unroll 6
+    for (size_t i=0; i < MSML_MAX_DIMS; ++i) size *= (size_t)msml_max(1, (*shape)[i]);
+    return size;
+}
+
+static size_t msml__sto_total_size(const msml_tensor_t** tensors, size_t n) {
+    size_t total = MSML__STO_FILE_HEADER_SIZE;
+    for (size_t i=0; i < n; ++i) {
+        total += MSML__STO_TENSOR_HEADER_SIZE;
+        total += msml__accumulate_data_size(tensors[i]->dtype, &tensors[i]->shape);
+    }
+    msml__assert((total & 3) == 0, "Unaligned storage size: %zu", total);
+    return total;
+}
+
+static uint8_t* msml__sto_write_buffered(const msml_tensor_t** tensors, size_t n_tensors, size_t* out_size, uint32_t version) {
+    if (msml_unlikely(!tensors || !n_tensors || n_tensors > UINT32_MAX || !out_size || !version || version > MSML_STORAGE_VERSION)) return NULL;  /* Check input */
+    *out_size = msml__sto_total_size(tensors, n_tensors);
+    uint8_t* base = (uint8_t*)msml_alloc(NULL, *out_size );     /* Allocate buffer */
+    uint8_t* needle = base;
+    const uint8_t* end = base + *out_size ;
+    if (msml_unlikely(!msml__sto_write_file_header(&needle, end, version, (uint32_t)n_tensors, 0))) goto error;     /* Write file header */
+    for (size_t i=0; i < n_tensors; ++i) {   /* Write tensor headers */
+        const msml_tensor_t* t = tensors[i];
+        msml__assert2(t != NULL);
+        if (msml_unlikely(!msml__sto_write_tensor_header(
+            &needle,
+            end,
+            version,
+            &t->name,
+            t->flags,
+            t->dtype,
+            t->rank,
+            &t->shape
+        ))) goto error;
+    }
+    msml__assert2(needle - base == MSML__STO_FILE_HEADER_SIZE + n_tensors*MSML__STO_TENSOR_HEADER_SIZE);    /* Check written data size */
+    for (size_t i=0; i < n_tensors; ++i) {  /* Write tensor data */
+        const msml_tensor_t* t = tensors[i];
+        if (msml_unlikely(!msml__sto_write_tensor_data(&needle, end, version, t->dtype, t->buf, msml__tensor_data_size(t)))) goto error;     /* Write data */
+    }
+    return base;
+    error: /* Error handling */
+        msml_alloc(base, 0);
+        return NULL;
+}
+
+MSML_EXPORT msml_tensor_t** msml__sto_read_buffered(msml_ctx_t* ctx, const uint8_t* buf, size_t size, size_t* out_n_tensors, uint32_t* out_version) { /* Load stored tensors from buffer. Function is exported for fuzzing test. */
+    if (msml_unlikely(!ctx || !buf || !out_n_tensors || !out_version || size <= MSML__STO_FILE_HEADER_SIZE + MSML__STO_TENSOR_HEADER_SIZE + 1)) return NULL;    /* Check input */
+    const uint8_t* needle = buf;
+    const uint8_t* end = buf + size;
+    uint32_t n_tensors;
+    uint32_t ud;
+    if (msml_unlikely(!msml__sto_read_file_header(&needle, end, out_version, &n_tensors, &ud))) return NULL;   /* Read file header */
+    if (msml_unlikely(!*out_version || *out_version > MSML_VERSION)) return NULL;
+    if (msml_unlikely(!n_tensors)) return NULL;
+    msml_tensor_t** tensors = (msml_tensor_t**)msml_alloc(NULL, n_tensors*sizeof(*tensors));   /* Allocate return tensor array */
+    for (size_t i=0; i < n_tensors; ++i) {  /* Read tensor headers */
+        char name[MSML_MAX_TENSOR_NAME_LEN] = {0};
+        msml__tensor_flags_t flags = 0;
+        msml_dtype_t dtype = 0;
+        int64_t rank = 0;
+        int64_t shape[MSML_MAX_DIMS] = {0};
+        if (msml_unlikely(!msml__sto_read_tensor_header(&needle, end, *out_version, &name, &flags, &dtype, &rank, &shape))) goto error;   /* Read tensor header */
+        msml_tensor_t* t = msml__tensor_create(ctx, dtype, shape, rank, NULL, 0);   /* Create placeholder tensor */
+        msml_tensor_fmt_name(t, "%s", name);
+        t->flags = flags | MSML_TFLAG_FROM_FS;
+        tensors[i] = t;
+    }
+    for (size_t i=0; i < n_tensors; ++i) {  /* Read tensor data */
+        msml_tensor_t* t = tensors[i];
+        size_t data_size = msml__accumulate_data_size(t->dtype, &t->shape);
+        msml__assert2(needle + data_size <= end && data_size == msml__tensor_data_size(t));
+        if (msml_unlikely(!msml__sto_read_tensor_data(&needle, end, *out_version, t->dtype, t->buf, data_size))) goto error;  /* Read data into tensor's buffer */
+    }
+    *out_n_tensors = n_tensors;
+    return tensors;
+    error:
+        msml_alloc(tensors, 0);
+        return NULL;
+}
+
+static bool msml__sto_has_msml_ext(const char* file) { /* Check if file path has MSML extension. */
+    if (msml_unlikely(!file || strlen(file) < sizeof(MSML_STORAGE_EXT))) return false;
+    char* dot = strrchr(file, '.');
+    return dot && !strcmp(dot, MSML_STORAGE_EXT);
+}
+
 void msml_tensor_save(const msml_tensor_t* t, const char* file) {
-    panic("NYI");
+    msml__assert(msml__sto_has_msml_ext(file), "Invalid file extension: %s", file);
+    FILE* f = msml__fopen(file, "wb");  /* Open file */
+    msml__assert(f, "Failed to open file stream: %s", file);
+    uint32_t version = MSML_STORAGE_VERSION;
+    size_t n_tensors = 1;
+    size_t n_bytes = 0;
+    uint8_t* ser = msml__sto_write_buffered(&t, n_tensors, &n_bytes, version);   /* Serialize tensor */
+    msml__assert(ser && n_bytes, "Failed to serialize tensor to file: %s", file);   /* Check serialization */
+    msml__assert(fwrite(ser, 1, n_bytes, f) == n_bytes, "Failed to write %zu bytes to file: %s", n_bytes, file);    /* Write to file */
+    msml_alloc(ser, 0);     /* Free buffer */
+    fflush(f);
+    fclose(f);
+    double mem;
+    const char* unit;
+    msml__humanize_memory_size(n_bytes, &mem, &unit);
+    msml_log_info("Saved %zu tensor%s to file: %s, %.03f %s written, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
 }
 
 msml_tensor_t* msml_tensor_load(msml_ctx_t* ctx, const char* file) {
-    panic("NYI");
-    msml_tensor_t* t = msml_tensor_create_1d(ctx, MSML_DTYPE_F32, 1);
-    t->flags |= MSML_TFLAG_FROM_FS;
-    return t;
+    msml__assert(msml__sto_has_msml_ext(file), "Invalid file extension: %s", file);
+    FILE* f = msml__fopen(file, "rb");  /* Open file */
+    msml__assert(f, "Failed to open file stream: %s", file);
+    msml__assert2(fseek(f, 0, SEEK_END) == 0);  /* Seek to end */
+    long n_bytes = ftell(f);    /* Get file size */
+    msml__assert(n_bytes > MSML__STO_FILE_HEADER_SIZE + MSML__STO_TENSOR_HEADER_SIZE + 1, "Malformed file size");   /* Check file size */
+    msml__assert2(fseek(f, 0, SEEK_SET) == 0); /* Seek to start */
+    uint8_t* buf = (uint8_t*)msml_alloc(NULL, n_bytes);  /* Allocate buffer */
+    msml__assert(fread(buf, 1, n_bytes, f) == n_bytes, "Failed to read %zu bytes from file: %s", n_bytes, file);    /* Read while file into buffer */
+    fclose(f), f = NULL;    /* Close file */
+    size_t n_tensors;
+    uint32_t version;
+    msml_tensor_t** tensors = msml__sto_read_buffered(ctx, buf, n_bytes, &n_tensors, &version);   /* Deserialize tensors */
+    msml__assert(version > 0 && version <= MSML_VERSION, "Unsupported storage version: %u", version);   /* Check version */
+    msml__assert(tensors && n_tensors > 0, "Failed to load tensor from file: %s", file);
+    msml_tensor_t* target = *tensors;
+    msml_alloc(buf, 0);     /* Free buffer */
+    msml_alloc(tensors, 0);     /* Free tensor array */
+    double mem;
+    const char* unit;
+    msml__humanize_memory_size(n_bytes, &mem, &unit);
+    msml_log_info("Loaded %zu tensor%s from file: %s, %.03f %s read, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
+    return target;
 }
 
 msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_color_channels_t channels, uint32_t rw, uint32_t rh) {
@@ -3438,7 +4398,7 @@ msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_co
         }
         (*ctx->alloc_fn)(ori, 0);
         (*ctx->alloc_fn)(part, 0);
-        msml__assert(rw*rh*whc[2] == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", rw*rh*whc[2], (size_t)msml_tensor_num_elements(t));
+        msml__assert(rw*rh*whc[2] == msml__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", rw*rh*whc[2], (size_t)msml__tensor_num_elements(t));
         (*load_free)(src);
         msml_log_info("Loaded and resized tensor from image: %s, %u x %u x %u", file, rw, rh, whc[2]);
         return t;
@@ -3453,7 +4413,7 @@ msml_tensor_t* msml_tensor_load_image(msml_ctx_t* ctx, const char* file, msml_co
                 }
             }
         }
-        msml__assert(whc[0]*whc[1]*whc[2] == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", whc[0]*whc[1]*whc[2], (size_t)msml_tensor_num_elements(t));
+        msml__assert(whc[0]*whc[1]*whc[2] == msml__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", whc[0]*whc[1]*whc[2], (size_t)msml__tensor_num_elements(t));
         (*load_free)(src);
         msml_log_info("Loaded tensor from image: %s, %u x %u x %u", file, whc[0], whc[1], whc[2]);
         return t;
@@ -3469,7 +4429,7 @@ void msml_tensor_save_image(const msml_tensor_t* t, const char* file) {
     int64_t h = msml_tensor_image_height(t);
     int64_t c = msml_tensor_image_channels(t);
     msml__assert(c == 1 || c == 3 || c == 4, "Invalid number of channels: %zu", (size_t)c);
-    msml__assert(w*h*c == msml_tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", w*h*c, (size_t)msml_tensor_num_elements(t));
+    msml__assert(w*h*c == msml__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", w*h*c, (size_t)msml__tensor_num_elements(t));
     uint8_t* dst = (*t->ctx->alloc_fn)(NULL, w*h*c); /* Allocate memory for image data */
     const float* src = msml_tensor_data_as_f32(t);
     for (int64_t k = 0; k < c; ++k) /* Convert from planar to interleaved format. */
