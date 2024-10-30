@@ -1,64 +1,148 @@
-# (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-# GUI Viewer for MSML storage files with hex editor-like interface.
+# (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
 
+import time
+import sys
+import os
+from msml.core import Tensor
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
-import sys
-import os
+
+FONT_SIZE: int = 14
+
+def process_events_idle():
+    for _ in range(0, 5):  # Sleep for a bit to allow the loading box to show up
+        QApplication.processEvents()
+        time.sleep(0.1)
 
 class MSMLViewer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("MSML File Viewer")
-        self.setWindowIcon(QIcon("icon.png"))
+        self.window_icon = QIcon('icons/icon.png')
+        self.tensor_icon = QIcon('icons/tensor.png')
+        self.folder_icon = QIcon('icons/folder.png')
+        self.metadata_icon = QIcon('icons/metadata.png')
+        self.setWindowTitle('MSML File Viewer')
+        self.setWindowIcon(self.window_icon)
         self.resize(1920, 1080)
 
-        # Main widget and layout
         main_widget = QWidget()
-        main_layout = QHBoxLayout(main_widget)
+        main_layout = QVBoxLayout(main_widget)
+        splitter = QSplitter(Qt.Horizontal)
 
-        # Left - Tensor list
-        self.tensor_list = QListWidget()
-        self.tensor_list.setMinimumWidth(200)
-        self.tensor_list.itemClicked.connect(self.show_tensor_data)
+        self.tensor_tree = QTreeWidget()
+        self.tensor_tree.setHeaderHidden(True)
+        self.tensor_tree.setStyleSheet(f'font-size: {FONT_SIZE}px;')
+        self.tensor_tree.itemClicked.connect(self.show_tensor_data)
 
-        # Right - Data display
-        self.data_view = QTextEdit()
+        self.data_view_container = QWidget()
+        data_view_layout = QVBoxLayout(self.data_view_container)
+
+        self.data_view = QPlainTextEdit()
         self.data_view.setReadOnly(True)
-        self.data_view.setFont(QFont("Courier", 10))
+        self.data_view.setStyleSheet(f'font-size: {FONT_SIZE}px;')
 
-        # Add widgets to the layout
-        main_layout.addWidget(self.tensor_list)
-        main_layout.addWidget(self.data_view)
+        data_view_layout.addWidget(self.data_view)
+        data_view_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Set the main widget with layout
+        self.info_panel = QTextEdit()
+        self.info_panel.setReadOnly(True)
+        self.info_panel.setStyleSheet(f'font-size: {FONT_SIZE}px;')
+
+        splitter.addWidget(self.tensor_tree)
+        splitter.addWidget(self.data_view_container)
+        splitter.addWidget(self.info_panel)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 8)
+        splitter.setStretchFactor(2, 1)
+
+        main_layout.addWidget(splitter)
         self.setCentralWidget(main_widget)
 
-        # Menu bar
         menu_bar = self.menuBar()
-        file_menu = menu_bar.addMenu("File")
-        open_action = QAction("Open", self)
+        file_menu = menu_bar.addMenu('File')
+        open_action = QAction('Open', self)
         open_action.triggered.connect(self.open_file)
         file_menu.addAction(open_action)
 
+        self.tensors = {}
+        self.metadata = {}
+
     def open_file(self):
-        # Open file dialog
-        file_name, _ = QFileDialog.getOpenFileName(self, "Open MSML File", os.getcwd(), "MSML Files (*.msml);;All Files (*)")
-        if file_name:
-            # Load the file and populate tensor_list with tensors found in the file (placeholder code)
-            self.tensor_list.clear()
-            self.tensor_list.addItem("Tensor 1")
-            self.tensor_list.addItem("Tensor 2")
-            self.tensor_list.addItem("Tensor 3")
+        file_name, _ = QFileDialog.getOpenFileName(self, 'Open MSML File', os.getcwd(),
+                                                   'MSML Files (*.msml);;All Files (*)')
+        if not file_name:
+            print('No file selected')
+            return
+
+        self.setWindowTitle(f'MSML File Viewer - {os.path.basename(file_name)}')
+
+        self.tensor_tree.clear()
+        self.tensors.clear()
+        self.metadata.clear()
+
+        tensor_file = Tensor.load(file_name)
+        tensors_item = QTreeWidgetItem(self.tensor_tree)
+        tensors_item.setText(0, 'Tensors')
+        tensors_item.setIcon(0, self.folder_icon)
+        for tensor in [tensor_file]:
+            tensor.name = tensor.name or f'Tensor {len(self.tensors) + 1}'
+            self.tensors[tensor.name] = tensor
+            tensor_item = QTreeWidgetItem(tensors_item)
+            tensor_item.setText(0, tensor.name)
+            tensor_item.setIcon(0, self.tensor_icon)
+
+        metadata_item = QTreeWidgetItem(self.tensor_tree)
+        metadata_item.setText(0, 'Metadata')
+        metadata_item.setIcon(0, self.folder_icon)
+        metadata = {
+            'File Name': os.path.basename(file_name),
+            'File Size': os.path.getsize(file_name),
+            'File Path': file_name
+        }
+        for key, value in metadata.items():
+            self.metadata[key] = value
+            metadata_entry = QTreeWidgetItem(metadata_item)
+            metadata_entry.setText(0, f'{key}: {value}')
+            metadata_entry.setIcon(0, self.metadata_icon)
+
+        self.tensor_tree.expandAll()
 
     def show_tensor_data(self, item):
-        # Display the data of the selected tensor in hex format
-        tensor_name = item.text()
-        # Here, load tensor data from the file using tensor_name (placeholder example)
-        hex_data = " ".join([f"{i:02X}" for i in range(256)])
-        self.data_view.setText(hex_data)
+        parent = item.parent()
+        if parent is None or parent.text(0) != 'Tensors':
+            return
 
+        tensor_name = item.text(0)
+        if tensor_name not in self.tensors:
+            return
+        tensor = self.tensors[tensor_name]
+        tensor_data = tensor.data_as_f32()
+
+        rows = []
+        elements_per_row = 16
+        for i in range(0, len(tensor_data), elements_per_row):
+            row = '  '.join(f'{value:10.5f}' for value in tensor_data[i:i + elements_per_row])
+            rows.append(row)
+        data_str = '\n'.join(rows)
+        self.data_view.setPlainText(data_str)
+
+        extra_info = [
+            f'Name: {tensor.name}',
+            f'Dimensions: {tensor.shape}',
+            f'Strides: {tensor.strides}',
+            f'DType: {tensor.dtype}',
+            f'Rank: {tensor.rank}',
+            f'Total Elements: {tensor.num_elements}',
+            f'Total Bytes: {tensor.data_size}',
+            f'Min: {min(tensor_data)}',
+            f'Max: {max(tensor_data)}',
+            f'Mean: {sum(tensor_data) / len(tensor_data)}',
+            f'Transposed: {tensor.is_transposed}',
+            f'Permuted: {tensor.is_permuted}',
+            f'Contiguous: {tensor.is_contiguous}',
+        ]
+        self.info_panel.setText('\n'.join(extra_info))
 
 def main():
     app = QApplication(sys.argv)

@@ -405,36 +405,10 @@ class Tensor:
         """Returns the number of color channels in the image tensor. (Equals to the third dimension)"""
         return self.shape[0]
 
-    def virtual_to_physical_index(self, v_idx: int) -> list[int]:
-        """Converts a virtual index to a physical index."""
-        p_idx = ffi.new(f'int64_t[{MAX_DIMS}]')
-        C.msml_tensor_virtual_to_physical_index(self.tensor, v_idx, p_idx)
-        return list(p_idx)
-
-    def physical_to_virtual_index(self, p_idx: list[int]) -> int:
-        """Converts a physical index to a virtual index."""
-        assert len(p_idx) == MAX_DIMS
-        return C.msml_tensor_physical_to_virtual_index(self.tensor, p_idx)
-
+    @property
     def is_contiguous(self) -> bool:
         """Checks if the tensor is contiguous in memory."""
         return C.msml_tensor_is_contiguous(self.tensor)
-
-    def get_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int) -> float:
-        """Returns the scalar value at a physical index."""
-        return C.msml_tensor_get_scalar_physical_index(self.tensor, d0, d1, d2, d3)
-
-    def set_scalar_physical_index(self, d0: int, d1: int, d2: int, d3: int, x: float) -> None:
-        """Sets the scalar value at a physical index."""
-        C.msml_tensor_set_scalar_physical_index(self.tensor, d0, d1, d2, d3, x)
-
-    def get_scalar_virtual_index(self, v_idx: int) -> float:
-        """Returns the scalar value at a virtual index."""
-        return C.msml_tensor_get_scalar_virtual_index(self.tensor, v_idx)
-
-    def set_scalar_virtual_index(self, v_idx: int, x: float) -> None:
-        """Sets the scalar value at a virtual index."""
-        C.msml_tensor_set_scalar_virtual_index(self.tensor, v_idx, x)
 
     def is_close(self, other: 'Tensor', eps: float = -1.0, print_eq_percent: bool = False) -> (bool, float):
         """Checks if the tensor is close to another tensor within a given epsilon."""

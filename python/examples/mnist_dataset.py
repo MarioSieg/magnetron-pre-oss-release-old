@@ -27,4 +27,4 @@ def ubyte_load_labels(src: str, num_samples: int) -> np.ndarray:
     return res.reshape(num_samples)
 
 data = ubyte_load_data('../../datasets/mnist/images-idx3-ubyte.gz', 60000)
-Tensor.const(data=data.flatten().tolist(), shape=[60000, 28, 28]).save('../../datasets/mnist/mnist_images.msml')
+Tensor.const(data=data.flatten().tolist(), shape=[60000, 28, 28]).save('mnist_images.msml')
