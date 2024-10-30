@@ -55,97 +55,97 @@
 wl_static_assert(sizeof(0u) == 4);
 wl_static_assert(sizeof(0ull) == 8);
 
-#define WL_MAX_CPUS 8192
-#define WL_MAX_NUMA_NODES 64
-#define WL_STORAGE_EXT ".wavelet"
+#define WL__MAX_CPUS 8192
+#define WL__MAX_NUMA_NODES 64
+#define WL__STORAGE_EXT ".wavelet"
 
 #ifdef WL_ENABLE_IMAGE_SUPPORT
-#   define STBI_MALLOC(sz) wl_alloc(NULL, (sz))
-#   define STBI_FREE(ptr) wl_alloc((ptr), 0)
-#   define STBI_REALLOC(ptr, sz) wl_alloc((ptr), (sz))
-#   define STBIW_MALLOC(sz) wl_alloc(NULL, (sz))
-#   define STBIW_FREE(ptr) wl_alloc((ptr), 0)
-#   define STBIW_REALLOC(ptr, sz) wl_alloc((ptr), (sz))
-#   define STB_IMAGE_IMPLEMENTATION
-#   include <stb_image.h>
-#   define STB_IMAGE_WRITE_IMPLEMENTATION
-#   include <stb_image_write.h>
+#define STBI_MALLOC(sz) wl_alloc(NULL, (sz))
+#define STBI_FREE(ptr) wl_alloc((ptr), 0)
+#define STBI_REALLOC(ptr, sz) wl_alloc((ptr), (sz))
+#define STBIW_MALLOC(sz) wl_alloc(NULL, (sz))
+#define STBIW_FREE(ptr) wl_alloc((ptr), 0)
+#define STBIW_REALLOC(ptr, sz) wl_alloc((ptr), (sz))
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 #endif
 
 #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
-#	define WL_NORET __attribute__((noreturn))
-#	define WL_ALIGN(x) __attribute__((aligned(x)))
-#	define WL_AINLINE inline __attribute__((always_inline))
-#	define WL_NOINLINE __attribute__((noinline))
-#   define WL_HOTPROC __attribute__((hot))
-#   define WL_COLDPROC __attribute__((cold))
-#   define WL_PACKED __attribute__((packed))
-#   define WL_FALLTHROUGH __attribute__((fallthrough))
-#   define WL_UNUSED __attribute__((unused))
-#	define wl_likely(x) __builtin_expect(!!(x), 1)
-#	define wl_unlikely(x) __builtin_expect(!!(x), 0)
-#   define wl_ffs(x) ((uint32_t)__builtin_ctz(x))
-#   define wl_fls(x) ((uint32_t)(__builtin_clz(x)^31))
-#   define wl_ffs64(x) ((uint32_t)__builtin_ctzll(x))
-#   define wl_fls64(x) ((uint32_t)(__builtin_clzll(x)^63))
+#define WL__NORET __attribute__((noreturn))
+#define WL__ALIGN(x) __attribute__((aligned(x)))
+#define WL__AINLINE inline __attribute__((always_inline))
+#define WL__NOINLINE __attribute__((noinline))
+#define WL__HOTPROC __attribute__((hot))
+#define WL__COLDPROC __attribute__((cold))
+#define WL__PACKED __attribute__((packed))
+#define WL__FALLTHROUGH __attribute__((fallthrough))
+#define WL__UNUSED __attribute__((unused))
+#define wl__likely(x) __builtin_expect(!!(x), 1)
+#define wl__unlikely(x) __builtin_expect(!!(x), 0)
+#define wl__ffs(x) ((uint32_t)__builtin_ctz(x))
+#define wl__fls(x) ((uint32_t)(__builtin_clz(x)^31))
+#define wl__ffs64(x) ((uint32_t)__builtin_ctzll(x))
+#define wl__fls64(x) ((uint32_t)(__builtin_clzll(x)^63))
 #else
-    unsigned char _BitScanForward64(unsigned long*, unsigned __int64);
-    unsigned char _BitScanReverse64(unsigned long*, unsigned __int64);
-#   pragma intrinsic(_BitScanForward64)
-#   pragma intrinsic(_BitScanReverse64)
-#	define WL_NORET __declspec(noreturn)
-#	define WL_ALIGN(x) __declspec(align(x))
-#	define WL_AINLINE inline __forceinline
-#	define WL_NOINLINE __declspec(noinline)
-#   define WL_HOTPROC
-#   define WL_COLDPROC
-#   define WL_PACKED __declspec(align(1))
-#   define WL_FALLTHROUGH
-#   define WL_UNUSED
-#	define wl_likely(x) (x)
-#	define wl_unlikely(x) (x)
-    static __forceinline uint32_t wl_ffs(const uint32_t x) {
-        unsigned long r; _BitScanForward(&r, x); return (uint32_t)r;
-    }
-    static __forceinline uint32_t wl_fls(const uint32_t x) {
-        unsigned long r; _BitScanReverse(&r, x); return (uint32_t)r;
-    }
-    static __forceinline uint32_t wl_ffs64(const uint64_t x) {
-      unsigned long r; _BitScanForward64(&r, x); return (uint32_t)r;
-    }
-    static __forceinline uint32_t wl_fls64(const uint64_t x) {
-      unsigned long r; _BitScanReverse64(&r, x); return (uint32_t)r;
-    }
+unsigned char _BitScanForward64(unsigned long*, unsigned __int64);
+unsigned char _BitScanReverse64(unsigned long*, unsigned __int64);
+#pragma intrinsic(_BitScanForward64)
+#pragma intrinsic(_BitScanReverse64)
+#define WL__NORET __declspec(noreturn)
+#define WL__ALIGN(x) __declspec(align(x))
+#define WL__AINLINE inline __forceinline
+#define WL__NOINLINE __declspec(noinline)
+#define WL__HOTPROC
+#define WL__COLDPROC
+#define WL__PACKED __declspec(align(1))
+#define WL__FALLTHROUGH
+#define WL__UNUSED
+#define wl__likely(x) (x)
+#define wl__unlikely(x) (x)
+static __forceinline uint32_t wl__ffs(const uint32_t x) {
+    unsigned long r; _BitScanForward(&r, x); return (uint32_t)r;
+}
+static __forceinline uint32_t wl__fls(const uint32_t x) {
+    unsigned long r; _BitScanReverse(&r, x); return (uint32_t)r;
+}
+static __forceinline uint32_t wl__ffs64(const uint64_t x) {
+  unsigned long r; _BitScanForward64(&r, x); return (uint32_t)r;
+}
+static __forceinline uint32_t wl__fls64(const uint64_t x) {
+  unsigned long r; _BitScanReverse64(&r, x); return (uint32_t)r;
+}
 #endif
 
-#define wl_swap(T, a, b) do { T tmp = a; a = b; b = tmp; } while (0)
-#define wl_max(x, y) (((x) > (y)) ? (x) : (y))
-#define wl_min(x, y) (((x) < (y)) ? (x) : (y))
-#define WL_CCRED "\x1b[31m"
-#define WL_CCGREEN "\x1b[32m"
-#define WL_CCYELLOW "\x1b[33m"
-#define WL_CCBLUE "\x1b[34m"
-#define WL_CCMAGENTA "\x1b[35m"
-#define WL_CCCYAN "\x1b[36m"
-#define WL_CCRESET "\x1b[0m"
-#define WL_STRINGIZE2(x) #x
-#define WL_STRINGIZE(x) WL_STRINGIZE2(x)
+#define wl__swap(T, a, b) do { T tmp = a; a = b; b = tmp; } while (0)
+#define wl__max(x, y) (((x) > (y)) ? (x) : (y))
+#define wl__min(x, y) (((x) < (y)) ? (x) : (y))
+#define WL__CC_RED "\x1b[31m"
+#define WL__CC_GREEN "\x1b[32m"
+#define WL__CC_YELLOW "\x1b[33m"
+#define WL__CC_BLUE "\x1b[34m"
+#define WL__CC_MAGENTA "\x1b[35m"
+#define WL__CC_CYAN "\x1b[36m"
+#define WL__CC_RESET "\x1b[0m"
+#define WL__STRINGIZE2(x) #x
+#define WL__STRINGIZE(x) WL__STRINGIZE2(x)
 #ifdef __FILE_NAME__
-#   define WL_SRC_NAME __FILE_NAME__ ":" WL_STRINGIZE(__LINE__)
+#   define WL__SRC_NAME __FILE_NAME__ ":" WL__STRINGIZE(__LINE__)
 #else
-#   define WL_SRC_NAME __FILE__ ":" WL_STRINGIZE(__LINE__)
+#   define WL__SRC_NAME __FILE__ ":" WL__STRINGIZE(__LINE__)
 #endif
-#define wl_log_info(msg, ...) fprintf(stdout,   WL_CCCYAN "[WAVELET] " WL_CCRESET WL_SRC_NAME " " msg "\n", ## __VA_ARGS__)
-#define wl_log_warn(msg, ...) fprintf(stderr,  WL_CCCYAN "[WAVELET] " WL_CCRESET WL_SRC_NAME " " WL_CCYELLOW msg WL_CCRESET "\n", ## __VA_ARGS__)
-#define wl_log_error(msg, ...) fprintf(stderr,  WL_CCCYAN "[WAVELET] " WL_CCRESET WL_SRC_NAME " " WL_CCRED msg WL_CCRESET "\n", ## __VA_ARGS__)
+#define wl__log_info(msg, ...) fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__)
+#define wl__log_warn(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__)
+#define wl__log_error(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__)
 
-static WL_NORET WL_COLDPROC void wl__panic(const char* msg, ...) {
-    fprintf(stderr, "%s", WL_CCRED);
+static WL__NORET WL__COLDPROC void wl__panic(const char* msg, ...) {
+    fprintf(stderr, "%s", WL__CC_RED);
     va_list args;
     va_start(args, msg);
     vfprintf(stderr, msg, args);
     va_end(args);
-    fprintf(stderr, "%s", WL_CCRESET);
+    fprintf(stderr, "%s", WL__CC_RESET);
     fputc('\n', stderr);
     fflush(stderr);
     fflush(stdout);
@@ -153,106 +153,103 @@ static WL_NORET WL_COLDPROC void wl__panic(const char* msg, ...) {
 }
 
 #define wl__assert(expr, msg, ...) \
-    if (wl_unlikely(!(expr))) { \
+    if (wl__unlikely(!(expr))) { \
         wl__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
     }
 #define wl__assert2(expr) wl__assert(expr, "")
 
 #if defined(__x86_64__) || defined(_M_X64)
+#define WL__X86_64_CPUID_0H 0
+#define WL__X86_64_CPUID_1H 1
+#define WL__X86_64_CPUID_2H 2
+#define WL__X86_64_CPUID_7H 3
+#define WL__X86_64_CPUID_80000001H 4
+#define WL__X86_64_CPUID_80000007H 5
+#define WL__X86_64_CPUID_16H 6
+#define WL__X86_64_CPUID_7H_1H 7
+#define WL__X86_64_CPUID_EAX 0
+#define WL__X86_64_CPUID_EBX 1
+#define WL__X86_64_CPUID_ECX 2
+#define WL__X86_64_CPUID_EDX 3
 
-    #define WL__X86_64_CPUID_0H 0
-    #define WL__X86_64_CPUID_1H 1
-    #define WL__X86_64_CPUID_2H 2
-    #define WL__X86_64_CPUID_7H 3
-    #define WL__X86_64_CPUID_80000001H 4
-    #define WL__X86_64_CPUID_80000007H 5
-    #define WL__X86_64_CPUID_16H 6
-    #define WL__X86_64_CPUID_7H_1H 7
+#define wl_x86_64_feature_def(_, __) /* Enumerator | CPUDID Leaf | Register | Bit Index */\
+    _(AVX                  ,    1H,        ECX,     28)__\
+    _(AVX2                 ,    7H,        EBX,      5)__\
+    _(AVXVNNI              ,    7H_1H,     EAX,      4)__\
+    _(AVXVNNIINT8          ,    7H_1H,     EDX,      4)__\
+    _(AVXVNNIINT16         ,    7H_1H,     EDX,     10)__\
+    _(AVX512BW             ,    7H,        EBX,     30)__\
+    _(AVX512CD             ,    7H,        EBX,     28)__\
+    _(AVX512DQ             ,    7H,        EBX,     17)__\
+    _(AVX512ER             ,    7H,        EBX,     27)__\
+    _(AVX512F              ,    7H,        EBX,     16)__\
+    _(AVX512IFMA           ,    7H,        EBX,     21)__\
+    _(AVX512PF             ,    7H,        EBX,     26)__\
+    _(AVX512VBMI           ,    7H,        ECX,      1)__\
+    _(AVX512VL             ,    7H,        EBX,     31)__\
+    _(AVX512_4FMAPS        ,    7H,        EDX,      3)__\
+    _(AVX512_4VNNIW        ,    7H,        EDX,      2)__\
+    _(AVX512_FP16          ,    7H,        EDX,     23)__\
+    _(AVX512_BF16          ,    7H_1H,     EAX,      5)__\
+    _(AVX512_BITALG        ,    7H,        ECX,     12)__\
+    _(AVX512_VBMI2         ,    7H,        ECX,      6)__\
+    _(AVX512_VNNI          ,    7H,        ECX,     11)__\
+    _(AVX512_VP2INTERSECT  ,    7H,        EDX,      8)__\
+    _(AVX512_VPOPCNTDQ     ,    7H,        ECX,     14)__\
+    _(BMI                  ,    7H,        EBX,      3)__\
+    _(BMI2                 ,    7H,        EBX,      8)__\
+    _(F16C                 ,    1H,        ECX,     29)__\
+    _(FMA                  ,    1H,        ECX,     12)__\
+    _(FPU                  ,    1H,        EDX,      0)__\
+    _(GFNI                 ,    7H,        ECX,      8)__\
+    _(IA64                 ,    1H,        EDX,     30)__\
+    _(MMX                  ,    1H,        EDX,     23)__\
+    _(OSXSAVE              ,    1H,        ECX,     27)__\
+    _(PCLMUL               ,    1H,        ECX,      1)__\
+    _(RDRND                ,    1H,        ECX,     30)__\
+    _(RDSEED               ,    7H,        EBX,     18)__\
+    _(RDTSCP               ,    80000001H, EDX,     27)__\
+    _(SHA                  ,    7H,        EBX,     29)__\
+    _(SSE                  ,    1H,        EDX,     25)__\
+    _(SSE2                 ,    1H,        EDX,     26)__\
+    _(SSE3                 ,    1H,        ECX,      0)__\
+    _(SSE4_1               ,    1H,        ECX,     19)__\
+    _(SSE4_2               ,    1H,        ECX,     20)__\
+    _(SSSE3                ,    1H,        ECX,      9)__\
+    _(VAES                 ,    7H,        ECX,      9)__\
+    _(VME                  ,    1H,        EDX,      1)__\
+    _(VMX                  ,    1H,        ECX,      5)__\
+    _(VPCLMULQDQ           ,    7H,        ECX,     10)__\
+    _(XSAVE                ,    1H,        ECX,     26)__\
+    _(HYBRID_CPU           ,    7H,        EDX,     15)__
 
-    #define WL__X86_64_CPUID_EAX 0
-    #define WL__X86_64_CPUID_EBX 1
-    #define WL__X86_64_CPUID_ECX 2
-    #define WL__X86_64_CPUID_EDX 3
-
-    #define wl_x86_64_feature_def(_, __) /* Enumerator | CPUDID Leaf | Register | Bit Index */\
-        _(AVX                  ,    1H,        ECX,     28)__\
-        _(AVX2                 ,    7H,        EBX,      5)__\
-        _(AVXVNNI              ,    7H_1H,     EAX,      4)__\
-        _(AVXVNNIINT8          ,    7H_1H,     EDX,      4)__\
-        _(AVXVNNIINT16         ,    7H_1H,     EDX,     10)__\
-        _(AVX512BW             ,    7H,        EBX,     30)__\
-        _(AVX512CD             ,    7H,        EBX,     28)__\
-        _(AVX512DQ             ,    7H,        EBX,     17)__\
-        _(AVX512ER             ,    7H,        EBX,     27)__\
-        _(AVX512F              ,    7H,        EBX,     16)__\
-        _(AVX512IFMA           ,    7H,        EBX,     21)__\
-        _(AVX512PF             ,    7H,        EBX,     26)__\
-        _(AVX512VBMI           ,    7H,        ECX,      1)__\
-        _(AVX512VL             ,    7H,        EBX,     31)__\
-        _(AVX512_4FMAPS        ,    7H,        EDX,      3)__\
-        _(AVX512_4VNNIW        ,    7H,        EDX,      2)__\
-        _(AVX512_FP16          ,    7H,        EDX,     23)__\
-        _(AVX512_BF16          ,    7H_1H,     EAX,      5)__\
-        _(AVX512_BITALG        ,    7H,        ECX,     12)__\
-        _(AVX512_VBMI2         ,    7H,        ECX,      6)__\
-        _(AVX512_VNNI          ,    7H,        ECX,     11)__\
-        _(AVX512_VP2INTERSECT  ,    7H,        EDX,      8)__\
-        _(AVX512_VPOPCNTDQ     ,    7H,        ECX,     14)__\
-        _(BMI                  ,    7H,        EBX,      3)__\
-        _(BMI2                 ,    7H,        EBX,      8)__\
-        _(F16C                 ,    1H,        ECX,     29)__\
-        _(FMA                  ,    1H,        ECX,     12)__\
-        _(FPU                  ,    1H,        EDX,      0)__\
-        _(GFNI                 ,    7H,        ECX,      8)__\
-        _(IA64                 ,    1H,        EDX,     30)__\
-        _(MMX                  ,    1H,        EDX,     23)__\
-        _(OSXSAVE              ,    1H,        ECX,     27)__\
-        _(PCLMUL               ,    1H,        ECX,      1)__\
-        _(RDRND                ,    1H,        ECX,     30)__\
-        _(RDSEED               ,    7H,        EBX,     18)__\
-        _(RDTSCP               ,    80000001H, EDX,     27)__\
-        _(SHA                  ,    7H,        EBX,     29)__\
-        _(SSE                  ,    1H,        EDX,     25)__\
-        _(SSE2                 ,    1H,        EDX,     26)__\
-        _(SSE3                 ,    1H,        ECX,      0)__\
-        _(SSE4_1               ,    1H,        ECX,     19)__\
-        _(SSE4_2               ,    1H,        ECX,     20)__\
-        _(SSSE3                ,    1H,        ECX,      9)__\
-        _(VAES                 ,    7H,        ECX,      9)__\
-        _(VME                  ,    1H,        EDX,      1)__\
-        _(VMX                  ,    1H,        ECX,      5)__\
-        _(VPCLMULQDQ           ,    7H,        ECX,     10)__\
-        _(XSAVE                ,    1H,        ECX,     26)__\
-        _(HYBRID_CPU           ,    7H,        EDX,     15)__
-
-    #define _(enumerator, leaf, reg, bit) WL__X86_64_FEATURE_##enumerator
-    typedef enum wl__x86_64_feature_t {
-        wl_x86_64_feature_def(_, WL_SEP)
-        WL__X86_64_FEATURE__COUNT
-    } wl__x86_64_feature_t;
-    #undef _
-    #define _(enumerator, leaf, reg, bit) #enumerator
-    static const char* const wl__x86_64_feature_names[WL__X86_64_FEATURE__COUNT] = {
-        wl_x86_64_feature_def(_, WL_SEP)
-    };
-    #undef _
-    #define _(enumerator, leaf, reg, bit) (0xff&WL__X86_64_CPUID_##leaf)
-    static const uint8_t wl__x86_64_feature_leaves[WL__X86_64_FEATURE__COUNT] = {
-        wl_x86_64_feature_def(_, WL_SEP)
-    };
-    #undef _
-    #define _(enumerator, leaf, reg, bit) (0xff&WL__X86_64_CPUID_##reg)
-    static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
-        wl_x86_64_feature_def(_, WL_SEP)
-    };
-    #undef _
-    #define _(enumerator, leaf, reg, bit) (1u<<(bit))
-    static const uint32_t wl__x86_64_feature_masks[WL__X86_64_FEATURE__COUNT] = {
-        wl_x86_64_feature_def(_, WL_SEP)
-    };
-    #undef _
-    #undef wl_x86_64_feature_def
-
+#define _(enumerator, leaf, reg, bit) WL__X86_64_FEATURE_##enumerator
+typedef enum wl__x86_64_feature_t {
+    wl_x86_64_feature_def(_, WL_SEP)
+    WL__X86_64_FEATURE__COUNT
+} wl__x86_64_feature_t;
+#undef _
+#define _(enumerator, leaf, reg, bit) #enumerator
+static const char* const wl__x86_64_feature_names[WL__X86_64_FEATURE__COUNT] = {
+    wl_x86_64_feature_def(_, WL_SEP)
+};
+#undef _
+#define _(enumerator, leaf, reg, bit) (0xff&WL__X86_64_CPUID_##leaf)
+static const uint8_t wl__x86_64_feature_leaves[WL__X86_64_FEATURE__COUNT] = {
+    wl_x86_64_feature_def(_, WL_SEP)
+};
+#undef _
+#define _(enumerator, leaf, reg, bit) (0xff&WL__X86_64_CPUID_##reg)
+static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
+    wl_x86_64_feature_def(_, WL_SEP)
+};
+#undef _
+#define _(enumerator, leaf, reg, bit) (1u<<(bit))
+static const uint32_t wl__x86_64_feature_masks[WL__X86_64_FEATURE__COUNT] = {
+    wl_x86_64_feature_def(_, WL_SEP)
+};
+#undef _
+#undef wl_x86_64_feature_def
 #endif
 
 typedef struct wl__blas_compute_info_t wl__blas_compute_info_t; /* Forward declaration. */
@@ -304,15 +301,15 @@ struct wl_ctx_t {
 };
 
 typedef enum wl__tensor_flags_t {
-    WL_TFLAG_NONE = 0,
-    WL_TFLAG_VIEW = 1<<0,         /* Tensor is a view. */
-    WL_TFLAG_OP_INPUT = 1<<1,     /* Tensor is an operation input. */
-    WL_TFLAG_OP_OUTPUT = 1<<2,    /* Tensor is an operation output. */
-    WL_TFLAG_EXEC_EAGER = 1<<3,   /* Tensor is executed eagerly. */
-    WL_TFLAG_IMAGE = 1<<4,        /* Tensor was loaded from an image. */
-    WL_TFLAG_FROM_FS = 1<<5,      /* Tensor was loaded from the file system. Also true for WL_TFLAG_IMAGE. */
+    WL__TFLAG_NONE = 0,
+    WL__TFLAG_VIEW = 1<<0,         /* Tensor is a view. */
+    WL__TFLAG_OP_INPUT = 1<<1,     /* Tensor is an operation input. */
+    WL__TFLAG_OP_OUTPUT = 1<<2,    /* Tensor is an operation output. */
+    WL__TFLAG_EXEC_EAGER = 1<<3,   /* Tensor is executed eagerly. */
+    WL__TFLAG_IMAGE = 1<<4,        /* Tensor was loaded from an image. */
+    WL__TFLAG_FROM_FS = 1<<5,      /* Tensor was loaded from the file system. Also true for WL__TFLAG_IMAGE. */
 } wl__tensor_flags_t;
-wl_static_assert(WL_TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
+wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
 
 struct wl_tensor_t {
     wl_ctx_t* ctx;
@@ -495,7 +492,7 @@ wl_static_assert(sizeof(wl_bitset_t) == 4);
 #define wl_bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&((4<<3)-1))))
 #define wl_bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&((4<<3)-1))))
 
-static uint32_t WL_AINLINE wl__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
+static uint32_t WL__AINLINE wl__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     #   if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
             x = (uint32_t)__builtin_bswap32((int32_t)x);
@@ -509,7 +506,7 @@ static uint32_t WL_AINLINE wl__bswap32(uint32_t x) { /* Swap bytes for endianess
     return x;
 }
 
-static uint64_t WL_AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
+static uint64_t WL__AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
     #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
     #   if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
             x = (uint64_t)__builtin_bswap64((int64_t)x);
@@ -527,14 +524,14 @@ static uint64_t WL_AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianess
     return x;
 }
 
-static WL_AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
+static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
     void* pp = (void*)(((uintptr_t)*p+align-1) & -align);
     *p = (void*)((uint8_t*)pp + sz);
     return pp;
 }
 
 #ifdef __aarch64__
-    static uint64x2_t WL_AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+    static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
         uint64x2_t r;
         __asm__ __volatile__(
             "pmull %0.1q, %2.1d, %3.1d\n"
@@ -543,7 +540,7 @@ static WL_AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
         );
         return r;
     }
-    static uint64x2_t WL_AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
+    static uint64x2_t WL__AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
         uint64x2_t r;
         __asm__ __volatile__(
             "pmull2 %0.1q, %2.2d, %3.2d\n"
@@ -567,16 +564,16 @@ static WL_AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
         }
         return acc;
     }
-    static __m128i WL_AINLINE wl__clmul_scalar(uint32_t a, uint32_t b) {
+    static __m128i WL__AINLINE wl__clmul_scalar(uint32_t a, uint32_t b) {
         return _mm_clmulepi64_si128(_mm_cvtsi32_si128(a), _mm_cvtsi32_si128(b), 0);
     }
-    static __m128i WL_AINLINE wl__crc_shift(uint32_t crc, size_t sz) {
+    static __m128i WL__AINLINE wl__crc_shift(uint32_t crc, size_t sz) {
         return wl__clmul_scalar(crc, wl__xnmodp((sz<<3) - 33));
     }
 #endif
 
 static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 checksum with CRC32c polynomial. */
-    if (wl_unlikely(!buffer || !size)) return 0;
+    if (wl__unlikely(!buffer || !size)) return 0;
     const uint8_t* buf = (const uint8_t*)buffer;
     #if WL_INTRIN && defined(__aarch64__)
         uint32_t crc = ~0;
@@ -600,7 +597,7 @@ static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 c
             uint64x2_t x10 = vld1q_u64((const uint64_t*)(buf+160)), y10;
             uint64x2_t x11 = vld1q_u64((const uint64_t*)(buf+176)), y11;
             uint64x2_t k;
-            { static const uint64_t WL_ALIGN(16) k_[] = {0xa87ab8a8, 0xab7aff2a}; k = vld1q_u64(k_); }
+            { static const uint64_t WL__ALIGN(16) k_[] = {0xa87ab8a8, 0xab7aff2a}; k = vld1q_u64(k_); }
             x0 = veorq_u64((uint64x2_t){crc, 0}, x0);
             buf += 192;
             size -= 192;
@@ -621,18 +618,18 @@ static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 c
                 size -= 192;
             }
             /* Reduce x0 ... x11 to just x0. */
-            { static const uint64_t WL_ALIGN(16) k_[] = {0xf20c0dfe, 0x493c7d27}; k = vld1q_u64(k_); }
+            { static const uint64_t WL__ALIGN(16) k_[] = {0xf20c0dfe, 0x493c7d27}; k = vld1q_u64(k_); }
             y0 = wl__clmul_lo_e(x0, k, x1), x0 = wl__clmul_hi_e(x0, k, y0);
             y2 = wl__clmul_lo_e(x2, k, x3), x2 = wl__clmul_hi_e(x2, k, y2);
             y4 = wl__clmul_lo_e(x4, k, x5), x4 = wl__clmul_hi_e(x4, k, y4);
             y6 = wl__clmul_lo_e(x6, k, x7), x6 = wl__clmul_hi_e(x6, k, y6);
             y8 = wl__clmul_lo_e(x8, k, x9), x8 = wl__clmul_hi_e(x8, k, y8);
             y10 = wl__clmul_lo_e(x10, k, x11), x10 = wl__clmul_hi_e(x10, k, y10);
-            { static const uint64_t WL_ALIGN(16) k_[] = {0x3da6d0cb, 0xba4fc28e}; k = vld1q_u64(k_); }
+            { static const uint64_t WL__ALIGN(16) k_[] = {0x3da6d0cb, 0xba4fc28e}; k = vld1q_u64(k_); }
             y0 = wl__clmul_lo_e(x0, k, x2), x0 = wl__clmul_hi_e(x0, k, y0);
             y4 = wl__clmul_lo_e(x4, k, x6), x4 = wl__clmul_hi_e(x4, k, y4);
             y8 = wl__clmul_lo_e(x8, k, x10), x8 = wl__clmul_hi_e(x8, k, y8);
-            { static const uint64_t WL_ALIGN(16) k_[] = {0x740eef02, 0x9e4addf8}; k = vld1q_u64(k_); }
+            { static const uint64_t WL__ALIGN(16) k_[] = {0x740eef02, 0x9e4addf8}; k = vld1q_u64(k_); }
             y0 = wl__clmul_lo_e(x0, k, x4), x0 = wl__clmul_hi_e(x0, k, y0);
             x4 = x8;
             y0 = wl__clmul_lo_e(x0, k, x4), x0 = wl__clmul_hi_e(x0, k, y0);
@@ -727,52 +724,52 @@ static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 c
 }
 
 typedef enum wl_format_type {
-    WL_FMT_EOF, WL_FMT_ERR, WL_FMT_LIT, WL_FMT_INT,
-    WL_FMT_UINT, WL_FMT_NUM, WL_FMT_STR, WL_FMT_CHAR,
-    WL_FMT_PTR
+    WL__FMT_EOF, WL__FMT_ERR, WL__FMT_LIT, WL__FMT_INT,
+    WL__FMT_UINT, WL__FMT_NUM, WL__FMT_STR, WL__FMT_CHAR,
+    WL__FMT_PTR
 } wl_format_type; /* Format types for formatted output */
 
 typedef uint32_t wl_format_flags; /* Flags for formatting output */
 
 /* Format flags */
-#define WL_FMT_F_LEFT  0x0100 /* Left-align the output */
-#define WL_FMT_F_PLUS  0x0200 /* Prefix positive numbers with a plus sign */
-#define WL_FMT_F_ZERO  0x0400 /* Pad with zeros instead of spaces */
-#define WL_FMT_F_SPACE 0x0800 /* Prefix a space for positive numbers */
-#define WL_FMT_F_ALT   0x1000 /* Alternate format flag */
-#define WL_FMT_F_UPPER 0x2000 /* Use uppercase letters for hex output */
+#define WL__FMT_F_LEFT  0x0100 /* Left-align the output */
+#define WL__FMT_F_PLUS  0x0200 /* Prefix positive numbers with a plus sign */
+#define WL__FMT_F_ZERO  0x0400 /* Pad with zeros instead of spaces */
+#define WL__FMT_F_SPACE 0x0800 /* Prefix a space for positive numbers */
+#define WL__FMT_F_ALT   0x1000 /* Alternate format flag */
+#define WL__FMT_F_UPPER 0x2000 /* Use uppercase letters for hex output */
 
 /* Format subtypes (bits reused) */
-#define WL_FMT_T_HEX   0x0010 /* Hexadecimal format for unsigned integers */
-#define WL_FMT_T_OCT   0x0020 /* Octal format for unsigned integers */
-#define WL_FMT_T_FP_A  0x0000 /* 'a' format for floating-point numbers */
-#define WL_FMT_T_FP_E  0x0010 /* 'e' format for floating-point numbers */
-#define WL_FMT_T_FP_F  0x0020 /* 'f' format for floating-point numbers */
-#define WL_FMT_T_FP_G  0x0030 /* 'g' format for floating-point numbers */
-#define WL_FMT_T_QUOTED 0x0010 /* Quoted string format */
+#define WL__FMT_T_HEX   0x0010 /* Hexadecimal format for unsigned integers */
+#define WL__FMT_T_OCT   0x0020 /* Octal format for unsigned integers */
+#define WL__FMT_T_FP_A  0x0000 /* 'a' format for floating-point numbers */
+#define WL__FMT_T_FP_E  0x0010 /* 'e' format for floating-point numbers */
+#define WL__FMT_T_FP_F  0x0020 /* 'f' format for floating-point numbers */
+#define WL__FMT_T_FP_G  0x0030 /* 'g' format for floating-point numbers */
+#define WL__FMT_T_QUOTED 0x0010 /* Quoted string format */
 
-#define WL_FMT_SH_WIDTH 16    /* Shift width for formatting */
-#define WL_FMT_SH_PREC  24    /* Shift precision for formatting */
-#define WL_FMT_TYPE(sf) ((wl_format_type)((sf) & 15))  /* Extract format type */
-#define WL_FMT_WIDTH(sf) (((sf) >> WL_FMT_SH_WIDTH) & 255u) /* Extract width */
-#define WL_FMT_PREC(sf) ((((sf) >> WL_FMT_SH_PREC) & 255u) - 1u) /* Extract precision */
-#define WL_FMT_FP(sf) (((sf) >> 4) & 3) /* Extract floating-point format */
+#define WL__FMT_SH_WIDTH 16    /* Shift width for formatting */
+#define WL__FMT_SH_PREC  24    /* Shift precision for formatting */
+#define WL__FMT_TYPE(sf) ((wl_format_type)((sf) & 15))  /* Extract format type */
+#define WL__FMT_WIDTH(sf) (((sf) >> WL__FMT_SH_WIDTH) & 255u) /* Extract width */
+#define WL__FMT_PREC(sf) ((((sf) >> WL__FMT_SH_PREC) & 255u) - 1u) /* Extract precision */
+#define WL__FMT_FP(sf) (((sf) >> 4) & 3) /* Extract floating-point format */
 
 /* Formats for conversion characters */
-#define WL_FMT_A (WL_FMT_NUM|WL_FMT_T_FP_A) /* 'a' format */
-#define WL_FMT_C (WL_FMT_CHAR) /* 'c' format */
-#define WL_FMT_D (WL_FMT_INT)  /* 'd' format */
-#define WL_FMT_E (WL_FMT_NUM|WL_FMT_T_FP_E) /* 'e' format */
-#define WL_FMT_F (WL_FMT_NUM|WL_FMT_T_FP_F) /* 'f' format */
-#define WL_FMT_G (WL_FMT_NUM|WL_FMT_T_FP_G) /* 'g' format */
-#define WL_FMT_I WL_FMT_D /* 'i' format (same as 'd') */
-#define WL_FMT_O (WL_FMT_UINT|WL_FMT_T_OCT) /* 'o' format */
-#define WL_FMT_P (WL_FMT_PTR) /* 'p' format */
-#define WL_FMT_Q (WL_FMT_STR|WL_FMT_T_QUOTED) /* Quoted string */
-#define WL_FMT_S (WL_FMT_STR) /* 's' format */
-#define WL_FMT_U (WL_FMT_UINT) /* 'u' format */
-#define WL_FMT_X (WL_FMT_UINT|WL_FMT_T_HEX) /* 'x' format */
-#define WL_FMT_G14 (WL_FMT_G | ((14+1) << WL_FMT_SH_PREC)) /* 'g' format with precision 14 */
+#define WL__FMT_A (WL__FMT_NUM|WL__FMT_T_FP_A) /* 'a' format */
+#define WL__FMT_C (WL__FMT_CHAR) /* 'c' format */
+#define WL__FMT_D (WL__FMT_INT)  /* 'd' format */
+#define WL__FMT_E (WL__FMT_NUM|WL__FMT_T_FP_E) /* 'e' format */
+#define WL__FMT_F (WL__FMT_NUM|WL__FMT_T_FP_F) /* 'f' format */
+#define WL__FMT_G (WL__FMT_NUM|WL__FMT_T_FP_G) /* 'g' format */
+#define WL__FMT_I WL__FMT_D /* 'i' format (same as 'd') */
+#define WL__FMT_O (WL__FMT_UINT|WL__FMT_T_OCT) /* 'o' format */
+#define WL__FMT_P (WL__FMT_PTR) /* 'p' format */
+#define WL__FMT_Q (WL__FMT_STR|WL__FMT_T_QUOTED) /* Quoted string */
+#define WL__FMT_S (WL__FMT_STR) /* 's' format */
+#define WL__FMT_U (WL__FMT_UINT) /* 'u' format */
+#define WL__FMT_X (WL__FMT_UINT|WL__FMT_T_HEX) /* 'x' format */
+#define WL__FMT_G14 (WL__FMT_G | ((14+1) << WL__FMT_SH_PREC)) /* 'g' format with precision 14 */
 
 static char* wl__fmt_f64(wl_format_flags sf, double n, char* p);
 
@@ -861,7 +858,7 @@ static void wl_hashset_destroy(wl__hashset_t* set) {
     wl_alloc(set->keys, 0);
 }
 
-static bool WL_AINLINE wl__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
+static bool WL__AINLINE wl__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
 #ifdef _MSC_VER
     int64_t high;
     int64_t low = _mul128(a, b, &high);
@@ -975,7 +972,7 @@ static void wl__blas_compute_dispatch_table_install(wl_ctx_t* ctx); /* Install B
 #endif
 
 wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
-    wl_log_info("Creating WAVELET context...");
+    wl__log_info("Creating WAVELET context...");
     int64_t time_stamp_start = wl_hpc_clock_us();
 
     /* Print WAVELET version and compiler info. */
@@ -994,7 +991,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
         compiler_version_major = _MSC_VER / 100;
         compiler_version_minor = _MSC_VER % 100;
     #endif
-    wl_log_info("WAVELET v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d", wl_version_major(WL_VERSION), wl_version_minor(WL_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
+    wl__log_info("WAVELET v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d", wl_version_major(WL_VERSION), wl_version_minor(WL_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
 
     /* Enable fast math optimizations for x86-64 platforms. */
     #if WL_CFG_X86_64_FAST_MATH && (defined(__x86_64__) || defined(_M_X64))
@@ -1018,14 +1015,14 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     memset(ctx, 0, sizeof(*ctx));
     ctx->alloc_fn = ctx_info.alloc_fn;
     ctx->ud = ctx_info.user_data;
-    ctx->pool.chunk_size = ctx_info.pool_chunk_size ? wl_max(ctx_info.pool_chunk_size, 8) : WL_DEFAULT_CHUNK_SIZE;
-    ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? wl_max(ctx_info.pool_chunks_cap, 1) : WL_DEFAULT_CHUNK_CAP;
+    ctx->pool.chunk_size = ctx_info.pool_chunk_size ? wl__max(ctx_info.pool_chunk_size, 8) : WL_DEFAULT_CHUNK_SIZE;
+    ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? wl__max(ctx_info.pool_chunks_cap, 1) : WL_DEFAULT_CHUNK_CAP;
     ctx->pool.warmup_chunks = ctx_info.warmup_chunks;
 
     /* Query and print host system information. */
     wl__system_host_info_query(ctx);
-    wl_log_info("OS/Kernel: %s", ctx->sys.os_name);
-    wl_log_info("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
+    wl__log_info("OS/Kernel: %s", ctx->sys.os_name);
+    wl__log_info("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
     #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
         printf("CPU Features:");
         for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
@@ -1042,7 +1039,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__humanize_memory_size(ctx->sys.phys_mem_free, &mem_free, &mem_unit_free);
     wl__humanize_memory_size((size_t)llabs((int64_t)ctx->sys.phys_mem_total-(int64_t)ctx->sys.phys_mem_free), &mem_used, &mem_unit_used);
     double mem_used_percent = fabs((double)(ctx->sys.phys_mem_total-ctx->sys.phys_mem_free))/(double)ctx->sys.phys_mem_total*100.0;
-    wl_log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
+    wl__log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 
     /* Prepare memory pool. */
     ctx->pool.chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
@@ -1068,7 +1065,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__blas_compute_dispatch_table_install(ctx);
 
     /* Print context initialization time. */
-    wl_log_info("WAVELET context initialized in %.05f ms.", wl_hpc_clock_elapsed_ms(time_stamp_start));
+    wl__log_info("WAVELET context initialized in %.05f ms.", wl_hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
 }
 
@@ -1087,7 +1084,7 @@ void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size) {
             while (ctx->pool.chunk_size < size && (ctx->pool.chunk_size <= lim));
         }
         wl__ctx_push_chunk(ctx);
-        wl_log_info("Allocated pool chunk: %.03f MiB", (double)ctx->pool.chunk_size/(double)(1<<20));
+        wl__log_info("Allocated pool chunk: %.03f MiB", (double)ctx->pool.chunk_size/(double)(1<<20));
     }
     ctx->pool.delta -= size;
     ++ctx->pool.alloc_acc;
@@ -1111,7 +1108,7 @@ wl_exec_mode_t wl_ctx_get_exec_mode(const wl_ctx_t* ctx) { return ctx->exec_mode
 
 void wl_ctx_set_exec_mode(wl_ctx_t* ctx, wl_exec_mode_t mode) {
     ctx->exec_mode = mode;
-    wl_log_info("Execution mode set to: %s", mode == WL_EXEC_MODE_EAGER ? "Eager" : "Deferred");
+    wl__log_info("Execution mode set to: %s", mode == WL_EXEC_MODE_EAGER ? "Eager" : "Deferred");
 }
 
 wl_prng_algorithm_t wl_ctx_get_prng_algorithm(const wl_ctx_t* ctx) { return ctx->prng_algorithm; }
@@ -1144,8 +1141,8 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
     const char* alloc_unit, *mapped_unit;
     wl__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
     wl__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
-    wl_log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s", alloc_total, alloc_unit, mapped_total, mapped_unit);
-    wl_log_info("WAVELET context destroyed.");
+    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s", alloc_total, alloc_unit, mapped_total, mapped_unit);
+    wl__log_info("WAVELET context destroyed.");
 }
 
 #define wl__op_param_pack_u64(tag, x) ((wl_op_param_t)(((x)&((1ull<<(64-2))-1))|(((uint64_t)(tag)&3)<<(64-2))))
@@ -1240,13 +1237,13 @@ printf("SHORT ERROR DESCRIPTION"
 );
 */
 
-static void WL_COLDPROC wl__validate_print_separator(void) {
+static void WL__COLDPROC wl__validate_print_separator(void) {
     for (uint32_t i=0; i <= 128; ++i) fputc('=', stderr);
     fputc('\n', stderr);
 }
 
 static bool wl__validate_inputs(wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs) {
-    if (wl_unlikely(n_inputs > WL_MAX_INPUT_TENSORS)) {
+    if (wl__unlikely(n_inputs > WL_MAX_INPUT_TENSORS)) {
         wl__validate_print_separator();
         fprintf(stderr,
             "Failed to execute operation: %s.\n"
@@ -1259,7 +1256,7 @@ static bool wl__validate_inputs(wl_op_t op, wl_tensor_t** inputs, uint32_t n_inp
         fflush(stderr);
         return false;
     }
-    if (wl_unlikely(wl_op_get_argcount(op) != n_inputs)) {
+    if (wl__unlikely(wl_op_get_argcount(op) != n_inputs)) {
         wl__validate_print_separator();
         fprintf(stderr,
             "Failed to execute operation: %s.\n"
@@ -1273,7 +1270,7 @@ static bool wl__validate_inputs(wl_op_t op, wl_tensor_t** inputs, uint32_t n_inp
         return false;
     }
     for (uint32_t i=0; i < wl_op_get_argcount(op); ++i) {
-        if (wl_unlikely(!inputs[i])) {
+        if (wl__unlikely(!inputs[i])) {
             wl__validate_print_separator();
             fprintf(stderr,
                 "Failed to execute operation: %s.\n"
@@ -1291,7 +1288,7 @@ static bool wl__validate_inputs(wl_op_t op, wl_tensor_t** inputs, uint32_t n_inp
 }
 
 static bool wl__validate_shape_eq(wl_op_t op, const wl_tensor_t* a, const wl_tensor_t* b) {
-    if (wl_likely(wl_tensor_is_shape_eq(a, b))) return true;
+    if (wl__likely(wl_tensor_is_shape_eq(a, b))) return true;
     wl__validate_print_separator();
     fprintf(stderr,
         "Failed to execute operation: %s.\n"
@@ -1310,7 +1307,7 @@ static bool wl__validate_shape_eq(wl_op_t op, const wl_tensor_t* a, const wl_ten
 }
 
 static bool wl__validate_shape_broadcastable(wl_op_t op, const wl_tensor_t* a, const wl_tensor_t* b) { /* Check if tensor shapes are broadcast-able. (b into a) */
-    if (wl_likely(wl_tensor_can_broadcast(b, a))) return true;
+    if (wl__likely(wl_tensor_can_broadcast(b, a))) return true;
     wl__validate_print_separator();
     fprintf(stderr,
         "Failed to execute operation: %s.\n"
@@ -1334,9 +1331,9 @@ static bool wl__validate_shape_broadcastable(wl_op_t op, const wl_tensor_t* a, c
 }
 
 #define wl__validate_expr_gen(expr, message, ...) \
-    if (wl_unlikely(!(expr))) { \
+    if (wl__unlikely(!(expr))) { \
         if (1) { \
-           wl_log_error(message, ## __VA_ARGS__); \
+           wl__log_error(message, ## __VA_ARGS__); \
         } \
         return false; \
     }
@@ -1348,16 +1345,16 @@ static bool wl__validate_op_nop(wl_op_t op, wl_tensor_t* result, wl_tensor_t** i
 
 static bool wl__validate_op_unary(wl_op_t op, wl_tensor_t* result, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     (void)params;
-    if (wl_unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
-    if (wl_unlikely(!wl__validate_shape_eq(op, result, inputs[0]))) return false;
+    if (wl__unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
+    if (wl__unlikely(!wl__validate_shape_eq(op, result, inputs[0]))) return false;
     return true;
 }
 
 static bool wl__validate_op_binary(wl_op_t op, wl_tensor_t* result, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     (void)params;
-    if (wl_unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
-    if (wl_unlikely(!wl__validate_shape_eq(op, result, inputs[0]))) return false;
-    if (wl_unlikely(!wl__validate_shape_broadcastable(op, inputs[0], inputs[1]))) return false;
+    if (wl__unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
+    if (wl__unlikely(!wl__validate_shape_eq(op, result, inputs[0]))) return false;
+    if (wl__unlikely(!wl__validate_shape_broadcastable(op, inputs[0], inputs[1]))) return false;
     wl__validate_expr_gen(result->strides[0] == wl_dtype_info_of(result->dtype)->size, "Result must be contiguous.");
     wl__validate_expr_gen(inputs[0]->strides[0] == wl_dtype_info_of(result->dtype)->size, "First tensor must be contiguous.");
     return true;
@@ -1365,13 +1362,13 @@ static bool wl__validate_op_binary(wl_op_t op, wl_tensor_t* result, wl_tensor_t*
 
 static bool wl__validate_op_transpose(wl_op_t op, wl_tensor_t* result, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     (void)params;
-    if (wl_unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
+    if (wl__unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
     return true;
 }
 
 static bool wl__validate_op_scalar(wl_op_t op, wl_tensor_t* result, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     (void)params;
-    if (wl_unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
+    if (wl__unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
     wl__validate_expr_gen(inputs[0]->strides[0] == sizeof(float), "Mean");
     wl__validate_expr_gen(result->shape[0] == 1, "Mean");
     wl__validate_expr_gen(result->shape[1] == inputs[0]->shape[1], "Mean");
@@ -1381,7 +1378,7 @@ static bool wl__validate_op_scalar(wl_op_t op, wl_tensor_t* result, wl_tensor_t*
 }
 
 static bool wl__validate_op_matmul(wl_op_t op, wl_tensor_t* result, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
-    if (wl_unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
+    if (wl__unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
     wl__validate_expr_gen(inputs[0]->shape[1] == inputs[1]->shape[0], "Input tensor shapes must be compatible for matrix multiplication.");
     wl__validate_expr_gen(wl_tensor_is_contiguous(inputs[0]), "First tensor must be contiguous.");
     wl__validate_expr_gen(wl_tensor_is_contiguous(inputs[1]), "Second tensor must be contiguous.");
@@ -1454,8 +1451,8 @@ static wl_tensor_t* wl__result_constructor_routine_scalar(wl_tensor_t** inputs, 
 
 static wl_tensor_t* wl__result_constructor_routine_transposed(wl_tensor_t** inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     wl_tensor_t* transposed = wl__result_constructor_routine_view(inputs, params);
-    wl_swap(int64_t, transposed->shape[0], transposed->shape[1]);
-    wl_swap(int64_t, transposed->strides[0], transposed->strides[1]);
+    wl__swap(int64_t, transposed->shape[0], transposed->shape[1]);
+    wl__swap(int64_t, transposed->strides[0], transposed->strides[1]);
     return transposed;
 }
 
@@ -1519,17 +1516,17 @@ static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op))(wl_tens
 
 #undef wl__validate_inputs
 
-static WL_AINLINE int64_t wl__tensor_data_size(const wl_tensor_t* t) { return t->num_elems*wl_dtype_info_of(t->dtype)->size; }
+static WL__AINLINE int64_t wl__tensor_data_size(const wl_tensor_t* t) { return t->num_elems*wl_dtype_info_of(t->dtype)->size; }
 int64_t wl_tensor_data_size(const wl_tensor_t* t) { return wl__tensor_data_size(t); }
-static WL_AINLINE int64_t wl__tensor_num_elements(const wl_tensor_t* t) { return t->num_elems; }
+static WL__AINLINE int64_t wl__tensor_num_elements(const wl_tensor_t* t) { return t->num_elems; }
 int64_t wl_tensor_num_elements(const wl_tensor_t* t) { return t->num_elems; }
-static WL_AINLINE int64_t wl__tensor_num_rows(const wl_tensor_t* t) {
+static WL__AINLINE int64_t wl__tensor_num_rows(const wl_tensor_t* t) {
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, d, shape);
     return d1*d2*d3*d4*d5;
 }
 int64_t wl_tensor_num_rows(const wl_tensor_t* t) { return wl__tensor_num_rows(t); }
-static WL_AINLINE int64_t wl__tensor_num_cols(const wl_tensor_t* t) { return *t->shape; }
+static WL__AINLINE int64_t wl__tensor_num_cols(const wl_tensor_t* t) { return *t->shape; }
 int64_t wl_tensor_num_cols(const wl_tensor_t* t) { return *t->shape; }
 
 static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int64_t* dims, int64_t rank, wl_tensor_t* view, size_t view_offs) {
@@ -1552,7 +1549,7 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
         .rank = rank,
         .dtype = type,
         .num_elems = elems_total,
-        .flags = view ? WL_TFLAG_VIEW : WL_TFLAG_NONE,
+        .flags = view ? WL__TFLAG_VIEW : WL__TFLAG_NONE,
         .view = view,
         .view_offs = view_offs,
     };
@@ -1608,12 +1605,12 @@ static void wl__blas_compute_info_sequential(wl_ctx_t* ctx, wl__blas_compute_inf
 static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_t* bci, uint32_t n_threads) {
     *bci = (wl__blas_compute_info_t){
         .ctx = ctx,
-        .n_threads = wl_max(1, n_threads),
+        .n_threads = wl__max(1, n_threads),
         .thread_idx = 0
     };
 }
 
-static void WL_AINLINE wl__op_execute(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
+static void WL__AINLINE wl__op_execute(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
     void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
     (*(*(dispatch_lut+op)))(bci, R, inputs); /* Dispatch to operation. */
 }
@@ -1623,9 +1620,9 @@ wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs,
     wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op);
     bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op);
     wl_tensor_t* R = (*construct_result)(inputs, params);
-    if (wl_unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;
-    R->flags |= WL_TFLAG_OP_OUTPUT;
-    for (uint32_t i=0; i < n_inputs; ++i) inputs[i]->flags |= WL_TFLAG_OP_INPUT;
+    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;
+    R->flags |= WL__TFLAG_OP_OUTPUT;
+    for (uint32_t i=0; i < n_inputs; ++i) inputs[i]->flags |= WL__TFLAG_OP_INPUT;
     wl__assert2(R->op == WL_OP_NOP);
     R->op = op; /* Set operation for deferred execution mode. */
     memcpy(R->op_inputs, inputs, n_inputs*sizeof(*inputs)); /* Copy input tensors */
@@ -1736,7 +1733,7 @@ void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
                         wl__bnd_chk(p_x, buf, wl__tensor_data_size(t));
                         char fmt_buf[128];
                         memset(fmt_buf, 0, sizeof(fmt_buf));
-                        *wl__fmt_f64(WL_FMT_G14, (double)*p_x, fmt_buf) = '\0';
+                        *wl__fmt_f64(WL__FMT_G14, (double)*p_x, fmt_buf) = '\0';
                         fprintf(f, "%s ", fmt_buf);
                     }
                     if (x_d0 > 1) fprintf(f, "]\n");
@@ -1837,7 +1834,7 @@ bool wl_tensor_is_permuted(const wl_tensor_t* t) {
     return false;
 }
 
-static WL_AINLINE void wl_tensor_virtual_to_physical_index(const wl_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[WL_MAX_DIMS]) {
+static WL__AINLINE void wl_tensor_virtual_to_physical_index(const wl_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[WL_MAX_DIMS]) {
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, d, shape);
     (*p_idx)[5] = v_idx / (d4*d3*d2*d1*d0);
@@ -1848,7 +1845,7 @@ static WL_AINLINE void wl_tensor_virtual_to_physical_index(const wl_tensor_t* t,
     (*p_idx)[0] =  v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0 - (*p_idx)[1]*d0;
 }
 
-static WL_AINLINE int64_t wl_tensor_physical_to_virtual_index(const wl_tensor_t* t, const int64_t (*p_idx)[WL_MAX_DIMS]) {
+static WL__AINLINE int64_t wl_tensor_physical_to_virtual_index(const wl_tensor_t* t, const int64_t (*p_idx)[WL_MAX_DIMS]) {
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, s, strides);
     return (*p_idx)[0]*s0 + (*p_idx)[1]*s1 + (*p_idx)[2]*s2 + (*p_idx)[3]*s3 + (*p_idx)[4]*s4 + (*p_idx)[5]*s5;
@@ -1961,7 +1958,7 @@ void wl_tensor_img_draw_box(wl_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x
     float r = (float)(rgb&255) / 255.0f;
     float g = (float)((rgb>>8)&255) / 255.0f;
     float b = (float)((rgb>>16)&255) / 255.0f;
-    wi = wl_max(1, wi);
+    wi = wl__max(1, wi);
     for (uint32_t i = 0; i < wi; ++i) {
         uint32_t xx1 = x1+i;
         uint32_t yy1 = y1+i;
@@ -2147,7 +2144,7 @@ void wl_tensor_set_user_data(wl_tensor_t* t, void* ud) { t->ud = ud; }
     }
 #endif
 
-static void WL_HOTPROC wl__vadd_f32(
+static void WL__HOTPROC wl__vadd_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -2158,7 +2155,7 @@ static void WL_HOTPROC wl__vadd_f32(
     }
 }
 
-static void WL_HOTPROC wl__vsub_f32(
+static void WL__HOTPROC wl__vsub_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -2169,7 +2166,7 @@ static void WL_HOTPROC wl__vsub_f32(
     }
 }
 
-static void WL_HOTPROC wl__vmul_f32(
+static void WL__HOTPROC wl__vmul_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -2180,7 +2177,7 @@ static void WL_HOTPROC wl__vmul_f32(
     }
 }
 
-static void WL_HOTPROC wl__vdiv_f32(
+static void WL__HOTPROC wl__vdiv_f32(
     const int64_t n,
     float* const o,
     const float* const x,
@@ -2191,7 +2188,7 @@ static void WL_HOTPROC wl__vdiv_f32(
     }
 }
 
-static float WL_UNUSED WL_HOTPROC wl__vdot_f32(
+static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
     const int64_t n,
     const float* const x,
     const float* const y
@@ -2318,7 +2315,7 @@ static float WL_UNUSED WL_HOTPROC wl__vdot_f32(
     #endif
 }
 
-static float WL_HOTPROC wl__vsum_f32( /* Σx. */
+static float WL__HOTPROC wl__vsum_f32( /* Σx. */
     const int64_t n,
     const float* const x
 ) {
@@ -2328,7 +2325,7 @@ static float WL_HOTPROC wl__vsum_f32( /* Σx. */
     return (float)sum;
 }
 
-static void WL_HOTPROC wl__vstep_f32( /* Heaviside step function. */
+static void WL__HOTPROC wl__vstep_f32( /* Heaviside step function. */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2337,7 +2334,7 @@ static void WL_HOTPROC wl__vstep_f32( /* Heaviside step function. */
         o[i] = x[i] >= 0.0f ? 1.0f : 0.0f;
 }
 
-static void WL_HOTPROC wl__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^x */
+static void WL__HOTPROC wl__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^x */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2363,7 +2360,7 @@ static void WL_HOTPROC wl__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^x
     for (; i < n; ++i) o[i] = expf(x[i]); /* Process leftovers scalar-wise */
 }
 
-static void WL_HOTPROC wl__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (0, ∞), x |-> e^x */
+static void WL__HOTPROC wl__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (0, ∞), x |-> e^x */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2371,7 +2368,7 @@ static void WL_HOTPROC wl__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (0, �
     return wl__vsoftmax_f32(n, o, x);
 }
 
-static void WL_HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
+static void WL__HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2421,7 +2418,7 @@ static void WL_HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(
     for (; i < n; ++i) o[i] = 1.0f / (1.0f + expf(-x[i])); /* Process leftovers scalar-wise */
 }
 
-static void WL_HOTPROC wl__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> x * (1-x) */
+static void WL__HOTPROC wl__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> x * (1-x) */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2431,7 +2428,7 @@ static void WL_HOTPROC wl__vsigmoid_dv_f32( /* σ' : ℝ -> (0, 1), x |-> x * (1
     }
 }
 
-static void WL_HOTPROC wl__vhard_sigmoid_f32( /* σ^ : ℝ -> (0, 1), x |-> min(1, max(0, (x + 3)/6)) */
+static void WL__HOTPROC wl__vhard_sigmoid_f32( /* σ^ : ℝ -> (0, 1), x |-> min(1, max(0, (x + 3)/6)) */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2441,7 +2438,7 @@ static void WL_HOTPROC wl__vhard_sigmoid_f32( /* σ^ : ℝ -> (0, 1), x |-> min(
     }
 }
 
-static void WL_HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)) */
+static void WL__HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)) */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2493,7 +2490,7 @@ static void WL_HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x))
     }
 }
 
-static void WL_HOTPROC wl__vsilu_dv_f32( /* silu' : ℝ -> TODO */
+static void WL__HOTPROC wl__vsilu_dv_f32( /* silu' : ℝ -> TODO */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2503,7 +2500,7 @@ static void WL_HOTPROC wl__vsilu_dv_f32( /* silu' : ℝ -> TODO */
     }
 }
 
-static void WL_HOTPROC wl__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x */
+static void WL__HOTPROC wl__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2531,7 +2528,7 @@ static void WL_HOTPROC wl__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x */
     }
 }
 
-static void WL_HOTPROC wl__vtanh_dv_f32( /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+static void WL__HOTPROC wl__vtanh_dv_f32( /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2542,17 +2539,17 @@ static void WL_HOTPROC wl__vtanh_dv_f32( /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((
     }
 }
 
-static void WL_HOTPROC wl__vrelu_f32( /* relu : ℝ -> ℝ^+, x |-> max {x, 0} */
+static void WL__HOTPROC wl__vrelu_f32( /* relu : ℝ -> ℝ^+, x |-> max {x, 0} */
     const int64_t n,
     float* const o,
     const float* const x
 ) {
     for (int64_t i=0; i < n; ++i) {
-        o[i] = wl_max(x[i], 0.0f);
+        o[i] = wl__max(x[i], 0.0f);
     }
 }
 
-static void WL_HOTPROC wl__vrelu_dv_f32( /* relu' : ℝ -> ℝ^+, x |-> { 0 if x < 0, UB if x = 0, else 1 */
+static void WL__HOTPROC wl__vrelu_dv_f32( /* relu' : ℝ -> ℝ^+, x |-> { 0 if x < 0, UB if x = 0, else 1 */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2562,7 +2559,7 @@ static void WL_HOTPROC wl__vrelu_dv_f32( /* relu' : ℝ -> ℝ^+, x |-> { 0 if x
     }
 }
 
-static void WL_HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
+static void WL__HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2622,7 +2619,7 @@ static void WL_HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
     }
 }
 
-static void WL_HOTPROC wl__vgelu_dv_f32( /* gelu' : ℝ -> ℝ, x |-> TODO */
+static void WL__HOTPROC wl__vgelu_dv_f32( /* gelu' : ℝ -> ℝ, x |-> TODO */
     const int64_t n,
     float* const o,
     const float* const x
@@ -2654,7 +2651,7 @@ static void wl__blas_clone(
     memcpy(b_r, b_x, wl__tensor_data_size(r));
 }
 
-static void WL_HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
+static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2684,7 +2681,7 @@ static void WL_HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
     }
 }
 
-static void WL_HOTPROC wl__blas_step_f32(
+static void WL__HOTPROC wl__blas_step_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2706,7 +2703,7 @@ static void WL_HOTPROC wl__blas_step_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_softmax_f32(
+static void WL__HOTPROC wl__blas_softmax_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2728,7 +2725,7 @@ static void WL_HOTPROC wl__blas_softmax_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_softmax_dv_f32(
+static void WL__HOTPROC wl__blas_softmax_dv_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2750,7 +2747,7 @@ static void WL_HOTPROC wl__blas_softmax_dv_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_sigmoid_f32(
+static void WL__HOTPROC wl__blas_sigmoid_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2772,7 +2769,7 @@ static void WL_HOTPROC wl__blas_sigmoid_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_sigmoid_dv_f32(
+static void WL__HOTPROC wl__blas_sigmoid_dv_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2794,7 +2791,7 @@ static void WL_HOTPROC wl__blas_sigmoid_dv_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_hard_sigmoid_f32(
+static void WL__HOTPROC wl__blas_hard_sigmoid_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2816,7 +2813,7 @@ static void WL_HOTPROC wl__blas_hard_sigmoid_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_silu_f32(
+static void WL__HOTPROC wl__blas_silu_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2838,7 +2835,7 @@ static void WL_HOTPROC wl__blas_silu_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_silu_dv_f32(
+static void WL__HOTPROC wl__blas_silu_dv_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2860,7 +2857,7 @@ static void WL_HOTPROC wl__blas_silu_dv_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_tanh_f32(
+static void WL__HOTPROC wl__blas_tanh_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2882,7 +2879,7 @@ static void WL_HOTPROC wl__blas_tanh_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_tanh_dv_f32(
+static void WL__HOTPROC wl__blas_tanh_dv_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2904,7 +2901,7 @@ static void WL_HOTPROC wl__blas_tanh_dv_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_relu_f32(
+static void WL__HOTPROC wl__blas_relu_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2926,7 +2923,7 @@ static void WL_HOTPROC wl__blas_relu_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_relu_dv_f32(
+static void WL__HOTPROC wl__blas_relu_dv_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2948,7 +2945,7 @@ static void WL_HOTPROC wl__blas_relu_dv_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_gelu_f32(
+static void WL__HOTPROC wl__blas_gelu_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2970,7 +2967,7 @@ static void WL_HOTPROC wl__blas_gelu_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_gelu_dv_f32(
+static void WL__HOTPROC wl__blas_gelu_dv_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -2992,7 +2989,7 @@ static void WL_HOTPROC wl__blas_gelu_dv_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_add_f32(
+static void WL__HOTPROC wl__blas_add_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -3092,7 +3089,7 @@ static void WL_HOTPROC wl__blas_add_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_sub_f32(
+static void WL__HOTPROC wl__blas_sub_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -3192,7 +3189,7 @@ static void WL_HOTPROC wl__blas_sub_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_mul_f32(
+static void WL__HOTPROC wl__blas_mul_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -3292,7 +3289,7 @@ static void WL_HOTPROC wl__blas_mul_f32(
     }
 }
 
-static void WL_HOTPROC wl__blas_div_f32(
+static void WL__HOTPROC wl__blas_div_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -3393,7 +3390,7 @@ static void WL_HOTPROC wl__blas_div_f32(
 }
 
 #if 0 /* Naive matrix multiplication, but no broadcasting support. */
-static void WL_HOTPROC wl__blas_matmul_f32(
+static void WL__HOTPROC wl__blas_matmul_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -3435,7 +3432,7 @@ static void WL_HOTPROC wl__blas_matmul_f32(
 ** Matrix multiplication.
 ** R = A x B
 */
-static void WL_HOTPROC wl__blas_matmul_f32(
+static void WL__HOTPROC wl__blas_matmul_f32(
     const wl__blas_compute_info_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
@@ -3517,12 +3514,12 @@ static void wl__blas_compute_dispatch_table_install(wl_ctx_t* const ctx) {
 }
 
 static void wl__tensor_graph_visit_node(wl_tensor_t* node, void (*visitor)(wl_tensor_t*, void*), bool forward, void* ud) {
-    if (wl_unlikely(!node)) return;
+    if (wl__unlikely(!node)) return;
     wl_tensor_t** parent_nodes = node->op_inputs;
     uint32_t n = wl_op_get_argcount(node->op);
     for (uint32_t i=0; i < n; ++i) {
         uint32_t j = forward ? i : n-i-1; /* Left-to-right or right-to-left */
-        if (wl_likely(parent_nodes[j])) {
+        if (wl__likely(parent_nodes[j])) {
             wl__tensor_graph_visit_node(parent_nodes[j], visitor, forward, ud);
         }
     }
@@ -3542,16 +3539,16 @@ struct wl_compute_graph_t {
     char name[WL_MAX_TENSOR_NAME_LEN];
 };
 
-static void WL_HOTPROC wl__compute_graph_accumulate_visitor(wl_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
+static void WL__HOTPROC wl__compute_graph_accumulate_visitor(wl_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
     ++*(size_t*)ud;
 }
 
-static void WL_HOTPROC wl__compute_graph_coalescence_nodes_visitor(wl_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
-    wl__assert(!(node->flags & WL_TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode.");
+static void WL__HOTPROC wl__compute_graph_coalescence_nodes_visitor(wl_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
+    wl__assert(!(node->flags & WL__TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode.");
     wl_compute_graph_t* gra = (wl_compute_graph_t*)ud;
     size_t hz = wl__hashset_insert(&gra->visited_hs, node);
     wl__assert2(hz != WL__HASHSET_FULL);
-    if (wl_unlikely(hz == WL__HASHSET_DUPLICATE)) return; /* Already visited */
+    if (wl__unlikely(hz == WL__HASHSET_DUPLICATE)) return; /* Already visited */
     if (node->op == WL_OP_NOP) { /* Leaf node (constant, out of gradient flow) */
         gra->leaf_nodes[gra->num_leaf_nodes++] = node;
         for (uint32_t i=0; i < WL_MAX_INPUT_TENSORS; ++i) { /* All inputs must be NULL for NOP node. */
@@ -3566,7 +3563,7 @@ static void WL_HOTPROC wl__compute_graph_coalescence_nodes_visitor(wl_tensor_t* 
 }
 
 wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, wl_graph_eval_order_t order, const char* name) {
-    wl__assert(root->ctx == ctx && !(root->flags & WL_TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode, to be used with static graphs.");
+    wl__assert(root->ctx == ctx && !(root->flags & WL__TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode, to be used with static graphs.");
     size_t total_nodes = 0;
     wl__tensor_graph_visit_node(root, &wl__compute_graph_accumulate_visitor, order == WL_GRAPH_EVAL_ORDER_FORWARD, &total_nodes);
     wl__assert2(total_nodes > 0);
@@ -3595,7 +3592,7 @@ wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, w
     return gra;
 }
 
-wl_tensor_t* WL_HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
+wl_tensor_t* WL__HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
     wl__assert2(gra->num_internal_nodes <= INT64_MAX);
     wl_tensor_t** nodes = gra->internal_nodes;
     size_t n = gra->num_internal_nodes;
@@ -3618,10 +3615,10 @@ bool wl_compute_graph_contains(const wl_compute_graph_t* gra, const wl_tensor_t*
     return false;
 }
 
-void WL_COLDPROC wl_compute_graph_dump_to_dot(const wl_compute_graph_t* gra, const char* file_name) {
+void WL__COLDPROC wl_compute_graph_dump_to_dot(const wl_compute_graph_t* gra, const char* file_name) {
     FILE* f = wl__fopen(file_name, "wt");
-    if (wl_unlikely(!f)) {
-        wl_log_error("Failed to open file for writing: %s", file_name);
+    if (wl__unlikely(!f)) {
+        wl__log_error("Failed to open file for writing: %s", file_name);
         return;
     }
     fprintf(f, "digraph G {\n");
@@ -3666,10 +3663,10 @@ void WL_COLDPROC wl_compute_graph_dump_to_dot(const wl_compute_graph_t* gra, con
                 switch (node->dtype) {
                     case WL_DTYPE_F32: {
                         char fmt_buf[128];
-                        *wl__fmt_f64(WL_FMT_G14, (double)wl_tensor_get_scalar_virtual_index(node, (int64_t)j), fmt_buf) = '\0';
+                        *wl__fmt_f64(WL__FMT_G14, (double)wl_tensor_get_scalar_virtual_index(node, (int64_t)j), fmt_buf) = '\0';
                         fprintf(f, "%s", fmt_buf);
                     } break;
-                    default: wl_log_error("Invalid DType for format"); continue;
+                    default: wl__log_error("Invalid DType for format"); continue;
                 }
                 if (j < n-1) fprintf(f, ", ");
             }
@@ -3710,7 +3707,7 @@ void WL_COLDPROC wl_compute_graph_dump_to_dot(const wl_compute_graph_t* gra, con
         }
     }
     fprintf(f, "}\n");
-    wl_log_info("dot -Tpng %s -o %s.png && open %s.png\n", file_name, file_name, file_name);
+    wl__log_info("dot -Tpng %s -o %s.png && open %s.png\n", file_name, file_name, file_name);
     fclose(f);
 }
 
@@ -3744,9 +3741,9 @@ size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return
         *o_len = 0;
         int name[2] = {mib0, mib1};
         size_t len = 0;
-        if (wl_unlikely(sysctl(name, sizeof(name) / sizeof(*name), NULL, &len, NULL, 0))) return false; /* Get length */
-        if (wl_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
-        if (wl_unlikely(sysctl(name, sizeof(name) / sizeof(*name), *out, &len, NULL, 0))) return false; /* Get data */
+        if (wl__unlikely(sysctl(name, sizeof(name) / sizeof(*name), NULL, &len, NULL, 0))) return false; /* Get length */
+        if (wl__unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
+        if (wl__unlikely(sysctl(name, sizeof(name) / sizeof(*name), *out, &len, NULL, 0))) return false; /* Get data */
         *o_len = len;
         return true;
     }
@@ -3754,9 +3751,9 @@ size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return
         memset(out, 0, sizeof(*out));
         *o_len = 0;
         size_t len = 0;
-        if (wl_unlikely(sysctlbyname(key, NULL, &len, NULL, 0))) return false; /* Get length */
-        if (wl_unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
-        if (wl_unlikely(sysctlbyname(key, *out, &len, NULL, 0))) return false; /* Get data */
+        if (wl__unlikely(sysctlbyname(key, NULL, &len, NULL, 0))) return false; /* Get length */
+        if (wl__unlikely(len >= sizeof(*out))) return false; /* Buffer too small */
+        if (wl__unlikely(sysctlbyname(key, *out, &len, NULL, 0))) return false; /* Get data */
         *o_len = len;
         return true;
     }
@@ -3771,7 +3768,7 @@ size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return
 #else
     static bool wl__cpuinfo_parse_value(const char* key, char (*out)[128]) {
         FILE* cpuinfo = wl__fopen("/proc/cpuinfo", "rt");
-        if (wl_unlikely(!cpuinfo)) return false;
+        if (wl__unlikely(!cpuinfo)) return false;
         size_t key_len = strlen(key);
         char line[128];
         while (fgets(line, sizeof(line), cpuinfo)) {
@@ -3786,7 +3783,7 @@ size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return
                 for (; end > value && isspace((unsigned char)*(end-1)); --end);
                 *end = '\0';
                 size_t value_len = llabs(end-value);
-                if (wl_unlikely(!value_len || value_len >= sizeof(*out))) {
+                if (wl__unlikely(!value_len || value_len >= sizeof(*out))) {
                     fclose(cpuinfo);
                     return false;
                 }
@@ -3800,13 +3797,13 @@ size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return
     }
     static uint64_t wl__parse_meminfo_value(const char* line) {
         const char *p = strchr(line, ':');
-        if (wl_unlikely(!p)) return 0;
+        if (wl__unlikely(!p)) return 0;
         ++p;
         p += strspn(p, " \t");
         errno = 0;
         char* end;
         uint64_t value = strtoull(p, &end, 10);
-        if (wl_unlikely(errno != 0 || p == end)) return 0;
+        if (wl__unlikely(errno != 0 || p == end)) return 0;
         return value<<10;
     }
 #endif
@@ -3817,7 +3814,7 @@ static void wl_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get
     #elif defined(__APPLE__)
         size_t len;
         uint8_t tmp[256];
-        if (wl_likely(wl__sysctl_mib01(&tmp, &len, CTL_KERN, KERN_VERSION) && len && *tmp))
+        if (wl__likely(wl__sysctl_mib01(&tmp, &len, CTL_KERN, KERN_VERSION) && len && *tmp))
             snprintf(*out_os_name, sizeof(*out_os_name), "%s", (const char*)tmp);
     #else
         // TODO: Linux
@@ -3830,11 +3827,11 @@ static void wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* G
     #elif defined(__APPLE__)
         size_t len;
         uint8_t tmp[256];
-        if (wl_likely(wl__sysctl_key(&tmp, &len, "machdep.cpu.brand_string") && len && *tmp))
+        if (wl__likely(wl__sysctl_key(&tmp, &len, "machdep.cpu.brand_string") && len && *tmp))
             snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", (const char*)tmp);
     #else
         char cpu_name[128];
-        if (wl_likely(wl__cpuinfo_parse_value("model name", &cpu_name) && *cpu_name))
+        if (wl__likely(wl__cpuinfo_parse_value("model name", &cpu_name) && *cpu_name))
             snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", cpu_name);
     #endif
 }
@@ -3845,20 +3842,20 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
     #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
-        if (wl_likely(wl__sysctl_key(&tmp, &len, "machdep.cpu.thread_count") && len))
+        if (wl__likely(wl__sysctl_key(&tmp, &len, "machdep.cpu.thread_count") && len))
             *out_virtual = wl__sysctl_unpack_int(&tmp, len);
-        if (wl_likely(wl__sysctl_key(&tmp, &len, "machdep.cpu.core_count") && len))
+        if (wl__likely(wl__sysctl_key(&tmp, &len, "machdep.cpu.core_count") && len))
             *out_physical = wl__sysctl_unpack_int(&tmp, len);
-        if (wl_likely(wl__sysctl_key(&tmp, &len, "hw.packages") && len))
+        if (wl__likely(wl__sysctl_key(&tmp, &len, "hw.packages") && len))
             *out_sockets = wl__sysctl_unpack_int(&tmp, len);
     #else
         long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
         *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
         FILE* cpuinfo = wl__fopen("/proc/cpuinfo", "r");
-        if (wl_unlikely(!cpuinfo)) return;
-        uint32_t physical_ids[WL_MAX_CPUS];
-        uint32_t core_ids[WL_MAX_CPUS];
-        uint32_t package_ids[WL_MAX_CPUS];
+        if (wl__unlikely(!cpuinfo)) return;
+        uint32_t physical_ids[WL__MAX_CPUS];
+        uint32_t core_ids[WL__MAX_CPUS];
+        uint32_t package_ids[WL__MAX_CPUS];
         uint32_t cpu_count = 0;
         uint32_t package_count = 0;
         uint32_t current_physical_id = 0;
@@ -3886,7 +3883,7 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
                     bool is_unique = true;
                     for (int32_t i = 0; i < cpu_count; ++i) if (physical_ids[i] == current_physical_id && core_ids[i] == current_core_id) { is_unique = false; break; }
                     if (is_unique) {
-                        if (cpu_count < WL_MAX_CPUS) {
+                        if (cpu_count < WL__MAX_CPUS) {
                             physical_ids[cpu_count] = current_physical_id;
                             core_ids[cpu_count] = current_core_id;
                             ++cpu_count;
@@ -3895,7 +3892,7 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
                     is_unique = true;
                     for (int32_t i = 0; i < package_count; ++i) if (package_ids[i] == current_physical_id) { is_unique = false; break; }
                     if (is_unique) {
-                        if (package_count < WL_MAX_CPUS) package_ids[package_count++] = current_physical_id;
+                        if (package_count < WL__MAX_CPUS) package_ids[package_count++] = current_physical_id;
                         else break;
                     }
                 }
@@ -3915,15 +3912,15 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
     #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
-        if (wl_likely(wl__sysctl_mib01(&tmp, &len, CTL_HW, HW_MEMSIZE) && len))
+        if (wl__likely(wl__sysctl_mib01(&tmp, &len, CTL_HW, HW_MEMSIZE) && len))
             *out_phys_mem_total = wl__sysctl_unpack_int(&tmp, len);
         struct vm_statistics64 stats;
         natural_t count = HOST_VM_INFO64_COUNT;
-        if (wl_likely(host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)(&stats), &count) == KERN_SUCCESS))
+        if (wl__likely(host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)(&stats), &count) == KERN_SUCCESS))
             *out_phys_mem_free = stats.free_count * getpagesize();
     #else
         FILE* meminfo = wl__fopen("/proc/meminfo", "r");
-        if (wl_unlikely(!meminfo)) return;
+        if (wl__unlikely(!meminfo)) return;
         char line[256];
         while (fgets(line, sizeof(line), meminfo)) {
             if (strncmp(line, "MemTotal:", sizeof("MemTotal:")-1) == 0)
@@ -3936,7 +3933,7 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
 }
 
 #if defined(__x86_64__) || defined(_M_X64)
-    static uint64_t WL_AINLINE wl__xgetbv(void) { /* Query extended control register value. */
+    static uint64_t WL__AINLINE wl__xgetbv(void) { /* Query extended control register value. */
         #ifdef _MSC_VER
             return _xgetbv(0);
         #else
@@ -4021,23 +4018,23 @@ static void wl__system_host_info_query(wl_ctx_t* ctx) {
     #if defined(__x86_64__) || defined(_M_X64)
         wl__system_info_query_x86_64_cpu_features(&ctx->sys.x86_64_cpu_features);
     #endif
-    if (wl_unlikely(!*ctx->sys.os_name)) snprintf(ctx->sys.os_name, sizeof(ctx->sys.os_name), "Unknown");
-    if (wl_unlikely(!*ctx->sys.cpu_name)) snprintf(ctx->sys.cpu_name, sizeof(ctx->sys.cpu_name), "Unknown");
+    if (wl__unlikely(!*ctx->sys.os_name)) snprintf(ctx->sys.os_name, sizeof(ctx->sys.os_name), "Unknown");
+    if (wl__unlikely(!*ctx->sys.cpu_name)) snprintf(ctx->sys.cpu_name, sizeof(ctx->sys.cpu_name), "Unknown");
 }
 
-static WL_AINLINE void wl__sto_write_u32_le(uint8_t** p, uint32_t x) {
+static WL__AINLINE void wl__sto_write_u32_le(uint8_t** p, uint32_t x) {
     x = wl__bswap32(x);
     memcpy(*p, &x, sizeof(x));
     *p += sizeof(x);
 }
 
-static WL_AINLINE void wl__sto_write_u64_le(uint8_t** p, uint64_t x) {
+static WL__AINLINE void wl__sto_write_u64_le(uint8_t** p, uint64_t x) {
     x = wl__bswap64(x);
     memcpy(*p, &x, sizeof(x));
     *p += sizeof(x);
 }
 
-static WL_AINLINE uint32_t wl__sto_read_u32_le(const uint8_t** p) {
+static WL__AINLINE uint32_t wl__sto_read_u32_le(const uint8_t** p) {
     uint32_t x;
     memcpy(&x, *p, sizeof(x));
     x = wl__bswap32(x);
@@ -4045,7 +4042,7 @@ static WL_AINLINE uint32_t wl__sto_read_u32_le(const uint8_t** p) {
     return x;
 }
 
-static WL_AINLINE uint64_t wl__sto_read_u64_le(const uint8_t** p) {
+static WL__AINLINE uint64_t wl__sto_read_u64_le(const uint8_t** p) {
     uint64_t x;
     memcpy(&x, *p, sizeof(x));
     x = wl__bswap64(x);
@@ -4060,7 +4057,7 @@ wl_static_assert(sizeof(WL__STO_MAGIC)-1 == sizeof(uint64_t));
 wl_static_assert(WL_MAX_TENSOR_NAME_LEN % 8 == 0);
 wl_static_assert(WL_DTYPE_COUNT_ <= 0xff);
 wl_static_assert(WL_MAX_DIMS <= 0xff);
-#define wl__sto_sanitize(exp, ret) do { if (wl_unlikely(!(exp))) { wl_log_error("WAVELET storage sanitize error: " #exp); return (ret); } } while (0)
+#define wl__sto_sanitize(exp, ret) do { if (wl__unlikely(!(exp))) { wl__log_error("WAVELET storage sanitize error: " #exp); return (ret); } } while (0)
 
 static bool wl__sto_write_file_header( /* Write file header -  file header must be same in every version. */
     uint8_t** p,
@@ -4077,7 +4074,7 @@ static bool wl__sto_write_file_header( /* Write file header -  file header must 
     wl__sto_write_u32_le(p, version);
     wl__sto_write_u32_le(p, num_tensors);
     wl__sto_write_u32_le(p, ud);
-    return wl_likely(*p - start == WL__STO_FILE_HEADER_SIZE);
+    return wl__likely(*p - start == WL__STO_FILE_HEADER_SIZE);
 }
 
 static bool wl__sto_read_file_header(  /* Read file header - file header must be same in every version. */
@@ -4094,7 +4091,7 @@ static bool wl__sto_read_file_header(  /* Read file header - file header must be
     *version = wl__sto_read_u32_le(p);
     *num_tensors = wl__sto_read_u32_le(p);
     *ud = wl__sto_read_u32_le(p);
-    return wl_likely(*p - start == WL__STO_FILE_HEADER_SIZE);
+    return wl__likely(*p - start == WL__STO_FILE_HEADER_SIZE);
 }
 
 static bool wl__sto_write_tensor_header(
@@ -4127,7 +4124,7 @@ static bool wl__sto_write_tensor_header(
         } break;
         default: return false;
     }
-    return wl_likely(*p - start == WL__STO_TENSOR_HEADER_SIZE);
+    return wl__likely(*p - start == WL__STO_TENSOR_HEADER_SIZE);
 }
 
 static bool wl__sto_read_tensor_header(
@@ -4165,7 +4162,7 @@ static bool wl__sto_read_tensor_header(
         } break;
         default: return false;
     }
-    return wl_likely(*p - start == WL__STO_TENSOR_HEADER_SIZE);
+    return wl__likely(*p - start == WL__STO_TENSOR_HEADER_SIZE);
 }
 
 static bool wl__sto_write_tensor_data(
@@ -4186,7 +4183,7 @@ static bool wl__sto_write_tensor_data(
         } break;
         default: return false;
     }
-    return wl_likely(*p - start == size);
+    return wl__likely(*p - start == size);
 }
 
 static bool wl__sto_read_tensor_data(
@@ -4207,13 +4204,13 @@ static bool wl__sto_read_tensor_data(
         } break;
         default: return false;
     }
-    return wl_likely(*p - start == size);
+    return wl__likely(*p - start == size);
 }
 
 static size_t wl__accumulate_data_size(wl_dtype_t dtype, const int64_t (*shape)[WL_MAX_DIMS]) {
     size_t size = wl_dtype_info_of(dtype)->size;
     #pragma GCC unroll 6
-    for (size_t i=0; i < WL_MAX_DIMS; ++i) size *= (size_t)wl_max(1, (*shape)[i]);
+    for (size_t i=0; i < WL_MAX_DIMS; ++i) size *= (size_t)wl__max(1, (*shape)[i]);
     return size;
 }
 
@@ -4228,16 +4225,16 @@ static size_t wl__sto_total_size(const wl_tensor_t** tensors, size_t n) {
 }
 
 static uint8_t* wl__sto_write_buffered(const wl_tensor_t** tensors, size_t n_tensors, size_t* out_size, uint32_t version) {
-    if (wl_unlikely(!tensors || !n_tensors || n_tensors > UINT32_MAX || !out_size || !version || version > WL_STORAGE_VERSION)) return NULL;  /* Check input */
+    if (wl__unlikely(!tensors || !n_tensors || n_tensors > UINT32_MAX || !out_size || !version || version > WL_STORAGE_VERSION)) return NULL;  /* Check input */
     *out_size = wl__sto_total_size(tensors, n_tensors);
     uint8_t* base = (uint8_t*)wl_alloc(NULL, *out_size );     /* Allocate buffer */
     uint8_t* needle = base;
     const uint8_t* end = base + *out_size ;
-    if (wl_unlikely(!wl__sto_write_file_header(&needle, end, version, (uint32_t)n_tensors, 0))) goto error;     /* Write file header */
+    if (wl__unlikely(!wl__sto_write_file_header(&needle, end, version, (uint32_t)n_tensors, 0))) goto error;     /* Write file header */
     for (size_t i=0; i < n_tensors; ++i) {   /* Write tensor headers */
         const wl_tensor_t* t = tensors[i];
         wl__assert2(t != NULL);
-        if (wl_unlikely(!wl__sto_write_tensor_header(
+        if (wl__unlikely(!wl__sto_write_tensor_header(
             &needle,
             end,
             version,
@@ -4251,7 +4248,7 @@ static uint8_t* wl__sto_write_buffered(const wl_tensor_t** tensors, size_t n_ten
     wl__assert2(needle - base == WL__STO_FILE_HEADER_SIZE + n_tensors*WL__STO_TENSOR_HEADER_SIZE);    /* Check written data size */
     for (size_t i=0; i < n_tensors; ++i) {  /* Write tensor data */
         const wl_tensor_t* t = tensors[i];
-        if (wl_unlikely(!wl__sto_write_tensor_data(&needle, end, version, t->dtype, t->buf, wl__tensor_data_size(t)))) goto error;     /* Write data */
+        if (wl__unlikely(!wl__sto_write_tensor_data(&needle, end, version, t->dtype, t->buf, wl__tensor_data_size(t)))) goto error;     /* Write data */
     }
     return base;
     error: /* Error handling */
@@ -4260,14 +4257,14 @@ static uint8_t* wl__sto_write_buffered(const wl_tensor_t** tensors, size_t n_ten
 }
 
 WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf, size_t size, size_t* out_n_tensors, uint32_t* out_version) { /* Load stored tensors from buffer. Function is exported for fuzzing test. */
-    if (wl_unlikely(!ctx || !buf || !out_n_tensors || !out_version || size <= WL__STO_FILE_HEADER_SIZE + WL__STO_TENSOR_HEADER_SIZE + 1)) return NULL;    /* Check input */
+    if (wl__unlikely(!ctx || !buf || !out_n_tensors || !out_version || size <= WL__STO_FILE_HEADER_SIZE + WL__STO_TENSOR_HEADER_SIZE + 1)) return NULL;    /* Check input */
     const uint8_t* needle = buf;
     const uint8_t* end = buf + size;
     uint32_t n_tensors;
     uint32_t ud;
-    if (wl_unlikely(!wl__sto_read_file_header(&needle, end, out_version, &n_tensors, &ud))) return NULL;   /* Read file header */
-    if (wl_unlikely(!*out_version || *out_version > WL_VERSION)) return NULL;
-    if (wl_unlikely(!n_tensors)) return NULL;
+    if (wl__unlikely(!wl__sto_read_file_header(&needle, end, out_version, &n_tensors, &ud))) return NULL;   /* Read file header */
+    if (wl__unlikely(!*out_version || *out_version > WL_VERSION)) return NULL;
+    if (wl__unlikely(!n_tensors)) return NULL;
     wl_tensor_t** tensors = (wl_tensor_t**)wl_alloc(NULL, n_tensors*sizeof(*tensors));   /* Allocate return tensor array */
     for (size_t i=0; i < n_tensors; ++i) {  /* Read tensor headers */
         char name[WL_MAX_TENSOR_NAME_LEN] = {0};
@@ -4275,17 +4272,17 @@ WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf,
         wl_dtype_t dtype = 0;
         int64_t rank = 0;
         int64_t shape[WL_MAX_DIMS] = {0};
-        if (wl_unlikely(!wl__sto_read_tensor_header(&needle, end, *out_version, &name, &flags, &dtype, &rank, &shape))) goto error;   /* Read tensor header */
+        if (wl__unlikely(!wl__sto_read_tensor_header(&needle, end, *out_version, &name, &flags, &dtype, &rank, &shape))) goto error;   /* Read tensor header */
         wl_tensor_t* t = wl__tensor_create(ctx, dtype, shape, rank, NULL, 0);   /* Create placeholder tensor */
         wl_tensor_fmt_name(t, "%s", name);
-        t->flags = flags | WL_TFLAG_FROM_FS;
+        t->flags = flags | WL__TFLAG_FROM_FS;
         tensors[i] = t;
     }
     for (size_t i=0; i < n_tensors; ++i) {  /* Read tensor data */
         wl_tensor_t* t = tensors[i];
         size_t data_size = wl__accumulate_data_size(t->dtype, &t->shape);
         wl__assert2(needle + data_size <= end && data_size == wl__tensor_data_size(t));
-        if (wl_unlikely(!wl__sto_read_tensor_data(&needle, end, *out_version, t->dtype, t->buf, data_size))) goto error;  /* Read data into tensor's buffer */
+        if (wl__unlikely(!wl__sto_read_tensor_data(&needle, end, *out_version, t->dtype, t->buf, data_size))) goto error;  /* Read data into tensor's buffer */
     }
     *out_n_tensors = n_tensors;
     return tensors;
@@ -4295,9 +4292,9 @@ WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf,
 }
 
 static bool wl__sto_has_wl_ext(const char* file) { /* Check if file path has WAVELET extension. */
-    if (wl_unlikely(!file || strlen(file) < sizeof(WL_STORAGE_EXT))) return false;
+    if (wl__unlikely(!file || strlen(file) < sizeof(WL__STORAGE_EXT))) return false;
     char* dot = strrchr(file, '.');
-    return dot && !strcmp(dot, WL_STORAGE_EXT);
+    return dot && !strcmp(dot, WL__STORAGE_EXT);
 }
 
 void wl_tensor_save(const wl_tensor_t* t, const char* file) {
@@ -4316,7 +4313,7 @@ void wl_tensor_save(const wl_tensor_t* t, const char* file) {
     double mem;
     const char* unit;
     wl__humanize_memory_size(n_bytes, &mem, &unit);
-    wl_log_info("Saved %zu tensor%s to file: %s, %.03f %s written, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
+    wl__log_info("Saved %zu tensor%s to file: %s, %.03f %s written, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
 }
 
 wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
@@ -4341,7 +4338,7 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     double mem;
     const char* unit;
     wl__humanize_memory_size(n_bytes, &mem, &unit);
-    wl_log_info("Loaded %zu tensor%s from file: %s, %.03f %s read, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
+    wl__log_info("Loaded %zu tensor%s from file: %s, %.03f %s read, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
     return target;
 }
 
@@ -4402,11 +4399,11 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
         (*ctx->alloc_fn)(part, 0);
         wl__assert(rw*rh*whc[2] == wl__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", rw*rh*whc[2], (size_t)wl__tensor_num_elements(t));
         (*load_free)(src);
-        wl_log_info("Loaded and resized tensor from image: %s, %u x %u x %u", file, rw, rh, whc[2]);
+        wl__log_info("Loaded and resized tensor from image: %s, %u x %u x %u", file, rw, rh, whc[2]);
         return t;
     } else {
         wl_tensor_t* t = wl_tensor_create_3d(ctx, WL_DTYPE_F32, whc[2], whc[1], whc[0]);
-        t->flags |= WL_TFLAG_FROM_FS | WL_TFLAG_IMAGE;
+        t->flags |= WL__TFLAG_FROM_FS | WL__TFLAG_IMAGE;
         float* dst = wl_tensor_data_as_f32(t);
         for (int64_t k = 0; k < whc[2]; ++k) { /* Convert from interleaved to planar representation. */
             for (int64_t j = 0; j < whc[1]; ++j) {
@@ -4417,7 +4414,7 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
         }
         wl__assert(whc[0]*whc[1]*whc[2] == wl__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", whc[0]*whc[1]*whc[2], (size_t)wl__tensor_num_elements(t));
         (*load_free)(src);
-        wl_log_info("Loaded tensor from image: %s, %u x %u x %u", file, whc[0], whc[1], whc[2]);
+        wl__log_info("Loaded tensor from image: %s, %u x %u x %u", file, whc[0], whc[1], whc[2]);
         return t;
     }
 }
@@ -4440,7 +4437,7 @@ void wl_tensor_save_image(const wl_tensor_t* t, const char* file) {
     const uint32_t whc[3] = {(uint32_t)w,(uint32_t)h,(uint32_t)c};
     wl__assert((*saver)(file, dst, &whc), "Failed to save tensor to image: %s", file);
     (*t->ctx->alloc_fn)(dst, 0); /* Free image data */
-    wl_log_info("Saved tensor to image: %s, width: %d, height: %d, channels: %d", file, (int)w, (int)h, (int)c);
+    wl__log_info("Saved tensor to image: %s, width: %d, height: %d, channels: %d", file, (int)w, (int)h, (int)c);
 }
 
 /* Rescale factors to push the exponent of a number towards zero. */
@@ -4485,7 +4482,7 @@ static const uint32_t wl__ndigits_dec_threshold[] = {
 
 /* Compute the number of digits in the decimal representation of x. */
 static size_t wl__ndigits_dec(uint32_t x) {
-    size_t t = ((wl_fls(x | 1) * 77) >> 8) + 1; /* 2^8/77 is roughly log2(10) */
+    size_t t = ((wl__fls(x | 1) * 77) >> 8) + 1; /* 2^8/77 is roughly log2(10) */
     return t + (x > wl__ndigits_dec_threshold[t]);
 }
 
@@ -4569,8 +4566,8 @@ static char* wl__wint(char* p, int32_t k) {
 static uint32_t nd_mul2k(uint32_t* nd, uint32_t ndhi, uint32_t k, uint32_t carry_in, wl_format_flags sf) {
     uint32_t i, ndlo = 0, start = 1;
     /* Performance hacks. */
-    if (k > WL__ND_MUL2K_MAX_SHIFT*2 && WL_FMT_FP(sf) != WL_FMT_FP(WL_FMT_T_FP_F)) {
-        start = ndhi - (WL_FMT_PREC(sf) + 17) / 8;
+    if (k > WL__ND_MUL2K_MAX_SHIFT*2 && WL__FMT_FP(sf) != WL__FMT_FP(WL__FMT_T_FP_F)) {
+        start = ndhi - (WL__FMT_PREC(sf) + 17) / 8;
     }
     /* Real logic. */
     while (k >= WL__ND_MUL2K_MAX_SHIFT) {
@@ -4604,19 +4601,19 @@ static uint32_t nd_div2k(uint32_t* nd, uint32_t ndhi, uint32_t k, wl_format_flag
         if (!nd[0]) {
             return 0;
         } else {
-            uint32_t s = wl_ffs(nd[0]);
+            uint32_t s = wl__ffs(nd[0]);
             if (s >= k) { nd[0] >>= k; return 0; }
             nd[0] >>= s; k -= s;
         }
     }
     if (k > 18) {
-        if (WL_FMT_FP(sf) == WL_FMT_FP(WL_FMT_T_FP_F)) {
-            stop1 = 63 - (int32_t)WL_FMT_PREC(sf) / 9;
+        if (WL__FMT_FP(sf) == WL__FMT_FP(WL__FMT_T_FP_F)) {
+            stop1 = 63 - (int32_t)WL__FMT_PREC(sf) / 9;
         } else {
-            int32_t floorlog2 = ndhi * 29 + wl_fls(nd[ndhi]) - k;
+            int32_t floorlog2 = ndhi * 29 + wl__fls(nd[ndhi]) - k;
             int32_t floorlog10 = (int32_t)(floorlog2 * 0.30102999566398114);
-            stop1 = 62 + (floorlog10 - (int32_t)WL_FMT_PREC(sf)) / 9;
-            stop2 = 61 + ndhi - (int32_t)WL_FMT_PREC(sf) / 8;
+            stop1 = 62 + (floorlog10 - (int32_t)WL__FMT_PREC(sf)) / 9;
+            stop2 = 61 + ndhi - (int32_t)WL__FMT_PREC(sf) / 8;
         }
     }
     /* Real logic. */
@@ -4665,10 +4662,10 @@ static uint32_t nd_add_m10e(uint32_t* nd, uint32_t ndhi, uint8_t m, int32_t e) {
     }
     for (;;) {
         uint32_t val = nd[i] + carry;
-        if (wl_unlikely(val >= 1000000000)) {
+        if (wl__unlikely(val >= 1000000000)) {
             val -= 1000000000;
             nd[i] = val;
-            if (wl_unlikely(i == ndhi)) {
+            if (wl__unlikely(i == ndhi)) {
                 ndhi = (ndhi + 1) & 0x3f;
                 nd[ndhi] = 1;
                 break;
@@ -4686,10 +4683,10 @@ static uint32_t nd_add_m10e(uint32_t* nd, uint32_t ndhi, uint8_t m, int32_t e) {
 static bool nd_similar(uint32_t* nd, uint32_t ndhi, uint32_t* ref, size_t hilen, size_t prec) {
     char nd9[9], ref9[9];
     if (hilen <= prec) {
-        if (wl_unlikely(nd[ndhi] != *ref)) return 0;
+        if (wl__unlikely(nd[ndhi] != *ref)) return 0;
         prec -= hilen; ref--; ndhi = (ndhi - 1) & 0x3f;
         if (prec >= 9) {
-            if (wl_unlikely(nd[ndhi] != *ref)) return 0;
+            if (wl__unlikely(nd[ndhi] != *ref)) return 0;
             prec -= 9; ref--; ndhi = (ndhi - 1) & 0x3f;
         }
     } else {
@@ -4703,7 +4700,7 @@ static bool nd_similar(uint32_t* nd, uint32_t ndhi, uint32_t* ref, size_t hilen,
 
 /* Format f64 according to format flags. */
 static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
-    size_t width = WL_FMT_WIDTH(sf), prec = WL_FMT_PREC(sf), len;
+    size_t width = WL__FMT_WIDTH(sf), prec = WL__FMT_PREC(sf), len;
     union {
         uint64_t u64;
         double n;
@@ -4711,37 +4708,37 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
             uint32_t lo, hi;
         } u32;
     } t = {.n = n};
-    if (wl_unlikely((t.u32.hi << 1) >= 0xffe00000)) {
+    if (wl__unlikely((t.u32.hi << 1) >= 0xffe00000)) {
         /* Handle non-finite values uniformly for %a, %e, %f, %g. */
-        int32_t prefix = 0, ch = (sf & WL_FMT_F_UPPER) ? 0x202020 : 0;
+        int32_t prefix = 0, ch = (sf & WL__FMT_F_UPPER) ? 0x202020 : 0;
         if (((t.u32.hi & 0x000fffff) | t.u32.lo) != 0) {
             ch ^= ('n' << 16) | ('a' << 8) | 'n';
-            if ((sf & WL_FMT_F_SPACE)) prefix = ' ';
+            if ((sf & WL__FMT_F_SPACE)) prefix = ' ';
         } else {
             ch ^= ('i' << 16) | ('n' << 8) | 'f';
             if ((t.u32.hi & 0x80000000)) prefix = '-';
-            else if ((sf & WL_FMT_F_PLUS)) prefix = '+';
-            else if ((sf & WL_FMT_F_SPACE)) prefix = ' ';
+            else if ((sf & WL__FMT_F_PLUS)) prefix = '+';
+            else if ((sf & WL__FMT_F_SPACE)) prefix = ' ';
         }
         len = 3 + (prefix != 0);
-        if (!(sf & WL_FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
+        if (!(sf & WL__FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
         if (prefix) *p++ = prefix;
         *p++ = (char)(ch >> 16); *p++ = (char)(ch >> 8); *p++ = (char)ch;
-    } else if (WL_FMT_FP(sf) == WL_FMT_FP(WL_FMT_T_FP_A)) {
+    } else if (WL__FMT_FP(sf) == WL__FMT_FP(WL__FMT_T_FP_A)) {
         /* %a */
-        const char* hexdig = (sf & WL_FMT_F_UPPER) ? "0123456789ABCDEFPX" : "0123456789abcdefpx";
+        const char* hexdig = (sf & WL__FMT_F_UPPER) ? "0123456789ABCDEFPX" : "0123456789abcdefpx";
         int32_t e = (t.u32.hi >> 20) & 0x7ff;
         char prefix = 0, eprefix = '+';
         if (t.u32.hi & 0x80000000) prefix = '-';
-        else if ((sf & WL_FMT_F_PLUS)) prefix = '+';
-        else if ((sf & WL_FMT_F_SPACE)) prefix = ' ';
+        else if ((sf & WL__FMT_F_PLUS)) prefix = '+';
+        else if ((sf & WL__FMT_F_SPACE)) prefix = ' ';
         t.u32.hi &= 0xfffff;
         if (e) {
             t.u32.hi |= 0x100000;
             e -= 1023;
         } else if (t.u32.lo | t.u32.hi) {
             /* Non-zero denormal - normalise it. */
-            uint32_t shift = t.u32.hi ? 20-wl_fls(t.u32.hi) : 52-wl_fls(t.u32.lo);
+            uint32_t shift = t.u32.hi ? 20-wl__fls(t.u32.hi) : 52-wl__fls(t.u32.lo);
             e = -1022 - shift;
             t.u64 <<= shift;
         }
@@ -4749,7 +4746,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
         /* If n != 0, bit 52 of t.u64 is set, and is the highest set bit. */
         if ((int32_t)prec < 0) {
             /* Default precision: use smallest precision giving exact result. */
-            prec = t.u32.lo ? 13-wl_ffs(t.u32.lo)/4 : 5-wl_ffs(t.u32.hi|0x100000)/4;
+            prec = t.u32.lo ? 13-wl__ffs(t.u32.lo)/4 : 5-wl__ffs(t.u32.hi|0x100000)/4;
         } else if (prec < 13) {
             /* Precision is sufficiently low as to maybe require rounding. */
             t.u64 += (((uint64_t)1) << (51 - prec*4));
@@ -4759,18 +4756,18 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
             e = -e;
         }
         len = 5 + wl__ndigits_dec((uint32_t)e) + prec + (prefix != 0)
-              + ((prec | (sf & WL_FMT_F_ALT)) != 0);
-        if (!(sf & (WL_FMT_F_LEFT | WL_FMT_F_ZERO))) {
+              + ((prec | (sf & WL__FMT_F_ALT)) != 0);
+        if (!(sf & (WL__FMT_F_LEFT | WL__FMT_F_ZERO))) {
             while (width-- > len) *p++ = ' ';
         }
         if (prefix) *p++ = prefix;
         *p++ = '0';
         *p++ = hexdig[17]; /* x or X */
-        if ((sf & (WL_FMT_F_LEFT | WL_FMT_F_ZERO)) == WL_FMT_F_ZERO) {
+        if ((sf & (WL__FMT_F_LEFT | WL__FMT_F_ZERO)) == WL__FMT_F_ZERO) {
             while (width-- > len) *p++ = '0';
         }
         *p++ = '0' + (t.u32.hi >> 20); /* Usually '1', sometimes '0' or '2'. */
-        if ((prec | (sf & WL_FMT_F_ALT))) {
+        if ((prec | (sf & WL__FMT_F_ALT))) {
             /* Emit fractional part. */
             char* q = p + 1 + prec;
             *p = '.';
@@ -4789,19 +4786,19 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
         int32_t e = (int32_t)(t.u32.hi >> 20) & 0x7ff, ndebias = 0;
         char prefix = 0, *q;
         if (t.u32.hi & 0x80000000) prefix = '-';
-        else if ((sf & WL_FMT_F_PLUS)) prefix = '+';
-        else if ((sf & WL_FMT_F_SPACE)) prefix = ' ';
+        else if ((sf & WL__FMT_F_PLUS)) prefix = '+';
+        else if ((sf & WL__FMT_F_SPACE)) prefix = ' ';
         prec += ((int32_t)prec >> 31) & 7; /* Default precision is 6. */
-        if (WL_FMT_FP(sf) == WL_FMT_FP(WL_FMT_T_FP_G)) {
+        if (WL__FMT_FP(sf) == WL__FMT_FP(WL__FMT_T_FP_G)) {
             /* %g - decrement precision if non-zero (to make it like %e). */
             prec--;
             prec ^= (uint32_t)((int32_t)prec >> 31);
         }
-        if ((sf & WL_FMT_T_FP_E) && prec < 14 && n != 0) {
+        if ((sf & WL__FMT_T_FP_E) && prec < 14 && n != 0) {
             /* Precision is sufficiently low that rescaling will probably work. */
             if ((ndebias = wl__rescale_e[e >> 6])) {
                 t.n = n * wl__rescale_n[e >> 6];
-                if (wl_unlikely(!e)) t.n *= 1e10, ndebias -= 10;
+                if (wl__unlikely(!e)) t.n *= 1e10, ndebias -= 10;
                 t.u64 -= 2; /* Convert 2ulp below (later we convert 2ulp above). */
                 nd[0] = 0x100000 | (t.u32.hi & 0xfffff);
                 e = ((int32_t)(t.u32.hi >> 20) & 0x7ff) - 1075 - (WL__ND_MUL2K_MAX_SHIFT < 29);
@@ -4836,7 +4833,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
             if (ndhi && !nd[ndhi]) ndhi--;
         }
         /* |n| == nd * 10^ndebias (for slightly loose interpretation of ==) */
-        if ((sf & WL_FMT_T_FP_E)) {
+        if ((sf & WL__FMT_T_FP_E)) {
             /* %e or %g - assume %e and start by calculating nd's exponent (nde). */
             char eprefix = '+';
             int32_t nde = -1;
@@ -4864,7 +4861,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
                 nd[32] = nd[(ndhi - 1) & 0x3f];
                 nd[31] = nd[(ndhi - 2) & 0x3f];
                 nd_add_m10e(nd, ndhi, (uint8_t)*m_e, m_e[1]);
-                if (wl_unlikely(!nd_similar(nd, ndhi, nd + 33, hilen, prec + 1))) {
+                if (wl__unlikely(!nd_similar(nd, ndhi, nd + 33, hilen, prec + 1))) {
                     goto rescale_failed;
                 }
             }
@@ -4874,13 +4871,13 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
                 nde += (hilen != wl__ndigits_dec(nd[ndhi]));
             }
             nde += ndebias;
-            if ((sf & WL_FMT_T_FP_F)) {
+            if ((sf & WL__FMT_T_FP_F)) {
                 /* %g */
                 if ((int32_t)prec >= nde && nde >= -4) {
                     if (nde < 0) ndhi = 0;
                     prec -= nde;
                     goto g_format_like_f;
-                } else if (!(sf & WL_FMT_F_ALT) && prec && width > 5) {
+                } else if (!(sf & WL__FMT_F_ALT) && prec && width > 5) {
                     /* Decrease precision in order to strip trailing zeroes. */
                     char tail[9];
                     uint32_t maxprec = hilen - 1 + ((ndhi - ndlo) & 0x3f) * 9;
@@ -4905,17 +4902,17 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
                 nde = -nde;
             }
             len = 3 + prec + (prefix != 0) + wl__ndigits_dec((uint32_t)nde) + (nde < 10)
-                  + ((prec | (sf & WL_FMT_F_ALT)) != 0);
-            if (!(sf & (WL_FMT_F_LEFT | WL_FMT_F_ZERO))) {
+                  + ((prec | (sf & WL__FMT_F_ALT)) != 0);
+            if (!(sf & (WL__FMT_F_LEFT | WL__FMT_F_ZERO))) {
                 while (width-- > len) *p++ = ' ';
             }
             if (prefix) *p++ = prefix;
-            if ((sf & (WL_FMT_F_LEFT | WL_FMT_F_ZERO)) == WL_FMT_F_ZERO) {
+            if ((sf & (WL__FMT_F_LEFT | WL__FMT_F_ZERO)) == WL__FMT_F_ZERO) {
                 while (width-- > len) *p++ = '0';
             }
             q = wl__wint(p + 1, nd[ndhi]);
             p[0] = p[1]; /* Put leading digit in the correct place. */
-            if ((prec | (sf & WL_FMT_F_ALT))) {
+            if ((prec | (sf & WL__FMT_F_ALT))) {
                 /* Emit fractional part. */
                 p[1] = '.'; p += 2;
                 prec -= (size_t)(q - p); p = q; /* Account for digits already emitted. */
@@ -4924,7 +4921,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
                     i = (i - 1) & 0x3f;
                     p = wl__wuint9(p, nd[i]);
                 }
-                if ((sf & WL_FMT_T_FP_F) && !(sf & WL_FMT_F_ALT)) {
+                if ((sf & WL__FMT_T_FP_F) && !(sf & WL__FMT_F_ALT)) {
                     /* %g (and not %#g) - strip trailing zeroes. */
                     p += (int32_t)prec & ((int32_t)prec >> 31);
                     while (p[-1] == '0') p--;
@@ -4937,7 +4934,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
             } else {
                 p++;
             }
-            *p++ = (sf & WL_FMT_F_UPPER) ? 'E' : 'e';
+            *p++ = (sf & WL__FMT_F_UPPER) ? 'E' : 'e';
             *p++ = eprefix; /* + or - */
             if (nde < 10) *p++ = '0'; /* Always at least two digits of exponent. */
             p = wl__wint(p, nde);
@@ -4948,7 +4945,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
                 ndhi = nd_add_m10e(nd, ndhi, 5, 0 - prec - 1);
             }
             g_format_like_f:
-            if ((sf & WL_FMT_T_FP_E) && !(sf & WL_FMT_F_ALT) && prec && width) {
+            if ((sf & WL__FMT_T_FP_E) && !(sf & WL__FMT_F_ALT) && prec && width) {
                 /* Decrease precision in order to strip trailing zeroes. */
                 if (ndlo) {
                     /* nd has a fractional part; we need to look at its digits. */
@@ -4972,19 +4969,19 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
                 }
             }
             len = ndhi * 9 + wl__ndigits_dec(nd[ndhi]) + prec + (prefix != 0)
-                  + ((prec | (sf & WL_FMT_F_ALT)) != 0);
-            if (!(sf & (WL_FMT_F_LEFT | WL_FMT_F_ZERO))) {
+                  + ((prec | (sf & WL__FMT_F_ALT)) != 0);
+            if (!(sf & (WL__FMT_F_LEFT | WL__FMT_F_ZERO))) {
                 while (width-- > len) *p++ = ' ';
             }
             if (prefix) *p++ = prefix;
-            if ((sf & (WL_FMT_F_LEFT | WL_FMT_F_ZERO)) == WL_FMT_F_ZERO) {
+            if ((sf & (WL__FMT_F_LEFT | WL__FMT_F_ZERO)) == WL__FMT_F_ZERO) {
                 while (width-- > len) *p++ = '0';
             }
             /* Emit integer part. */
             p = wl__wint(p, nd[ndhi]);
             i = ndhi;
             while (i) p = wl__wuint9(p, nd[--i]);
-            if ((prec | (sf & WL_FMT_F_ALT))) {
+            if ((prec | (sf & WL__FMT_F_ALT))) {
                 /* Emit fractional part. */
                 *p++ = '.';
                 /* Emit chunks of 9 digits (this may emit 8 digits too many). */
@@ -4993,7 +4990,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
                     p = wl__wuint9(p, nd[i]);
                     prec -= 9;
                 }
-                if ((sf & WL_FMT_T_FP_E) && !(sf & WL_FMT_F_ALT)) {
+                if ((sf & WL__FMT_T_FP_E) && !(sf & WL__FMT_F_ALT)) {
                     /* %g (and not %#g) - strip trailing zeroes. */
                     p += (int32_t)prec & ((int32_t)prec >> 31);
                     while (p[-1] == '0') p--;
@@ -5006,7 +5003,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
             }
         }
     }
-    if ((sf & WL_FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
+    if ((sf & WL__FMT_F_LEFT)) while (width-- > len) *p++ = ' ';
     return p;
 }
 
@@ -5022,7 +5019,7 @@ static char* wl__fmt_f64(wl_format_flags sf, double n, char* p) {
             case WL_COLOR_CHANNELS_RGBA: dc = STBI_rgb_alpha; break;
         }
         uint8_t* buf = stbi_load(file, &w, &h, &c, dc);
-        if (wl_unlikely(!buf || !w || !h || !c || (c != 1 && c != 3 && c != 4))) return NULL;
+        if (wl__unlikely(!buf || !w || !h || !c || (c != 1 && c != 3 && c != 4))) return NULL;
         (*whc)[0] = (uint32_t)w;
         (*whc)[1] = (uint32_t)h;
         (*whc)[2] = (uint32_t)c;
