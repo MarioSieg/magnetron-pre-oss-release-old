@@ -1,5 +1,6 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 # Implements high level model classes for neural networks based on the msml.core module.
+import time
 
 from msml.core import *
 
@@ -54,6 +55,7 @@ class SequentialModel:
     def train(self, inputs: list[Tensor], targets: list[Tensor], epochs: int, learning_rate: float):
         assert len(inputs) == len(targets)
         print(f'Training started {epochs} epochs with learning rate {learning_rate}')
+        now = time.time_ns()
         losses = []
         rate = Tensor.full([1], fill_value=learning_rate)
         for e in range(0, epochs - 1):
@@ -66,7 +68,7 @@ class SequentialModel:
             losses.append(avg_mse)
             if e % self.loss_epoch_step == 0:
                 print(f'Epoch: {e}, Loss: {avg_mse}')
-        print(f'Training finished')
+        print(f'Training finished in {(time.time_ns() - now) / 1e9} seconds')
         return losses
 
     def summary(self):
