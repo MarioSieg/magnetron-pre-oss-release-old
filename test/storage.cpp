@@ -7,7 +7,7 @@
 TEST(storage, load) {
     msml_ctx_t* ctx = msml_ctx_create(nullptr);
 
-    msml_tensor_t* A = msml_tensor_create_4d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5);
+    msml_tensor_t* A = msml_tensor_create_6d(ctx, MSML_DTYPE_F32, 10, 4, 2, 5, 2, 2);
     msml_tensor_fill_random(A, -1.0f, 1.0f);
 
     if (std::filesystem::exists("test_data/test.msml"))
@@ -16,12 +16,14 @@ TEST(storage, load) {
     ASSERT_TRUE(std::filesystem::exists("test_data/test.msml"));
     msml_tensor_t* B = msml_tensor_load(ctx, "test_data/test.msml");
     ASSERT_EQ(msml_tensor_dtype(B), MSML_DTYPE_F32);
-    ASSERT_EQ(msml_tensor_rank(B), 4);
+    ASSERT_EQ(msml_tensor_rank(B), 6);
     ASSERT_EQ(msml_tensor_shape(B)[0], 10);
     ASSERT_EQ(msml_tensor_shape(B)[1], 4);
     ASSERT_EQ(msml_tensor_shape(B)[2], 2);
     ASSERT_EQ(msml_tensor_shape(B)[3], 5);
-    ASSERT_EQ(msml_tensor_data_size(B), 10 * 4 * 2 * 5 * sizeof(float));
+    ASSERT_EQ(msml_tensor_shape(B)[4], 2);
+    ASSERT_EQ(msml_tensor_shape(B)[5], 2);
+    ASSERT_EQ(msml_tensor_data_size(B), 10 * 4 * 2 * 5 * 2 * 2 * sizeof(float));
     ASSERT_TRUE(msml_tensor_eq(A, B));
     msml_ctx_destroy(ctx);
 }
