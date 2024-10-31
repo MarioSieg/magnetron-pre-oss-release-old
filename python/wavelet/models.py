@@ -10,6 +10,7 @@ def mse(y: wl.Tensor, y_hat: wl.Tensor) -> float:
     """Mean Squared Error"""
     return (y - y_hat).sqr().mean().scalar()
 
+
 def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
     """Cross Entropy Loss"""
     return -(y * y_hat.log()).sum().scalar()
@@ -62,16 +63,16 @@ class SequentialModel:
         now = time.time_ns()
         losses = []
         rate = wl.Tensor.full([1], fill_value=learning_rate)
-        for e in range(0, epochs - 1):
-            total_mse: float = 0
+        for epoch in range(0, epochs - 1):
+            total_loss: float = 0
             for i in range(0, len(inputs)):
                 pred: wl.Tensor = self.forward(inputs[i])
                 self.backward(pred, targets[i], rate)
-                total_mse += mse(pred, targets[i])
-            avg_mse = total_mse / len(inputs)
-            losses.append(avg_mse)
-            if e % self.loss_epoch_step == 0:
-                print(f'Epoch: {e}, Loss: {avg_mse}')
+                total_loss += mse(pred, targets[i])
+            mean_loss = total_loss / len(inputs)
+            losses.append(mean_loss)
+            if epoch % self.loss_epoch_step == 0:
+                print(f'Epoch: {epoch}, Loss: {mean_loss}')
         print(f'Training finished in {(time.time_ns() - now) / 1e9} seconds')
         return losses
 

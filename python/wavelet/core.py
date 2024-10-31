@@ -536,6 +536,10 @@ class Tensor:
         """ΣX/n"""
         return self.operator(Op.MEAN, None, self)
 
+    def sum(self) -> 'Tensor':
+        """ΣX"""
+        return self.operator(Op.SUM, None, self)
+
     def abs(self) -> 'Tensor':
         """|X|"""
         return self.operator(Op.ABS, None, self)

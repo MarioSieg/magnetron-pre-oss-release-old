@@ -38,8 +38,7 @@ for input_tensor in inputs:
     print(f'{input_data[0]} ^ {input_data[1]} = {output}')
 
 # Plot MSE loss
-y_epochs = list(range(0, EPOCHS - 1))
-plt.plot(losses, y_epochs)
+plt.plot(list(range(0, EPOCHS - 1)), losses)
 plt.xlabel('Epochs')
 plt.ylabel('MSE Loss')
 plt.title('XOR Problem')
