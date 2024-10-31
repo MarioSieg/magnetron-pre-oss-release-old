@@ -1178,19 +1178,21 @@ uint32_t wl_pack_color_f32(float r, float g, float b) {
     return (((uint32_t)(b*255.0f)&255)<<16)|(((uint32_t)(g*255.0f)&255)<<8)|((uint32_t)(r*255.0f)&255);
 }
 
-#define wl__load_local_storage_group(xk, prefix, var) \
-    const int64_t prefix##0 = (xk)->var[0]; \
-    const int64_t prefix##1 = (xk)->var[1]; \
-    const int64_t prefix##2 = (xk)->var[2]; \
-    const int64_t prefix##3 = (xk)->var[3]; \
-    const int64_t prefix##4 = (xk)->var[4]; \
-    const int64_t prefix##5 = (xk)->var[5]; \
+#define wl__load_local_storage_group_arr(arr, prefix) \
+    const int64_t prefix##0 = (arr)[0]; \
+    const int64_t prefix##1 = (arr)[1]; \
+    const int64_t prefix##2 = (arr)[2]; \
+    const int64_t prefix##3 = (arr)[3]; \
+    const int64_t prefix##4 = (arr)[4]; \
+    const int64_t prefix##5 = (arr)[5]; \
     (void)prefix##0; \
     (void)prefix##1; \
     (void)prefix##2; \
     (void)prefix##3; \
     (void)prefix##4; \
     (void)prefix##5
+
+#define wl__load_local_storage_group(xk, prefix, var) wl__load_local_storage_group_arr((xk)->var, prefix)
 
 const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type) {
     static const wl_dtype_info_t infos[WL_DTYPE_COUNT_] = {
@@ -1868,7 +1870,8 @@ static WL__AINLINE void wl_tensor_virtual_to_physical_index(const wl_tensor_t* t
 static WL__AINLINE int64_t wl_tensor_physical_to_virtual_index(const wl_tensor_t* t, const int64_t (*p_idx)[WL_MAX_DIMS]) {
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, s, strides);
-    return (*p_idx)[0]*s0 + (*p_idx)[1]*s1 + (*p_idx)[2]*s2 + (*p_idx)[3]*s3 + (*p_idx)[4]*s4 + (*p_idx)[5]*s5;
+    wl__load_local_storage_group_arr(*p_idx, i);
+    return s0*i0 + s1*i1 + s2*i2 + s3*i3 + s4*i4 + s5*i5;
 }
 
 bool wl_tensor_is_contiguous(const wl_tensor_t* t) {
