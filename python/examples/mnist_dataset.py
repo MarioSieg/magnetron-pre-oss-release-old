@@ -5,6 +5,7 @@ import struct
 import numpy as np
 import wavelet.core as wl
 
+
 def ubyte_load_data(src: str, num_samples: int) -> np.ndarray:
     with gzip.open(src) as gz:
         n = struct.unpack("I", gz.read(4))
@@ -17,6 +18,7 @@ def ubyte_load_data(src: str, num_samples: int) -> np.ndarray:
         res = np.frombuffer(gz.read(num_samples * crow * ccol), dtype=np.uint8)
     return res.astype(dtype=np.float32).reshape((num_samples, crow, ccol)) / 256.0
 
+
 def ubyte_load_labels(src: str, num_samples: int) -> np.ndarray:
     with gzip.open(src) as gz:
         n = struct.unpack("I", gz.read(4))
@@ -25,6 +27,7 @@ def ubyte_load_labels(src: str, num_samples: int) -> np.ndarray:
         assert n[0] == num_samples
         res = np.frombuffer(gz.read(num_samples), dtype=np.uint8)
     return res.reshape(num_samples)
+
 
 data = ubyte_load_data('../../datasets/mnist/images-idx3-ubyte.gz', 60000)
 wl.Tensor.const(data=data.flatten().tolist(), shape=[60000, 28, 28]).save('mnist_images.wavelet')
