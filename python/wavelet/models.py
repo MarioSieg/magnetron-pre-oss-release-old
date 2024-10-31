@@ -5,10 +5,14 @@ import time
 
 import wavelet.core as wl
 
+
 def mse(y: wl.Tensor, y_hat: wl.Tensor) -> float:
-    e = y - y_hat
-    mse_value = (e * e).mean()
-    return mse_value.unpack_scalar()
+    """Mean Squared Error"""
+    return (y - y_hat).sqr().mean().scalar()
+
+def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
+    """Cross Entropy Loss"""
+    return -(y * y_hat.log()).sum().scalar()
 
 
 class DenseLayer:

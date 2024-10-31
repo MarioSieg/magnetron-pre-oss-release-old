@@ -14,7 +14,7 @@ def p_not(xx: int) -> float:
     w: wl.Tensor = wl.Tensor.full([1], fill_value=-1)
     b: wl.Tensor = wl.Tensor.full([1], fill_value=0.5)
     r: wl.Tensor = perceptron(x, w, b)
-    return r.unpack_scalar()
+    return r.scalar()
 
 
 truth_table = [

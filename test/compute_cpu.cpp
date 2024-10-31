@@ -57,7 +57,27 @@ TEST(compute_cpu, neg_same_shape) {
     wl_ctx_destroy(ctx);
 }
 
-impl_test_unary_op(step, 1e-6, STEP, [](float x) -> float {
+impl_test_unary_op(log, 1e-9, LOG, [](float x) -> float {
+    return std::log(x);
+})
+
+impl_test_unary_op(sqr, 1e-9, SQR, [](float x) -> float {
+    return x*x;
+})
+
+impl_test_unary_op(sqrt, 1e-9, SQRT, [](float x) -> float {
+    return std::sqrt(x);
+})
+
+impl_test_unary_op(sin, 1e-9, SIN, [](float x) -> float {
+    return std::sin(x);
+})
+
+impl_test_unary_op(cos, 1e-9, COS, [](float x) -> float {
+    return std::cos(x);
+})
+
+impl_test_unary_op(step, 1e-9, STEP, [](float x) -> float {
     return x >= 0.0f ? 1.0f : 0.0f;
 })
 
@@ -92,14 +112,14 @@ impl_test_unary_op(silu, 1e-6, SILU, [](float x) -> float {
 impl_test_unary_op(tanh, 1e-3, TANH, [](float x) -> float {
     return std::tanh(x);
 })
-impl_test_unary_op(tanh_dv, 1e-6, TANH_DV, [](float x) -> float {
+impl_test_unary_op(tanh_dv, 1e-9, TANH_DV, [](float x) -> float {
     return 1.0f / (std::cosh(x)*std::cosh(x));
 })
 
-impl_test_unary_op(relu, 1e-6, RELU, [](float x) -> float {
+impl_test_unary_op(relu, 1e-9, RELU, [](float x) -> float {
     return std::max(x, 0.0f);
 })
-impl_test_unary_op(relu_dv, 1e-6, RELU_DV, [](float x) -> float {
+impl_test_unary_op(relu_dv, 1e-9, RELU_DV, [](float x) -> float {
     return x <= 0.0f ? 0.0f : 1.0f;
 })
 
@@ -279,7 +299,7 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
 
 TEST(compute_cpu, arithmetic_mean) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4096, 32, 3, 2);
+    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
     wl_tensor_fill_random(A, -1.0f, 1.0f);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MEAN, A);
     ASSERT_NE(R, nullptr);
@@ -287,11 +307,20 @@ TEST(compute_cpu, arithmetic_mean) {
     for (std::int64_t i=0; i < wl_tensor_num_elements(A); ++i)
         a_mean += static_cast<double>(wl_tensor_data_as_f32(A)[i]);
     a_mean /= static_cast<double>(wl_tensor_num_elements(A));
-    double b_mean = 0.0;
-    for (std::int64_t i=0; i < wl_tensor_num_elements(R); ++i)
-        b_mean += static_cast<double>(wl_tensor_data_as_f32(R)[i]);
-    b_mean /= static_cast<double>(wl_tensor_num_elements(R));
-    ASSERT_NEAR(static_cast<float>(a_mean), static_cast<float>(b_mean), 1e-6);
+    ASSERT_NEAR(static_cast<float>(a_mean), *wl_tensor_data_as_f32(R), 1e-9);
+    wl_ctx_destroy(ctx);
+}
+
+TEST(compute_cpu, hsum) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
+    wl_tensor_fill_random(A, -1.0f, 1.0f);
+    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_SUM, A);
+    ASSERT_NE(R, nullptr);
+    double a_sum = 0.0;
+    for (std::int64_t i=0; i < wl_tensor_num_elements(A); ++i)
+        a_sum += static_cast<double>(wl_tensor_data_as_f32(A)[i]);
+    ASSERT_NEAR(static_cast<float>(a_sum), *wl_tensor_data_as_f32(R), 1e-9);
     wl_ctx_destroy(ctx);
 }
 

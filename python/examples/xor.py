@@ -34,7 +34,7 @@ losses = mlp.train(inputs, targets, EPOCHS, LEARNING_RATE)
 # Inference
 for input_tensor in inputs:
     input_data = input_tensor.data_as_f32()
-    output: float = mlp.forward(input_tensor).unpack_scalar()
+    output: float = mlp.forward(input_tensor).scalar()
     print(f'{input_data[0]} ^ {input_data[1]} = {output}')
 
 # Plot MSE loss

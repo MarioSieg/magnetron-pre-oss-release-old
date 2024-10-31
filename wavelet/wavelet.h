@@ -119,14 +119,20 @@ extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 
 #define WL_SEP ,
 #define wl_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
-    _(NOP,              "nop",              0)/* No Operation. */__\
-    _(CLONE,            "clone",            1)/* R = clone(X). */__\
-    _(VIEW,             "view",             1)/* R = X[:]. */__\
-    _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ. */__\
-    _(PERMUTE,          "permute",          1)/* R = permute(X). */__\
+    _(NOP,              "nop",              0)/* No Operation */__\
+    _(CLONE,            "clone",            1)/* R = clone(X) */__\
+    _(VIEW,             "view",             1)/* R = X[:] */__\
+    _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ */__\
+    _(PERMUTE,          "permute",          1)/* R = permute(X, axes) */__\
     _(MEAN,             "mean",             1)/* R = ΣX/n */__\
+    _(SUM,              "sum",              1)/* R = ΣX */__\
     _(ABS,              "abs",              1)/* R = |X| */__\
     _(NEG,              "neg",              1)/* R = -X */__\
+    _(LOG,              "log",              1)/* R = log X */__\
+    _(SQR,              "sqr",              1)/* R = X² */__\
+    _(SQRT,             "sqrt",             1)/* R = √X */__\
+    _(SIN,              "sin",              1)/* R = sin X */__\
+    _(COS,              "cos",              1)/* R = cos X */__\
     _(STEP,             "step",             1)/* R = step(X) */__\
     _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
     _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
@@ -141,11 +147,11 @@ extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
     _(RELU_DV,          "ReLU'",            1)/* R = relu'(X) */__\
     _(GELU,             "GeLU",             1)/* R = gelu(X) */__\
     _(GELU_DV,          "GeLU'",            1)/* R = gelu'(X) */__\
-    _(ADD,              "+",                2)/* R = relu(X) */__\
+    _(ADD,              "+",                2)/* R = X+Y */__\
     _(SUB,              "-",                2)/* R = X-Y */__\
     _(MUL,              "*",                2)/* R = X*Y (Hadamard product) */__\
-    _(DIV,              "/",                2)/* R = X/Y. */__\
-    _(MATMUL,           "@",                2)/* R = A x B.*/__
+    _(DIV,              "/",                2)/* R = X/Y */__\
+    _(MATMUL,           "@",                2)/* R = A@B */__
 
 #define _(enumerator, mnemonic, argcount) WL_OP_##enumerator
 typedef enum wl_op_t {

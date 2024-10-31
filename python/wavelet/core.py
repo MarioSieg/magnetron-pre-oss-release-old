@@ -60,30 +60,38 @@ class ColorChannels(Enum):
 class Op(Enum):
     """All supported tensor operations."""
     NOP = 0
-    CLONE = auto()
-    VIEW = auto()
-    TRANSPOSE = auto()
-    PERMUTE = auto()
-    MEAN = auto()
-    STEP = auto()
-    SOFTMAX = auto()
-    SOFTMAX_DV = auto()
-    SIGMOID = auto()
-    SIGMOID_DV = auto()
-    HARD_SIGMOID = auto()
-    SILU = auto()
-    SILU_DV = auto()
-    TANH = auto()
-    TANH_DV = auto()
-    RELU = auto()
-    RELU_DV = auto()
-    GELU = auto()
-    GELU_DV = auto()
-    ADD = auto()
-    SUB = auto()
-    MUL = auto()
-    DIV = auto()
-    MATMUL = auto()
+    CLONE = auto()  # R = clone(X)
+    VIEW = auto()  # R = X[:]
+    TRANSPOSE = auto()  # R = Xᵀ
+    PERMUTE = auto()  # R = permute(X, axes)
+    MEAN = auto()  # R = ΣX/n
+    SUM = auto()  # R = ΣX
+    ABS = auto()  # R = |X|
+    NEG = auto()  # R = -X
+    LOG = auto()  # R = log X
+    SQR = auto()  # R = X²
+    SQRT = auto()  # R = √X
+    SIN = auto()  # R = sin X
+    COS = auto()  # R = cos X
+    STEP = auto()  # R = step(X)
+    SOFTMAX = auto()  # R = softmax(X)
+    SOFTMAX_DV = auto()  # R = softmax'(X)
+    SIGMOID = auto()  # R = sigmoid(X)
+    SIGMOID_DV = auto()  # R = sigmoid'(X)
+    HARD_SIGMOID = auto()  # R = hard_sigmoid(X)
+    SILU = auto()  # R = silu(X)
+    SILU_DV = auto()  # R = silu'(X)
+    TANH = auto()  # R = tanh(X)
+    TANH_DV = auto()  # R = tanh'(X)
+    RELU = auto()  # R = relu(X)
+    RELU_DV = auto()  # R = relu'(X)
+    GELU = auto()  # R = gelu(X)
+    GELU_DV = auto()  # R = gelu'(X)
+    ADD = auto()  # R = X+Y
+    SUB = auto()  # R = X-Y
+    MUL = auto()  # R = X*Y (Hadamard product)
+    DIV = auto()  # R = X/Y
+    MATMUL = auto()  # A@B
 
     _COUNT = auto()
 
@@ -327,7 +335,7 @@ class Tensor:
         assert self.dtype == DType.F32, 'Invalid data type'
         return ffi.unpack(C.wl_tensor_data_as_f32(self.tensor), self.num_elements)
 
-    def unpack_scalar(self) -> float:
+    def scalar(self) -> float:
         return self.data_as_f32()[0]
 
     @property
@@ -497,7 +505,7 @@ class Tensor:
         """Loads an image from a file and creates a tensor from it."""
         assert isfile(file_path), f'File not found: {file_path}'
         instance = C.wl_tensor_load_image(ctx.ctx, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
-                                            resize_to_dims[1])
+                                          resize_to_dims[1])
         tensor = Tensor(internal_instance=instance)
         if name is not None:
             tensor.name = name
@@ -512,7 +520,7 @@ class Tensor:
         return self.operator(Op.VIEW, None, self)
 
     def transpose(self) -> 'Tensor':
-        """Transposes the tensor."""
+        """Xᵀ"""
         return self.operator(Op.TRANSPOSE, None, self)
 
     def permute(self, axes: list[int]) -> 'Tensor':
@@ -525,11 +533,43 @@ class Tensor:
         return self.operator(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
 
     def mean(self) -> 'Tensor':
-        """Applies the arithmetic mean to the tensor and reduces to scalar."""
+        """ΣX/n"""
         return self.operator(Op.MEAN, None, self)
 
+    def abs(self) -> 'Tensor':
+        """|X|"""
+        return self.operator(Op.ABS, None, self)
+
+    def neg(self) -> 'Tensor':
+        """-X"""
+        return self.operator(Op.NEG, None, self)
+
+    def __neg__(self) -> 'Tensor':
+        """-X"""
+        return self.neg()
+
+    def log(self) -> 'Tensor':
+        """log X"""
+        return self.operator(Op.LOG, None, self)
+
+    def sqr(self) -> 'Tensor':
+        """X²"""
+        return self.operator(Op.SQR, None, self)
+
+    def sqrt(self) -> 'Tensor':
+        """√X"""
+        return self.operator(Op.SQRT, None, self)
+
+    def sin(self) -> 'Tensor':
+        """sin X"""
+        return self.operator(Op.SIN, None, self)
+
+    def cos(self) -> 'Tensor':
+        """cos X"""
+        return self.operator(Op.COS, None, self)
+
     def step(self) -> 'Tensor':
-        """Applies the heaviside step function to the tensor."""
+        """step(X)"""
         return self.operator(Op.STEP, None, self)
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
@@ -561,23 +601,23 @@ class Tensor:
         return self.operator(Op.GELU_DV if derivative else Op.GELU, None, self)
 
     def __add__(self, other: 'Tensor') -> 'Tensor':
-        """Adds two tensors element-wise."""
+        """X + Y"""
         return self.operator(Op.ADD, None, self, other)
 
     def __sub__(self, other: 'Tensor') -> 'Tensor':
-        """Subtracts two tensors element-wise."""
+        """ X - Y"""
         return self.operator(Op.SUB, None, self, other)
 
     def __mul__(self, other: 'Tensor') -> 'Tensor':
-        """Multiplies two tensors element-wise. (Hadamard product)"""
+        """X * Y (Hadamard product)"""
         return self.operator(Op.MUL, None, self, other)
 
     def __truediv__(self, other: 'Tensor') -> 'Tensor':
-        """Divides two tensors element-wise."""
+        """X / Y"""
         return self.operator(Op.DIV, None, self, other)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
-        """Multiplies two tensors using matrix multiplication."""
+        """A @ B"""
         return self.operator(Op.MATMUL, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:
