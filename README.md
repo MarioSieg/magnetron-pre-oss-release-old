@@ -30,7 +30,7 @@
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
-  <a href="https://github.com/mario_sieg/wavelet">
+  <a href="https://github.com/MarioSieg/wavelet">
     <img src="media/wavelet-logo.svg" alt="Logo" width="200" height="200">
   </a>
 
@@ -39,14 +39,14 @@
   <p align="center">
     project_description
     <br />
-    <a href="https://github.com/mario_sieg/wavelet"><strong>Explore the docs »</strong></a>
+    <a href="https://github.com/MarioSieg/wavelet"><strong>Explore the docs »</strong></a>
     <br />
     <br />
-    <a href="https://github.com/mario_sieg/wavelet">View Demo</a>
+    <a href="https://github.com/MarioSieg/wavelet">View Demo</a>
     ·
-    <a href="https://github.com/mario_sieg/wavelet/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
+    <a href="https://github.com/MarioSieg/wavelet/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
     ·
-    <a href="https://github.com/mario_sieg/wavelet/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
+    <a href="https://github.com/MarioSieg/wavelet/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
   </p>
 </div>
 
@@ -82,7 +82,7 @@
 
 [![Product Name Screen Shot][product-screenshot]](https://example.com)
 
-Here's a blank template to get started: To avoid retyping too much info. Do a search and replace with your text editor for the following: `mario_sieg`, `wavelet`, `_mario_neo_`, `mario-sieg`, `gmail`, `email`, `wavelet`, `project_description`
+Here's a blank template to get started: To avoid retyping too much info. Do a search and replace with your text editor for the following: `MarioSieg`, `wavelet`, `_mario_neo_`, `mario-sieg`, `gmail`, `email`, `wavelet`, `project_description`
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -105,7 +105,7 @@ This is an example of how to list things you need to use the software and how to
 1. Get a free API Key at [https://example.com](https://example.com)
 2. Clone the repo
    ```sh
-   git clone https://github.com/mario_sieg/wavelet.git
+   git clone https://github.com/MarioSieg/wavelet.git
    ```
 3. Install NPM packages
    ```sh
@@ -117,7 +117,7 @@ This is an example of how to list things you need to use the software and how to
    ```
 5. Change git remote url to avoid accidental pushes to base project
    ```sh
-   git remote set-url origin mario_sieg/wavelet
+   git remote set-url origin MarioSieg/wavelet
    git remote -v # confirm the changes
    ```
 
@@ -146,7 +146,6 @@ _For more examples, please refer to the [Documentation](https://example.com)_
 - [X] CPU Compute and optimization
 - [X] Compressed tensor file format
 - [X] Validation and friendly error messages
-- [X] Python API
 - [ ] Automatic differentiation
 - [ ] Compute on GPU (Cuda)
 - [ ] Other Datatypes (f16, bf16, int8)
@@ -155,7 +154,7 @@ _For more examples, please refer to the [Documentation](https://example.com)_
 - [ ] CPU and GPU kernel JIT compilation
 - [ ] Better examples with real world models (LLMs and state of the art models)
 
-See the [open issues](https://github.com/mario_sieg/wavelet/issues) for a full list of proposed features (and known issues).
+See the [open issues](https://github.com/MarioSieg/wavelet/issues) for a full list of proposed features (and known issues).
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -179,8 +178,8 @@ Don't forget to give the project a star! Thanks again!
 
 ### Top contributors:
 
-<a href="https://github.com/mario_sieg/wavelet/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=mario_sieg/wavelet" alt="contrib.rocks image" />
+<a href="https://github.com/MarioSieg/wavelet/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=MarioSieg/wavelet" alt="contrib.rocks image" />
 </a>
 
 
@@ -198,7 +197,7 @@ Distributed under the Apache 2 License. See `LICENSE.txt` for more information.
 
 Mario Sieg - [@_mario_neo_](https://twitter.com/_mario_neo_) - mario.sieg.64@gmail.com
 
-Project Link: [https://github.com/mario_sieg/wavelet](https://github.com/mario_sieg/wavelet)
+Project Link: [https://github.com/MarioSieg/wavelet](https://github.com/MarioSieg/wavelet)
 
 Developed 2024 in Berlin, Germany.
 
@@ -219,16 +218,16 @@ Developed 2024 in Berlin, Germany.
 
 <!-- MARKDOWN LINKS & IMAGES -->
 <!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
-[contributors-shield]: https://img.shields.io/github/contributors/mario_sieg/wavelet.svg?style=for-the-badge
-[contributors-url]: https://github.com/mario_sieg/wavelet/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/mario_sieg/wavelet.svg?style=for-the-badge
-[forks-url]: https://github.com/mario_sieg/wavelet/network/members
-[stars-shield]: https://img.shields.io/github/stars/mario_sieg/wavelet.svg?style=for-the-badge
-[stars-url]: https://github.com/mario_sieg/wavelet/stargazers
-[issues-shield]: https://img.shields.io/github/issues/mario_sieg/wavelet.svg?style=for-the-badge
-[issues-url]: https://github.com/mario_sieg/wavelet/issues
-[license-shield]: https://img.shields.io/github/license/mario_sieg/wavelet.svg?style=for-the-badge
-[license-url]: https://github.com/mario_sieg/wavelet/blob/master/LICENSE.txt
+[contributors-shield]: https://img.shields.io/github/contributors/MarioSieg/wavelet.svg?style=for-the-badge
+[contributors-url]: https://github.com/MarioSieg/wavelet/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/MarioSieg/wavelet.svg?style=for-the-badge
+[forks-url]: https://github.com/MarioSieg/wavelet/network/members
+[stars-shield]: https://img.shields.io/github/stars/MarioSieg/wavelet.svg?style=for-the-badge
+[stars-url]: https://github.com/MarioSieg/wavelet/stargazers
+[issues-shield]: https://img.shields.io/github/issues/MarioSieg/wavelet.svg?style=for-the-badge
+[issues-url]: https://github.com/MarioSieg/wavelet/issues
+[license-shield]: https://img.shields.io/github/license/MarioSieg/wavelet.svg?style=for-the-badge
+[license-url]: https://github.com/MarioSieg/wavelet/blob/master/LICENSE.txt
 [linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
 [linkedin-url]: https://linkedin.com/in/mario-sieg
 [product-screenshot]: images/screenshot.png
