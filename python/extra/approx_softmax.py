@@ -3,6 +3,6 @@
 import approx
 import math
 
-from msml.core import Op
+import wavelet.core as wl
 
-approx.plot_approximation_error('softmax', math.exp, Op.SOFTMAX, domain=(-10, 10))
+approx.plot_approximation_error('softmax', math.exp, wl.Op.SOFTMAX, domain=(-10, 10))

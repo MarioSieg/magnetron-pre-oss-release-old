@@ -1,7 +1,7 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-# Implements utility functions for MSML. Requires matplotlib and numpy.
+# Implements utility functions for WAVELET. Requires matplotlib and numpy.
 
-from msml.core import Tensor
+from wavelet.core import Tensor
 from matplotlib import pyplot as plt
 import numpy as np
 

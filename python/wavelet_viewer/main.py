@@ -3,26 +3,28 @@
 import time
 import sys
 import os
-from msml.core import Tensor
+from wavelet.core import Tensor
 from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 from PyQt5.QtCore import *
 
 FONT_SIZE: int = 14
 
+
 def process_events_idle():
     for _ in range(0, 5):  # Sleep for a bit to allow the loading box to show up
         QApplication.processEvents()
         time.sleep(0.1)
 
-class MSMLViewer(QMainWindow):
+
+class WAVELETViewer(QMainWindow):
     def __init__(self):
         super().__init__()
         self.window_icon = QIcon('icons/icon.png')
         self.tensor_icon = QIcon('icons/tensor.png')
         self.folder_icon = QIcon('icons/folder.png')
         self.metadata_icon = QIcon('icons/metadata.png')
-        self.setWindowTitle('MSML File Viewer')
+        self.setWindowTitle('WAVELET File Viewer')
         self.setWindowIcon(self.window_icon)
         self.resize(1920, 1080)
 
@@ -69,13 +71,13 @@ class MSMLViewer(QMainWindow):
         self.metadata = {}
 
     def open_file(self):
-        file_name, _ = QFileDialog.getOpenFileName(self, 'Open MSML File', os.getcwd(),
-                                                   'MSML Files (*.msml);;All Files (*)')
+        file_name, _ = QFileDialog.getOpenFileName(self, 'Open WAVELET File', os.getcwd(),
+                                                   'WAVELET Files (*.wavelet);;All Files (*)')
         if not file_name:
             print('No file selected')
             return
 
-        self.setWindowTitle(f'MSML File Viewer - {os.path.basename(file_name)}')
+        self.setWindowTitle(f'WAVELET File Viewer - {os.path.basename(file_name)}')
 
         self.tensor_tree.clear()
         self.tensors.clear()
@@ -144,9 +146,10 @@ class MSMLViewer(QMainWindow):
         ]
         self.info_panel.setText('\n'.join(extra_info))
 
+
 def main():
     app = QApplication(sys.argv)
-    viewer = MSMLViewer()
+    viewer = WAVELETViewer()
     viewer.show()
     sys.exit(app.exec_())
 

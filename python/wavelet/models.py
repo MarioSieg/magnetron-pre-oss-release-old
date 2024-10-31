@@ -1,28 +1,33 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
-# Implements high level model classes for neural networks based on the msml.core module.
+# Implements high level model classes for neural networks based on the wavelet.core module.
+
 import time
 
-from msml.core import *
+import wavelet.core as wl
 
 
-def mse(y: Tensor, y_hat: Tensor) -> float:
-    e = y - y_hat
-    mse_value = (e * e).mean()
-    return mse_value.unpack_scalar()
+def mse(y: wl.Tensor, y_hat: wl.Tensor) -> float:
+    """Mean Squared Error"""
+    return (y - y_hat).sqr().mean().scalar()
+
+
+def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
+    """Cross Entropy Loss"""
+    return -(y * y_hat.log()).sum().scalar()
 
 
 class DenseLayer:
-    def __init__(self, in_features: int, out_features: int, activation: Op = Op.SIGMOID):
-        self.weight = Tensor.random(shape=[out_features, in_features])
-        self.bias = Tensor.random(shape=[out_features, 1])
+    def __init__(self, in_features: int, out_features: int, activation: wl.Op = wl.Op.SIGMOID):
+        self.weight = wl.Tensor.random(shape=[out_features, in_features])
+        self.bias = wl.Tensor.random(shape=[out_features, 1])
         self.activation = activation
         self.cache = None
 
-    def forward(self, prev: Tensor, activation: Op | None = None) -> Tensor:
+    def forward(self, prev: wl.Tensor, activation: wl.Op | None = None) -> wl.Tensor:
         prev = (self.weight @ prev + self.bias)
-        return Tensor.operator(activation if activation is not None else self.activation, None, prev)
+        return wl.Tensor.operator(activation if activation is not None else self.activation, None, prev)
 
-    def backward(self, is_in: bool, cache: Tensor, delta: Tensor, rate: Tensor) -> Tensor:
+    def backward(self, is_in: bool, cache: wl.Tensor, delta: wl.Tensor, rate: wl.Tensor) -> wl.Tensor:
         self.weight = self.weight - (delta @ cache.transpose().clone()) * rate
         self.bias = self.bias - delta * rate
         if is_in:
@@ -38,7 +43,7 @@ class SequentialModel:
         self.cache = []
         self.loss_epoch_step = 1000
 
-    def forward(self, inputs: Tensor, activation: Op | None = None) -> Tensor:
+    def forward(self, inputs: wl.Tensor, activation: wl.Op | None = None) -> wl.Tensor:
         prev = inputs
         self.cache.clear()
         self.cache.append(prev)
@@ -47,27 +52,27 @@ class SequentialModel:
             self.cache.append(prev)
         return prev
 
-    def backward(self, outputs: Tensor, targets: Tensor, rate: Tensor):
+    def backward(self, outputs: wl.Tensor, targets: wl.Tensor, rate: wl.Tensor):
         delta = (outputs - targets) * outputs.sigmoid(derivative=True)
         for i in reversed(range(0, len(self.layers))):
             delta = self.layers[i].backward(i > 0, self.cache[i], delta, rate)
 
-    def train(self, inputs: list[Tensor], targets: list[Tensor], epochs: int, learning_rate: float):
+    def train(self, inputs: list[wl.Tensor], targets: list[wl.Tensor], epochs: int, learning_rate: float):
         assert len(inputs) == len(targets)
         print(f'Training started {epochs} epochs with learning rate {learning_rate}')
         now = time.time_ns()
         losses = []
-        rate = Tensor.full([1], fill_value=learning_rate)
-        for e in range(0, epochs - 1):
-            total_mse: float = 0
+        rate = wl.Tensor.full([1], fill_value=learning_rate)
+        for epoch in range(0, epochs - 1):
+            total_loss: float = 0
             for i in range(0, len(inputs)):
-                pred: Tensor = self.forward(inputs[i])
+                pred: wl.Tensor = self.forward(inputs[i])
                 self.backward(pred, targets[i], rate)
-                total_mse += mse(pred, targets[i])
-            avg_mse = total_mse / len(inputs)
-            losses.append(avg_mse)
-            if e % self.loss_epoch_step == 0:
-                print(f'Epoch: {e}, Loss: {avg_mse}')
+                total_loss += mse(pred, targets[i])
+            mean_loss = total_loss / len(inputs)
+            losses.append(mean_loss)
+            if epoch % self.loss_epoch_step == 0:
+                print(f'Epoch: {epoch}, Loss: {mean_loss}')
         print(f'Training finished in {(time.time_ns() - now) / 1e9} seconds')
         return losses
 
@@ -76,7 +81,7 @@ class SequentialModel:
         for layer in self.layers:
             trainable_params += layer.weight.num_elements + layer.bias.num_elements
         layers: int = len(self.layers)
-        print(f'---- Model Summary ----')
+        print('---- Model Summary ----')
         print(f'Trainable Parameters: {trainable_params}')
         print(f'Layers: {layers}')
-        print(f'-----------------------')
+        print('-----------------------')

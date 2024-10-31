@@ -1,7 +1,7 @@
 # (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
 
-from msml.core import *
-from msml.models import SequentialModel, DenseLayer
+import wavelet.core as wl
+from wavelet.models import SequentialModel, DenseLayer
 import matplotlib.pyplot as plt
 
 EPOCHS: int = 10000
@@ -9,18 +9,18 @@ LEARNING_RATE: float = 0.8
 
 # Inputs
 inputs = [
-    Tensor.const([0.0, 0.0]),
-    Tensor.const([0.0, 1.0]),
-    Tensor.const([1.0, 0.0]),
-    Tensor.const([1.0, 1.0])
+    wl.Tensor.const([0.0, 0.0]),
+    wl.Tensor.const([0.0, 1.0]),
+    wl.Tensor.const([1.0, 0.0]),
+    wl.Tensor.const([1.0, 1.0])
 ]
 
 # Targets
 targets = [
-    Tensor.const([0.0]),
-    Tensor.const([1.0]),
-    Tensor.const([1.0]),
-    Tensor.const([0.0])
+    wl.Tensor.const([0.0]),
+    wl.Tensor.const([1.0]),
+    wl.Tensor.const([1.0]),
+    wl.Tensor.const([0.0])
 ]
 
 mlp = SequentialModel([
@@ -34,12 +34,11 @@ losses = mlp.train(inputs, targets, EPOCHS, LEARNING_RATE)
 # Inference
 for input_tensor in inputs:
     input_data = input_tensor.data_as_f32()
-    output: float = mlp.forward(input_tensor).unpack_scalar()
+    output: float = mlp.forward(input_tensor).scalar()
     print(f'{input_data[0]} ^ {input_data[1]} = {output}')
 
 # Plot MSE loss
-y_epochs = list(range(0, EPOCHS - 1))
-plt.plot(losses, y_epochs)
+plt.plot(list(range(0, EPOCHS - 1)), losses)
 plt.xlabel('Epochs')
 plt.ylabel('MSE Loss')
 plt.title('XOR Problem')
