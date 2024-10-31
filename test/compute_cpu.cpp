@@ -3,15 +3,20 @@
 #include "prelude.hpp"
 #include <cmath>
 
+static constexpr std::int64_t k_lim_same_shape = 6;
+static constexpr std::int64_t k_lim_broadcast = 3;
+
 #define impl_test_unary_op(name, eps, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
         wl_ctx_t* ctx = wl_ctx_create(nullptr); \
         \
-        for (int64_t i0=1; i0 <= 9; ++i0) \
-        for (int64_t i1=1; i1 <= 9; ++i1) \
-        for (int64_t i2=1; i2 <= 9; ++i2) \
-        for (int64_t i3=1; i3 <= 9; ++i3) { \
-            wl_tensor_t* x = wl_tensor_create_4d(ctx, WL_DTYPE_F32, i0, i1, i2, i3); \
+        for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
+        for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
+        for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
+        for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
+        for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
+        for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
+            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             wl_tensor_fill_random(x, 0.0f, 1.0f); \
             \
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x); \
@@ -26,6 +31,35 @@
         \
         wl_ctx_destroy(ctx); \
     } \
+
+impl_test_unary_op(abs, 1e-6, ABS, [](float x) -> float {
+    return std::abs(x);
+})
+
+TEST(compute_cpu, neg_same_shape) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0)
+    for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1)
+    for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2)
+    for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3)
+    for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4)
+    for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) {
+        wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5);
+        wl_tensor_fill_random(x, 0.0f, 1.0f);
+        wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_NEG, x);
+        const auto* b_x = wl_tensor_data_as_f32(x);
+        const auto* b_r = wl_tensor_data_as_f32(r);
+        ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r));
+        for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) {
+            ASSERT_EQ(b_r[i], -b_x[i]);
+        }
+    }
+    wl_ctx_destroy(ctx);
+}
+
+impl_test_unary_op(step, 1e-6, STEP, [](float x) -> float {
+    return x >= 0.0f ? 1.0f : 0.0f;
+})
 
 impl_test_unary_op(softmax, 1e-6, SOFTMAX, [](float x) -> float {
     return std::exp(x);
@@ -81,12 +115,12 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
 #define impl_test_binary_op(name, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
         wl_ctx_t* ctx = wl_ctx_create(nullptr); \
-        for (int64_t i0=1; i0 <= 6; ++i0) \
-        for (int64_t i1=1; i1 <= 6; ++i1) \
-        for (int64_t i2=1; i2 <= 6; ++i2) \
-        for (int64_t i3=1; i3 <= 6; ++i3) \
-        for (int64_t i4=1; i4 <= 6; ++i4) \
-        for (int64_t i5=1; i5 <= 6; ++i5) { \
+        for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
+        for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
+        for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
+        for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
+        for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
+        for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             wl_tensor_t* y = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, x); \
             wl_tensor_fill_random(x, 0.0f, 1.0f); \
@@ -109,13 +143,13 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
      \
     TEST(compute_cpu, name##_scalar_broadcast) { \
         wl_ctx_t* ctx = wl_ctx_create(nullptr); \
-        for (int64_t factor=2; factor <= 4; ++factor) \
-        for (int64_t i0=1; i0 <= 3; ++i0) \
-        for (int64_t i1=1; i1 <= 3; ++i1) \
-        for (int64_t i2=1; i2 <= 3; ++i2) \
-        for (int64_t i3=1; i3 <= 3; ++i3) \
-        for (int64_t i4=1; i4 <= 3; ++i4) \
-        for (int64_t i5=1; i5 <= 3; ++i5) { \
+        for (std::int64_t factor=2; factor <= 4; ++factor) \
+        for (std::int64_t i0=1; i0 <= k_lim_broadcast; ++i0) \
+        for (std::int64_t i1=1; i1 <= k_lim_broadcast; ++i1) \
+        for (std::int64_t i2=1; i2 <= k_lim_broadcast; ++i2) \
+        for (std::int64_t i3=1; i3 <= k_lim_broadcast; ++i3) \
+        for (std::int64_t i4=1; i4 <= k_lim_broadcast; ++i4) \
+        for (std::int64_t i5=1; i5 <= k_lim_broadcast; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
             wl_tensor_t* y = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             wl_tensor_fill_random(x, 0.0f, 1.0f); \

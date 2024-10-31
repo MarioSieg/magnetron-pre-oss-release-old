@@ -124,8 +124,10 @@ extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
     _(VIEW,             "view",             1)/* R = X[:]. */__\
     _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ. */__\
     _(PERMUTE,          "permute",          1)/* R = permute(X). */__\
-    _(MEAN,             "mean",             1)/* R = Σx/n */__\
-    _(STEP,             "step",             1)/* R = Heaviside step function */__\
+    _(MEAN,             "mean",             1)/* R = ΣX/n */__\
+    _(ABS,              "abs",              1)/* R = |X| */__\
+    _(NEG,              "neg",              1)/* R = -X */__\
+    _(STEP,             "step",             1)/* R = step(X) */__\
     _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
     _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
     _(SIGMOID,          "sigmoid",          1)/* R = sigmoid(X) */__\

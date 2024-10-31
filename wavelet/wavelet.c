@@ -1399,6 +1399,8 @@ static bool (*wl__op_get_validator_routine(wl_op_t op))(wl_op_t, wl_tensor_t*, w
         [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
         [WL_OP_PERMUTE] = &wl__validate_op_transpose,
         [WL_OP_MEAN] = &wl__validate_op_scalar,
+        [WL_OP_ABS] = &wl__validate_op_unary,
+        [WL_OP_NEG] = &wl__validate_op_unary,
         [WL_OP_STEP] = &wl__validate_op_unary,
         [WL_OP_SOFTMAX] = &wl__validate_op_unary,
         [WL_OP_SOFTMAX_DV] = &wl__validate_op_unary,
@@ -1494,6 +1496,8 @@ static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op))(wl_tens
         [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
         [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
         [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
+        [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
+        [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
         [WL_OP_STEP] = &wl__result_constructor_routine_isomorph,
         [WL_OP_SOFTMAX] = &wl__result_constructor_routine_isomorph,
         [WL_OP_SOFTMAX_DV] = &wl__result_constructor_routine_isomorph,
@@ -2329,6 +2333,24 @@ static float WL__HOTPROC wl__vsum_f32( /* Σx. */
     return (float)sum;
 }
 
+static void WL__HOTPROC wl__vabs_f32( /* o = |x| */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = fabsf(x[i]);
+}
+
+static void WL__HOTPROC wl__vneg_f32( /* o = -x */
+    const int64_t n,
+    float* const o,
+    const float* const x
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = -x[i];
+}
+
 static void WL__HOTPROC wl__vstep_f32( /* Heaviside step function. */
     const int64_t n,
     float* const o,
@@ -2682,6 +2704,50 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
                 }
             }
         }
+    }
+}
+
+static void WL__HOTPROC wl__blas_abs_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vabs_f32(cc, p_r, p_x);
+    }
+}
+
+static void WL__HOTPROC wl__blas_neg_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    uint8_t* const b_r = (uint8_t*)r->buf;
+    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = (float*)(b_r + ri*r_s1);
+        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vneg_f32(cc, p_r, p_x);
     }
 }
 
@@ -3488,6 +3554,8 @@ static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)
     (*dispatch_lut)[WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[WL_OP_MEAN] = &wl__blas_mean_f32;
+    (*dispatch_lut)[WL_OP_ABS] = &wl__blas_abs_f32;
+    (*dispatch_lut)[WL_OP_NEG] = &wl__blas_neg_f32;
     (*dispatch_lut)[WL_OP_STEP] = &wl__blas_step_f32;
     (*dispatch_lut)[WL_OP_SOFTMAX] = &wl__blas_softmax_f32;
     (*dispatch_lut)[WL_OP_SOFTMAX_DV] = &wl__blas_softmax_dv_f32;
