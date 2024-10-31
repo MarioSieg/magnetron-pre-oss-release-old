@@ -10,10 +10,12 @@ from PyQt5.QtCore import *
 
 FONT_SIZE: int = 14
 
+
 def process_events_idle():
     for _ in range(0, 5):  # Sleep for a bit to allow the loading box to show up
         QApplication.processEvents()
         time.sleep(0.1)
+
 
 class WAVELETViewer(QMainWindow):
     def __init__(self):
@@ -143,6 +145,7 @@ class WAVELETViewer(QMainWindow):
             f'Contiguous: {tensor.is_contiguous}',
         ]
         self.info_panel.setText('\n'.join(extra_info))
+
 
 def main():
     app = QApplication(sys.argv)
