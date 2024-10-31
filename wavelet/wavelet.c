@@ -5105,14 +5105,14 @@ static char* wl__fmt_f64(wl__format_flags sf, double n, char* p) {
         if (t.u32.lo) {
             e -= 32 + (WL__ND_MUL2K_MAX_SHIFT < 29); load_t_lo:
 #if WL__ND_MUL2K_MAX_SHIFT >= 29
-            nd[0] = (nd[0] << 3) | (t.u32.lo >> 29);
+            nd[0] = (nd[0]<<3) | (t.u32.lo>>29);
             ndhi = nd_mul2k(nd, ndhi, 29, t.u32.lo & 0x1fffffff, sf);
 #elif WL__ND_MUL2K_MAX_SHIFT >= 11
-            ndhi = nd_mul2k(nd, ndhi, 11, t.u32.lo >> 21, sf);
-                ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo >> 10) & 0x7ff, sf);
-                ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo <<  1) & 0x7ff, sf);
-            #else
-            #   error "WL__ND_MUL2K_MAX_SHIFT not big enough"
+            ndhi = nd_mul2k(nd, ndhi, 11, t.u32.lo>>21, sf);
+            ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo>>10) & 0x7ff, sf);
+            ndhi = nd_mul2k(nd, ndhi, 11, (t.u32.lo<<1) & 0x7ff, sf);
+#else
+#error "WL__ND_MUL2K_MAX_SHIFT not big enough"
 #endif
         }
         if (e >= 0) {
