@@ -3273,7 +3273,7 @@ static void WL__HOTPROC wl__blas_gelu_dv_f32(
 
 static void WL__HOTPROC wl__blas_add_f32(
     const wl__blas_compute_info_t* const bci,
-    wl_tensor_t* const r,
+    wl_tensor_t* r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
     const wl_tensor_t* const x = inputs[0];
