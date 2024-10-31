@@ -31,7 +31,7 @@
 <br />
 <div align="center">
   <a href="https://github.com/mario_sieg/wavelet">
-    <img src="media/wavelet-logo.svg" alt="Logo" width="150" height="150">
+    <img src="media/wavelet-logo.svg" alt="Logo" width="200" height="200">
   </a>
 
 <h3 align="center">wavelet</h3>
