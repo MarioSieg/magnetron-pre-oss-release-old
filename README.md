@@ -1,5 +1,5 @@
 # wavelet
-<img src="media/logo.png" alt="logo" width="200"/>
+<img src="media/wavelet-logo.png" alt="logo" width="100"/>
 
 **wavelet** is a minimalistic machine learning library written in C99, designed for speed, flexibility, and ease of integration.<br>
 With no runtime allocations and lightweight architecture, MSML is perfect for efficient model training and inference.<br>
