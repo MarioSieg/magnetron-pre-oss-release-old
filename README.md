@@ -146,7 +146,6 @@ _For more examples, please refer to the [Documentation](https://example.com)_
 - [X] CPU Compute and optimization
 - [X] Compressed tensor file format
 - [X] Validation and friendly error messages
-- [X] Python API
 - [ ] Automatic differentiation
 - [ ] Compute on GPU (Cuda)
 - [ ] Other Datatypes (f16, bf16, int8)
