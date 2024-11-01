@@ -4621,8 +4621,8 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     uint8_t* buf = (uint8_t*)wl_alloc(NULL, n_bytes);  /* Allocate buffer */
     wl__assert(fread(buf, 1, n_bytes, f) == n_bytes, "Failed to read %zu bytes from file: %s", n_bytes, file);    /* Read while file into buffer */
     fclose(f), f = NULL;    /* Close file */
-    size_t n_tensors;
-    uint32_t version;
+    size_t n_tensors = 0;
+    uint32_t version = 0;
     wl_tensor_t** tensors = wl__sto_read_buffered(ctx, buf, n_bytes, &n_tensors, &version);   /* Deserialize tensors */
     wl__assert(version > 0 && version <= WL_VERSION, "Unsupported storage version: %u", version);   /* Check version */
     wl__assert(tensors && n_tensors > 0, "Failed to load tensor from file: %s", file);
