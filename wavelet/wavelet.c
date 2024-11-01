@@ -22,6 +22,7 @@
 #include <time.h>
 #include <float.h>
 #include <ctype.h>
+#include <errno.h>
 
 #ifdef _MSC_VER
 #   include <intrin.h>
@@ -241,40 +242,40 @@ static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
     wl_x86_64_feature_def(_, WL_SEP)
 };
 #undef _
-#define _(enumerator, leaf, reg, bit) (1u<<(bit))
-static const uint32_t wl__x86_64_feature_masks[WL__X86_64_FEATURE__COUNT] = {
-    wl_x86_64_feature_def(_, WL_SEP)
-};
-#undef _
 #undef wl_x86_64_feature_def
 #endif
 
 typedef struct wl__blas_compute_info_t wl__blas_compute_info_t; /* Forward declaration. */
 
+/*
+** Context contains all isolated state and data.
+** Lifetimes of tensors and compute graphs are bound to the context - the context is the owner.
+** Context itself is not thread-safe, use a thread-local context or synchronize access. (Multiple contexts can be used.)
+*/
 struct wl_ctx_t {
     void* (*alloc_fn)(void* blk, size_t size); /* Memory allocator. */
     struct {
-        char os_name[128]; /* OS name. */
-        char cpu_name[128]; /* CPU name. */
-        uint32_t cpu_virtual_cores; /* Virtual CPUs. */
-        uint32_t cpu_physical_cores; /* Physical CPU cores. */
-        uint32_t cpu_sockets; /* CPU sockets. */
-        uint64_t phys_mem_total; /* Total physical memory in bytes. */
-        uint64_t phys_mem_free; /* Free physical memory in bytes. */
+        char os_name[128];                          /* OS name. */
+        char cpu_name[128];                         /* CPU name. */
+        uint32_t cpu_virtual_cores;                 /* Virtual CPUs. */
+        uint32_t cpu_physical_cores;                /* Physical CPU cores. */
+        uint32_t cpu_sockets;                       /* CPU sockets. */
+        uint64_t phys_mem_total;                    /* Total physical memory in bytes. */
+        uint64_t phys_mem_free;                     /* Free physical memory in bytes. */
         #if defined(__x86_64__) || defined(_M_X64)
-            uint32_t x86_64_cpu_features[8][4]; /* x86-64 CPU features. */
+            uint32_t x86_64_cpu_features[8][4];     /* x86-64 CPU features. */
         #endif
     } sys;
     struct {
-        size_t chunk_size;
-        size_t chunk_len;
-        size_t chunk_cap;
-        uint8_t** chunks;
-        uint8_t* delta;
-        bool warmup_chunks;
-        size_t alloc_acc;
-        size_t mapped_total;
-        size_t alloc_total;
+        size_t chunk_size;                          /* Size of new allocated memory pool chunk. Can grow if needed. */
+        size_t chunk_len;                           /* Length of each memory pool chunk. */
+        size_t chunk_cap;                           /* Maximum number of memory pool chunks. */
+        uint8_t** chunks;                           /* Stack of all allocated memory pool chunks. Active is top. */
+        uint8_t* delta;                             /* Position in active memory pool chunk. Growing downwards. */
+        size_t alloc_acc;                           /* Allocation counter. */
+        size_t mapped_total;                        /* Total memory allocated from OS/allocator. */
+        size_t alloc_total;                         /* Total memory allocated from memory pool. */
+        bool warmup_chunks;                         /* If true, fresh pool chunks are zeroed to allocate kernel pages, can improve or decrease performance depending on scenario. */
     } pool;
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
     void (*image_load_free_fn)(uint8_t*);
@@ -308,22 +309,25 @@ typedef enum wl__tensor_flags_t {
 } wl__tensor_flags_t;
 wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
 
+/*
+** Tensor with up to 6 Dimensions.
+*/
 struct wl_tensor_t {
-    wl_ctx_t* ctx;
-    int64_t rank;
-    int64_t shape[WL_MAX_DIMS];
-    int64_t strides[WL_MAX_DIMS];
-    wl_dtype_t dtype;
-    void* buf;
-    int64_t num_elems;
-    wl__tensor_flags_t flags;
-    wl_op_t op;
-    wl_tensor_t* op_inputs[WL_MAX_INPUT_TENSORS];
-    wl_op_param_t op_params[WL_MAX_OP_PARAMS];
-    wl_tensor_t* view;
-    size_t view_offs;
-    char name[WL_MAX_TENSOR_NAME_LEN];
-    void* ud; /* User data. */
+    wl_ctx_t* ctx;                                  /* Host context. */
+    int64_t rank;                                   /* Number of active dimensions. [1, MAX_DIMS] */
+    int64_t shape[WL_MAX_DIMS];                     /* Shape of the tensor. */
+    int64_t strides[WL_MAX_DIMS];                   /* Strides of the tensor. */
+    wl_dtype_t dtype;                               /* Data type of the tensor. */
+    void* buf;                                      /* Data buffer. */
+    int64_t num_elems;                              /* Number of elements in the tensor. */
+    wl__tensor_flags_t flags;                       /* Tensor flags. */
+    wl_op_t op;                                     /* Opcode for operators. */
+    wl_tensor_t* op_inputs[WL_MAX_INPUT_TENSORS];   /* Input tensors for operators. */
+    wl_op_param_t op_params[WL_MAX_OP_PARAMS];      /* Operator parameters. */
+    wl_tensor_t* view;                              /* View tensor. */
+    size_t view_offs;                               /* Offset in view tensor. */
+    char name[WL_MAX_TENSOR_NAME_LEN];              /* Tensor debug name. */
+    void* ud;                                       /* User data. */
 };
 
 #if WL_BOUNDS_CHECK
@@ -963,9 +967,8 @@ static void wl__blas_compute_dispatch_table_install(wl_ctx_t* ctx); /* Install B
 #if defined(__x86_64__) || defined(_M_X64)
 static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_feature_t feature) {
     const uint8_t* leafs = wl__x86_64_feature_leaves, *regs = wl__x86_64_feature_regs;
-    const uint32_t* masks = wl__x86_64_feature_masks;
     const uint32_t (*features)[8][4] = &ctx->sys.x86_64_cpu_features;
-    return (*features)[leafs[feature]][regs[feature]] & masks[feature];
+    return (*features)[leafs[feature]][regs[feature]] & 1u<<(uint32_t)feature;
 }
 #endif
 
@@ -1638,19 +1641,20 @@ static void WL__AINLINE wl__op_execute(wl_tensor_t* R, wl_op_t op, const wl_tens
 }
 
 wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
-    wl__assert2(op != WL_OP_NOP);
+    wl__assert2(op != WL_OP_NOP && n_inputs <= WL_MAX_INPUT_TENSORS);
     wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op);
     bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op);
     wl_tensor_t* R = (*construct_result)(inputs, params);
     if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;
     R->flags |= WL__TFLAG_OP_OUTPUT;
-    for (uint32_t i=0; i < n_inputs; ++i) inputs[i]->flags |= WL__TFLAG_OP_INPUT;
     wl__assert2(R->op == WL_OP_NOP);
     R->op = op; /* Set operation for deferred execution mode. */
-    memcpy(R->op_inputs, inputs, n_inputs*sizeof(*inputs)); /* Copy input tensors */
+    for (uint32_t i=0; i < n_inputs; ++i) { /* Set input tensors and flags. */
+        inputs[i]->flags |= WL__TFLAG_OP_INPUT;
+        R->op_inputs[i] = inputs[i];
+    }
     if (params) memcpy(R->op_params, *params, sizeof(*params)); /* Copy operation parameters */
     if (ctx->exec_mode == WL_EXEC_MODE_EAGER) { /* In eager execution mode, we execute immediately. */
-        memcpy(R->op_inputs, inputs, n_inputs*sizeof(*inputs));
         wl__blas_compute_info_t bci;
         wl__blas_compute_info_sequential(ctx, &bci); /* Sequential eager execution. */
         wl__op_execute(R, op, (const wl_tensor_t**)inputs, &bci); /* Execute the operation immediately. */
