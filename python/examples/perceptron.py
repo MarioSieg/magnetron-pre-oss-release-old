@@ -10,9 +10,9 @@ def perceptron(x: wl.Tensor, w: wl.Tensor, b: wl.Tensor) -> wl.Tensor:
 
 # Negating perceptron
 def p_not(xx: int) -> float:
-    x: wl.Tensor = wl.Tensor.full([1], fill_value=float(xx))
-    w: wl.Tensor = wl.Tensor.full([1], fill_value=-1)
-    b: wl.Tensor = wl.Tensor.full([1], fill_value=0.5)
+    x: wl.Tensor = wl.Tensor.full((1,), fill_value=float(xx))
+    w: wl.Tensor = wl.Tensor.full((1,), fill_value=-1)
+    b: wl.Tensor = wl.Tensor.full((1,), fill_value=0.5)
     r: wl.Tensor = perceptron(x, w, b)
     return r.scalar()
 

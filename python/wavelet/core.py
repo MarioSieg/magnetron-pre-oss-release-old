@@ -252,7 +252,7 @@ class Tensor:
         """Destructor to release tensor resources."""
         self.tensor = ffi.NULL
 
-    def _new(self, ctx: Context, shape: list[int], dtype: DType = DType.F32,
+    def _new(self, ctx: Context, shape: tuple[int, ...], dtype: DType = DType.F32,
              name: str | None = None) -> None:
         assert 0 < len(shape) <= MAX_DIMS, f'Invalid number of dimensions: {len(shape)}'
         assert all(0 < dim <= DIM_MAX for dim in shape), 'Invalid dimension size'
@@ -316,14 +316,14 @@ class Tensor:
         return C.wl_tensor_rank(self.tensor)
 
     @property
-    def shape(self) -> list[int]:
+    def shape(self) -> tuple[int, ...]:
         """Returns the dimensions of the tensor."""
-        return ffi.unpack(C.wl_tensor_shape(self.tensor), self.rank)
+        return tuple(ffi.unpack(C.wl_tensor_shape(self.tensor), self.rank))
 
     @property
-    def strides(self) -> list[int]:
+    def strides(self) -> tuple[int, ...]:
         """Returns the strides of the tensor."""
-        return ffi.unpack(C.wl_tensor_strides(self.tensor), self.rank)
+        return tuple(ffi.unpack(C.wl_tensor_strides(self.tensor), self.rank))
 
     @property
     def dtype(self) -> DType:
@@ -446,7 +446,7 @@ class Tensor:
         C.wl_tensor_save_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
-    def empty(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
+    def empty(shape: tuple[int, ...], dtype: DType = DType.F32, ctx: Context = Context.G,
               name: str | None = None) -> 'Tensor':
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
@@ -454,7 +454,7 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def full(shape: list[int], fill_value: float, dtype: DType = DType.F32,
+    def full(shape: tuple[int, ...], fill_value: float, dtype: DType = DType.F32,
              ctx: Context = Context.G,
              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
@@ -464,7 +464,7 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def const(data: list[float], shape: list[int] | None = None, dtype: DType = DType.F32, ctx: Context = Context.G,
+    def const(data: list[float], shape: tuple[int, ...] | None = None, dtype: DType = DType.F32, ctx: Context = Context.G,
               name: str | None = None) -> 'Tensor':
         """Creates a tensor with the given data."""
         tensor = Tensor(None)
@@ -474,13 +474,13 @@ class Tensor:
         return tensor
 
     @staticmethod
-    def zeros(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
+    def zeros(shape: tuple[int, ...], dtype: DType = DType.F32, ctx: Context = Context.G,
               name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with zeros."""
         return Tensor.full(shape, 1.0, dtype, ctx, name)
 
     @staticmethod
-    def random(shape: list[int], interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
+    def random(shape: tuple[int, ...], interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
                ctx: Context = Context.G,
                name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""
@@ -523,7 +523,7 @@ class Tensor:
         """Xᵀ"""
         return self.operator(Op.TRANSPOSE, None, self)
 
-    def permute(self, axes: list[int]) -> 'Tensor':
+    def permute(self, axes: tuple[int, ...]) -> 'Tensor':
         """Permutes the tensor according to the given axes."""
         assert len(axes) == MAX_DIMS, f'Invalid number of axes: {axes}'
         for i in range(MAX_DIMS):

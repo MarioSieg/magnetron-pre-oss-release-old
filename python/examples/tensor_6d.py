@@ -2,8 +2,8 @@
 
 import wavelet.core as wl
 
-hyper_tensor_a: wl.Tensor = wl.Tensor.random(shape=[2, 3, 4, 5, 6, 7])
-hyper_tensor_b: wl.Tensor = wl.Tensor.random(shape=[2, 3, 4, 5, 6, 7])
+hyper_tensor_a: wl.Tensor = wl.Tensor.random(shape=(2, 3, 4, 5, 6, 7))
+hyper_tensor_b: wl.Tensor = wl.Tensor.random(shape=(2, 3, 4, 5, 6, 7))
 r = hyper_tensor_a + hyper_tensor_b
 r.print(True, False)
 
