@@ -3736,6 +3736,7 @@ static void WL__HOTPROC wl__blas_matmul_f32(
     wl__load_local_storage_group(y, y_s, strides);
     wl__assert2(x_d2 == 1 && x_d3 == 1);
     wl__assert2(y_d2 == 1 && y_d3 == 1);
+#if 0
 #define mat_get(a, cols, i, j) (a[(i)*(cols) + (j)])
     const int64_t rows = x_d0;
     const int64_t cols = x_d1;
@@ -3753,6 +3754,29 @@ static void WL__HOTPROC wl__blas_matmul_f32(
             }
         }
     }
+#else // develop matmul
+    const int64_t rows = x_d0;
+    const int64_t cols = y_d1;
+    const int64_t inners = y_d0;
+    for (int64_t i = 0; i < rows * cols; ++i) {
+        float* p_c = b_r + i;
+        wl__bnd_chk(p_c, b_r, wl__tensor_data_size(r));
+        *p_c = 0.0f;
+    }
+    for (int64_t i = 0; i < rows; ++i) {
+        for (int64_t k = 0; k < inners; ++k) {
+            const float* p_x = b_x + (i*inners + k);
+            wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+            for (int64_t j = 0; j < cols; ++j) {
+                float* p_r = b_r + i*cols + j;
+                const float* p_y = b_y + k*cols + j;
+                wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+                wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
+                *p_r += *p_x * *p_y;
+            }
+        }
+    }
+#endif
 }
 
 /* Dispatch table for default CPU-implementation. */
