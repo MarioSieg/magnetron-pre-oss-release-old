@@ -8,7 +8,7 @@
 #define WL_INTRIN 1 /* Use platform and compiler specific intrinsics for performance. */
 #define WL_BOUNDS_CHECK 0 /* Enable bounds checking for BLAS routines. */
 
-#ifndef NDEBUG
+#if !defined(NDEBUG) && !WL_BOUNDS_CHECK
 #undef WL_BOUNDS_CHECK
 #define WL_BOUNDS_CHECK 1
 #endif
