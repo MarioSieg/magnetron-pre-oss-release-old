@@ -3739,6 +3739,7 @@ static void WL__HOTPROC wl__blas_matmul_f32(
     const int64_t rows = x_d0;
     const int64_t cols = x_d1;
     const int64_t inners = y_d1;
+#if 1 /* Reordering of loops for better cache locality. */
     for (int64_t i = 0; i < rows; ++i) {
         for (int64_t k = 0; k < cols; ++k) {
             const float* const p_x = b_x + x_d1*i + k;
@@ -3752,6 +3753,45 @@ static void WL__HOTPROC wl__blas_matmul_f32(
             }
         }
     }
+#elif 1 /* Tiled matrix multiplication. */
+    const int64_t TILE_I = 256;
+    const int64_t TILE_K = 256;
+    const int64_t TILE_J = 256;
+    for (int64_t ii = 0; ii < rows; ii += TILE_I) {
+        int64_t i_end = (ii + TILE_I < rows) ? ii + TILE_I : rows;
+        for (int64_t kk = 0; kk < cols; kk += TILE_K) {
+            int64_t k_end = (kk + TILE_K < cols) ? kk + TILE_K : cols;
+            for (int64_t jj = 0; jj < inners; jj += TILE_J) {
+                int64_t j_end = (jj + TILE_J < inners) ? jj + TILE_J : inners;
+                for (int64_t i = ii; i < i_end; ++i) {
+                    for (int64_t k = kk; k < k_end; ++k) {
+                        const float* const p_x = b_x + x_d1 * i + k;
+                        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+                        for (int64_t j = jj; j < j_end; ++j) {
+                            float* const p_r = b_r + r_d1 * i + j;
+                            const float* const p_y = b_y + y_d1 * k + j;
+                            wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+                            wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
+                            *p_r += *p_x * *p_y;
+                        }
+                    }
+                }
+            }
+        }
+    }
+#else /* Vector dot call */
+    for (int64_t i = 0; i < rows; ++i) {
+        for (int64_t k = 0; k < cols; ++k) {
+            const float* const p_x = b_x + x_d1 * i + k;
+            wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+            float* const p_r = b_r + r_d1 * i;
+            const float* const p_y = b_y + y_d1 * k;
+            wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+            wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
+            *p_r = wl__vdot_f32(inners, p_x, p_y);
+        }
+    }
+#endif
 }
 
 /* Dispatch table for default CPU-implementation. */
