@@ -3725,9 +3725,9 @@ static void WL__HOTPROC wl__blas_matmul_f32(
 ) {
     const wl_tensor_t* const x = inputs[0];
     const wl_tensor_t* const y = inputs[1];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
-    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    const float* const b_y = (const float*)y->buf;
     wl__load_local_storage_group(r, r_d, shape);
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
@@ -3736,26 +3736,19 @@ static void WL__HOTPROC wl__blas_matmul_f32(
     wl__load_local_storage_group(y, y_s, strides);
     wl__assert2(x_d2 == 1 && x_d3 == 1);
     wl__assert2(y_d2 == 1 && y_d3 == 1);
-    const float* A = (const float*)b_x;
-    const float* B = (const float*)b_y;
-    float* C = (float*)b_r;
-    const int64_t M = x_d0;
-    const int64_t N = y_d1;
-    const int64_t K = y_d0;
-    for (int64_t i = 0; i < M * N; ++i) {
-        float* p_c = C + i;
-        wl__bnd_chk(p_c, C, wl__tensor_data_size(r));
-        C[i] = 0.0f;
-    }
-    for (int64_t i = 0; i < M; ++i) {
-        for (int64_t k = 0; k < K; ++k) {
-            const float* p_x = A + (i*K + k);
-            wl__bnd_chk(p_x, A, wl__tensor_data_size(x));
-            for (int64_t j = 0; j < N; ++j) {
-                float* p_r = C + i*N + j;
-                const float* p_y = B + k*N + j;
-                wl__bnd_chk(p_r, C, wl__tensor_data_size(r));
-                wl__bnd_chk(p_y, B, wl__tensor_data_size(y));
+#define mat_get(a, cols, i, j) (a[(i)*(cols) + (j)])
+    const int64_t rows = x_d0;
+    const int64_t cols = x_d1;
+    const int64_t inners = y_d1;
+    for (int64_t i = 0; i < rows; ++i) {
+        for (int64_t k = 0; k < cols; ++k) {
+            const float* const p_x = &mat_get(b_x, x_d1, i, k);
+            wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+            for (int64_t j = 0; j < inners; ++j) {
+                float* const p_r = &mat_get(b_r, r_d1, i, j);
+                const float* const p_y = &mat_get(b_y, y_d1, k, j);
+                wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+                wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
                 *p_r += *p_x * *p_y;
             }
         }
