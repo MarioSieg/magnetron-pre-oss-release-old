@@ -3736,18 +3736,17 @@ static void WL__HOTPROC wl__blas_matmul_f32(
     wl__load_local_storage_group(y, y_s, strides);
     wl__assert2(x_d2 == 1 && x_d3 == 1);
     wl__assert2(y_d2 == 1 && y_d3 == 1);
-#if 0
-#define mat_get(a, cols, i, j) (a[(i)*(cols) + (j)])
+#if 1
     const int64_t rows = x_d0;
     const int64_t cols = x_d1;
     const int64_t inners = y_d1;
     for (int64_t i = 0; i < rows; ++i) {
         for (int64_t k = 0; k < cols; ++k) {
-            const float* const p_x = &mat_get(b_x, x_d1, i, k);
+            const float* const p_x = b_x + x_d1*i + k;
             wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
             for (int64_t j = 0; j < inners; ++j) {
-                float* const p_r = &mat_get(b_r, r_d1, i, j);
-                const float* const p_y = &mat_get(b_y, y_d1, k, j);
+                float* const p_r = b_r + r_d1*i + j;
+                const float* const p_y = b_y + y_d1*k + j;
                 wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
                 wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
                 *p_r += *p_x * *p_y;
