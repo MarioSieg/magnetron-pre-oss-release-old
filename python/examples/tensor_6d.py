@@ -1,16 +1,70 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
 import wavelet.core as wl
+import numpy as np
 
-hyper_tensor_a: wl.Tensor = wl.Tensor.random(shape=[2, 3, 4, 5, 6, 7])
-hyper_tensor_b: wl.Tensor = wl.Tensor.random(shape=[2, 3, 4, 5, 6, 7])
-r = hyper_tensor_a + hyper_tensor_b
-r.print(True, False)
+data = [
+    [
+        [
+            [
+                [
+                    [1, 2, 3],
+                    [4, 5, 6],
+                    [7, 8, 9]
+                ],
+                [
+                    [10, 11, 12],
+                    [13, 14, 15],
+                    [16, 17, 18]
+                ]
+            ],
+            [
+                [
+                    [19, 20, 21],
+                    [22, 23, 24],
+                    [25, 26, 27]
+                ],
+                [
+                    [28, 29, 30],
+                    [31, 32, 33],
+                    [34, 35, 36]
+                ]
+            ]
+        ],
+        [
+            [
+                [
+                    [37, 38, 39],
+                    [40, 41, 42],
+                    [43, 44, 45]
+                ],
+                [
+                    [46, 47, 48],
+                    [49, 50, 51],
+                    [52, 53, 54]
+                ]
+            ],
+            [
+                [
+                    [55, 56, 57],
+                    [58, 59, 60],
+                    [61, 62, 63]
+                ],
+                [
+                    [64, 65, 66],
+                    [67, 68, 69],
+                    [70, 71, 72]
+                ]
+            ]
+        ]
+    ],
+]
+xxxx = np.array(data).astype(np.float32)
+print(xxxx.shape)
+print(xxxx.strides)
+print(xxxx)
 
-# Check result
-data_a = hyper_tensor_a.data_as_f32()
-data_b = hyper_tensor_b.data_as_f32()
-data_r = r.data_as_f32()
-for i in range(0, sum(hyper_tensor_a.shape)):
-    assert data_r[i] == data_a[i] + data_b[i]
-print('OK')
+hyper_tensor_a: wl.Tensor = wl.Tensor.const(data)
+print(hyper_tensor_a)
+print(hyper_tensor_a.num_rows)
+print(hyper_tensor_a.num_cols)

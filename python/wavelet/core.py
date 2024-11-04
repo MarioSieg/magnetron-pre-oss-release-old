@@ -157,7 +157,7 @@ class ExecutionMode(Enum):
 class Context:
     """Manages the WAVELET context and tensor lifecycles."""
 
-    G: 'Context' = None  # Global context
+    active: 'Context' = None  # Global context
 
     def __init__(self, execution_mode: ExecutionMode = ExecutionMode.EAGER,
                  pool_chunk_size: int = 1 << 30):  # Pool chunk size. Default: 2GiB
@@ -239,7 +239,7 @@ class Context:
         self.ctx = ffi.NULL
 
 
-Context.G = Context()  # Create the global context
+Context.active = Context()  # Create the global context
 
 
 class Tensor:
@@ -252,7 +252,7 @@ class Tensor:
         """Destructor to release tensor resources."""
         self.tensor = ffi.NULL
 
-    def _new(self, ctx: Context, shape: list[int], dtype: DType = DType.F32,
+    def _new(self, ctx: Context, shape: tuple[int, ...], dtype: DType = DType.F32,
              name: str | None = None) -> None:
         assert 0 < len(shape) <= MAX_DIMS, f'Invalid number of dimensions: {len(shape)}'
         assert all(0 < dim <= DIM_MAX for dim in shape), 'Invalid dimension size'
@@ -316,14 +316,14 @@ class Tensor:
         return C.wl_tensor_rank(self.tensor)
 
     @property
-    def shape(self) -> list[int]:
+    def shape(self) -> tuple[int, ...]:
         """Returns the dimensions of the tensor."""
-        return ffi.unpack(C.wl_tensor_shape(self.tensor), self.rank)
+        return tuple(ffi.unpack(C.wl_tensor_shape(self.tensor), self.rank))
 
     @property
-    def strides(self) -> list[int]:
+    def strides(self) -> tuple[int, ...]:
         """Returns the strides of the tensor."""
-        return ffi.unpack(C.wl_tensor_strides(self.tensor), self.rank)
+        return tuple(ffi.unpack(C.wl_tensor_strides(self.tensor), self.rank))
 
     @property
     def dtype(self) -> DType:
@@ -446,65 +446,78 @@ class Tensor:
         C.wl_tensor_save_image(self.tensor, bytes(file_path, 'utf-8'))
 
     @staticmethod
-    def empty(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
-              name: str | None = None) -> 'Tensor':
+    def empty(shape: tuple[int, ...], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
-        tensor._new(ctx, shape, dtype, name)
+        tensor._new(Context.active, shape, dtype, name)
         return tensor
 
     @staticmethod
-    def full(shape: list[int], fill_value: float, dtype: DType = DType.F32,
-             ctx: Context = Context.G,
+    def full(shape: tuple[int, ...], fill_value: float, dtype: DType = DType.F32,
              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
-        tensor._new(ctx, shape, dtype, name)
+        tensor._new(Context.active, shape, dtype, name)
         tensor.fill(fill_value)
         return tensor
 
     @staticmethod
-    def const(data: list[float], shape: list[int] | None = None, dtype: DType = DType.F32, ctx: Context = Context.G,
+    def const(data, dtype: DType = DType.F32,
               name: str | None = None) -> 'Tensor':
-        """Creates a tensor with the given data."""
+        """Creates a tensor filled with data from a list."""
+        def determine_shape_and_flatten(nested) -> (tuple[int, ...], list[float]):
+            if not isinstance(nested, list):
+                return (), [nested]
+            elif len(nested) == 0:
+                return (0,), []
+            else:
+                shapes = []
+                flattened = []
+                for item in nested:
+                    shape_lst, flat = determine_shape_and_flatten(item)
+                    shapes.append(shape_lst)
+                    flattened.extend(flat)
+                first_shape = shapes[0]
+                for s in shapes:
+                    assert s == first_shape, "All sub-lists must have the same shape"
+                return (len(nested),) + first_shape, flattened
+        shape, flattened_data = determine_shape_and_flatten(data)
         tensor = Tensor(None)
-        tensor._new(ctx, shape if shape is not None else [len(data)], dtype, name)
-        size: int = len(data) * ffi.sizeof('float')
-        C.wl_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(data)}]', data), size)
+        tensor._new(Context.active, tuple(shape), dtype, name)
+        size: int = len(flattened_data) * ffi.sizeof('float')
+        C.wl_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(flattened_data)}]', flattened_data), size)
         return tensor
 
     @staticmethod
-    def zeros(shape: list[int], dtype: DType = DType.F32, ctx: Context = Context.G,
+    def zeros(shape: tuple[int, ...], dtype: DType = DType.F32,
               name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with zeros."""
-        return Tensor.full(shape, 1.0, dtype, ctx, name)
+        return Tensor.full(shape, 1.0, dtype, name)
 
     @staticmethod
-    def random(shape: list[int], interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
-               ctx: Context = Context.G,
+    def random(shape: tuple[int, ...], interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
                name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
-        tensor._new(ctx, shape, dtype, name)
+        tensor._new(Context.active, shape, dtype, name)
         tensor.fill_random(interval)
         return tensor
 
     @staticmethod
-    def load(file_path: str, ctx: Context = Context.G) -> 'Tensor':
+    def load(file_path: str) -> 'Tensor':
         assert file_path.endswith('.wavelet'), 'File must be a WAVELET file'
         """Loads a tensor from a binary WAVELET file."""
-        instance = C.wl_tensor_load(ctx.ctx, bytes(file_path, 'utf-8'))
+        instance = C.wl_tensor_load(Context.active, bytes(file_path, 'utf-8'))
         return Tensor(internal_instance=instance)
 
     @staticmethod
     def load_image(file_path: str,
-                   ctx: Context = Context.G,
                    name: str | None = None,
                    channels=ColorChannels.AUTO,
                    resize_to_dims: (int, int) = (0, 0)) -> 'Tensor':
         """Loads an image from a file and creates a tensor from it."""
         assert isfile(file_path), f'File not found: {file_path}'
-        instance = C.wl_tensor_load_image(ctx.ctx, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
+        instance = C.wl_tensor_load_image(Context.active, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
                                           resize_to_dims[1])
         tensor = Tensor(internal_instance=instance)
         if name is not None:
@@ -523,7 +536,7 @@ class Tensor:
         """Xᵀ"""
         return self.operator(Op.TRANSPOSE, None, self)
 
-    def permute(self, axes: list[int]) -> 'Tensor':
+    def permute(self, axes: tuple[int, ...]) -> 'Tensor':
         """Permutes the tensor according to the given axes."""
         assert len(axes) == MAX_DIMS, f'Invalid number of axes: {axes}'
         for i in range(MAX_DIMS):
@@ -629,5 +642,5 @@ class Tensor:
         return C.wl_tensor_eq(self.tensor, other.tensor)
 
     def __str__(self) -> str:
-        self.print(True)
+        self.print(True, True)
         return ''

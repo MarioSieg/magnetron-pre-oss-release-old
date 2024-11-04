@@ -18,8 +18,8 @@ def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
 
 class DenseLayer:
     def __init__(self, in_features: int, out_features: int, activation: wl.Op = wl.Op.SIGMOID):
-        self.weight = wl.Tensor.random(shape=[out_features, in_features])
-        self.bias = wl.Tensor.random(shape=[out_features, 1])
+        self.weight = wl.Tensor.random(shape=(out_features, in_features))
+        self.bias = wl.Tensor.random(shape=(out_features, 1))
         self.activation = activation
         self.cache = None
 
@@ -62,7 +62,7 @@ class SequentialModel:
         print(f'Training started {epochs} epochs with learning rate {learning_rate}')
         now = time.time_ns()
         losses = []
-        rate = wl.Tensor.full([1], fill_value=learning_rate)
+        rate = wl.Tensor.full((1,), fill_value=learning_rate)
         for epoch in range(0, epochs - 1):
             total_loss: float = 0
             for i in range(0, len(inputs)):
