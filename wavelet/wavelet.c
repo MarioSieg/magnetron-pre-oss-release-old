@@ -375,7 +375,7 @@ static void wl__humanize_memory_size(size_t n, double* out, const char** unit) {
     }
 }
 
-#define WL__FMT_DIM_BUF_SIZE ((21+3)*WL_MAX_DIMS)
+#define WL__FMT_DIM_BUF_SIZE ((21+4)*WL_MAX_DIMS)
 static void wl__fmt_dims(char (*buf)[WL__FMT_DIM_BUF_SIZE], const int64_t (*dims)[WL_MAX_DIMS], int64_t rank) {
     wl_static_assert(WL_MAX_DIMS == 6);
     memset(*buf, 0, sizeof(*buf));
@@ -384,7 +384,10 @@ static void wl__fmt_dims(char (*buf)[WL__FMT_DIM_BUF_SIZE], const int64_t (*dims
     *p++ = '(';
     for (int64_t i=0; i < rank; ++i) {
         p += snprintf(p, 21, "%" PRIi64, (*dims)[i]);
-        if (i < rank-1) *p++ = ' ';
+        if (i < rank-1) {
+            *p++ = ',';
+            *p++ = ' ';
+        }
     }
     *p++ = ')';
     *p = '\0';
@@ -1757,39 +1760,44 @@ size_t wl_tensor_get_memory_usage(const wl_tensor_t* t) {
     return sizeof(*t) + wl__tensor_data_size(t);
 }
 
-static void wl__print_tensor_recursive(FILE* f, const wl_tensor_t* t, int64_t (*idx)[WL_MAX_DIMS], int64_t curr_dim, int64_t total_dims, int indent) {
-    wl_static_assert(WL_MAX_DIMS == 6);
-    wl__assert2(curr_dim >= 0 && curr_dim < WL_MAX_DIMS && total_dims >= 1 && total_dims <= WL_MAX_DIMS);
+static void wl__print_tensor_recursive(FILE* f, const wl_tensor_t* t, int64_t (*idx)[WL_MAX_DIMS], const int64_t (*stri)[WL_MAX_DIMS], int64_t curr_dim, int64_t total_dims, int indent) {
     int64_t dim_size = t->shape[curr_dim];
+    wl__load_local_storage_group_arr(*stri, s);
     if (curr_dim == total_dims - 1) {
         fprintf(f, "%*s[", indent, "");
         for (int64_t i = 0; i < dim_size; ++i) {
             (*idx)[curr_dim] = i;
-            int64_t idx_rev[WL_MAX_DIMS] = {0};
-            for (int64_t j = 0; j < total_dims; ++j) idx_rev[j] = (*idx)[total_dims - j - 1];
-            float val = wl_tensor_get_scalar_physical_index(t, idx_rev[0], idx_rev[1], idx_rev[2], idx_rev[3], idx_rev[4], idx_rev[5]);
+            wl__load_local_storage_group_arr(*idx, i);
+            float val = *(const float*)((const uint8_t*)t->buf + i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5);
             char fmt_buf[128];
             *wl__fmt_f64(WL__FMT_G14, (double)val, fmt_buf) = '\0';
             fprintf(f, "%s", fmt_buf);
-            if (i < dim_size - 1)fprintf(f, " ");
+            if (i < dim_size - 1) {
+                fprintf(f, " ");
+            }
         }
         fprintf(f, "]");
     } else {
         fprintf(f, "%*s[\n", indent, "");
         for (int64_t i = 0; i < dim_size; ++i) {
             (*idx)[curr_dim] = i;
-            wl__print_tensor_recursive(f, t, idx, curr_dim + 1, total_dims, indent + 1);
-            if (i < dim_size - 1) fprintf(f, ",\n");
-            else fprintf(f, "\n");
+            wl__print_tensor_recursive(f, t, idx, stri, curr_dim + 1, total_dims, indent + 1);
+            if (i < dim_size - 1) {
+                fprintf(f, ",\n");
+            } else {
+                fprintf(f, "\n");
+            }
         }
-        fprintf(f, "%*s]", indent, "");
+        fprintf(f, "%*s]\n", indent, "");
     }
 }
+
 
 void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
     wl__assert(t->dtype == WL_DTYPE_F32, "Tensor must be F32");
     wl__assert2(with_header || with_data);
     wl__load_local_storage_group(t, x_d, shape);
+    wl__load_local_storage_group(t, x_s, strides);
     FILE* f = stdout;
     if (with_header) {
         double buf_size_cvt = 0.0;
@@ -1798,7 +1806,7 @@ void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
         char shape[WL__FMT_DIM_BUF_SIZE];
         char strides[WL__FMT_DIM_BUF_SIZE];
         wl__fmt_dims(&shape, &t->shape, t->rank);
-        wl__fmt_dims(&strides, &t->strides, t->rank);
+        wl__fmt_dims(&strides, &t->strides, WL_MAX_DIMS);
         fprintf(f, "Tensor '%s', DType: %s, Rank: %" PRIi64 ", Elements: %" PRIi64 ", Shape: %s, Strides: %s, Mem: %.03f %s\n",
             t->name,
             wl_dtype_info_of(t->dtype)->name,
@@ -1811,9 +1819,12 @@ void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
         );
     }
     if (with_data) {
+        int64_t strides[WL_MAX_DIMS];
+        strides[WL_MAX_DIMS-1] = sizeof(float);
+        for (int32_t i = WL_MAX_DIMS-2; i >= 0; --i)    // TODO: Fix this
+            strides[i] = strides[i+1] * t->shape[i+1];
         int64_t idx[WL_MAX_DIMS] = {0};
-        wl__print_tensor_recursive(f, t, &idx, 0, t->rank, 0);
-        fprintf(f, "\n");
+        wl__print_tensor_recursive(f, t, &idx, &strides, 0, t->rank, 0);
     }
 }
 
