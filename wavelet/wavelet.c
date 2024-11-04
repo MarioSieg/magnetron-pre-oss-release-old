@@ -375,6 +375,24 @@ static void wl__humanize_memory_size(size_t n, double* out, const char** unit) {
     }
 }
 
+#define WL__FMT_DIM_BUF_SIZE ((21+4)*WL_MAX_DIMS)
+static void wl__fmt_dims(char (*buf)[WL__FMT_DIM_BUF_SIZE], const int64_t (*dims)[WL_MAX_DIMS], int64_t rank) {
+    wl_static_assert(WL_MAX_DIMS == 6);
+    memset(*buf, 0, sizeof(*buf));
+    char* p = *buf;
+    wl__assert2(p+rank*21+3 < *buf+WL__FMT_DIM_BUF_SIZE);
+    *p++ = '(';
+    for (int64_t i=0; i < rank; ++i) {
+        p += snprintf(p, 21, "%" PRIi64, (*dims)[i]);
+        if (i < rank-1) {
+            *p++ = ',';
+            *p++ = ' ';
+        }
+    }
+    *p++ = ')';
+    *p = '\0';
+}
+
 #ifdef _WIN32
 #include <wchar.h>
 extern __declspec(dllimport) int __stdcall MultiByteToWideChar(
@@ -1299,15 +1317,19 @@ static bool wl__validate_inputs(wl_op_t op, wl_tensor_t** inputs, uint32_t n_inp
 static bool wl__validate_shape_eq(wl_op_t op, const wl_tensor_t* a, const wl_tensor_t* b) {
     if (wl__likely(wl_tensor_is_shape_eq(a, b))) return true;
     wl__validate_print_separator();
+    char shape_1[WL__FMT_DIM_BUF_SIZE];
+    char shape_2[WL__FMT_DIM_BUF_SIZE];
+    wl__fmt_dims(&shape_1, &a->shape, a->rank);
+    wl__fmt_dims(&shape_2, &b->shape, b->rank);
     fprintf(stderr,
         "Failed to execute operation: %s.\n"
         "ERROR: Input tensor shapes must be equal.\n"
-        "    - Input Tensor 1 '%s' Shape: [%zu %zu %zu %zu]\n"
-        "    - Input Tensor 2 '%s' Shape: [%zu %zu %zu %zu]\n"
+        "    - Input Tensor 1 '%s' Shape: %s\n"
+        "    - Input Tensor 2 '%s' Shape: %s\n"
         "    Hint: Adjust tensor shapes using transposition or permutation.\n",
         wl_op_get_name(op),
-        a->name, (size_t)a->shape[0], (size_t)a->shape[1], (size_t)a->shape[2], (size_t)a->shape[3],
-        b->name, (size_t)b->shape[0], (size_t)b->shape[1], (size_t)b->shape[2], (size_t)b->shape[3]
+        a->name, shape_1,
+        b->name, shape_2
     );
     wl__validate_print_separator();
     fputc('\n', stderr);
@@ -1318,20 +1340,32 @@ static bool wl__validate_shape_eq(wl_op_t op, const wl_tensor_t* a, const wl_ten
 static bool wl__validate_shape_broadcastable(wl_op_t op, const wl_tensor_t* a, const wl_tensor_t* b) { /* Check if tensor shapes are broadcast-able. (b into a) */
     if (wl__likely(wl_tensor_can_broadcast(b, a))) return true;
     wl__validate_print_separator();
+    char shape_1[WL__FMT_DIM_BUF_SIZE];
+    char shape_2[WL__FMT_DIM_BUF_SIZE];
+    wl__fmt_dims(&shape_1, &a->shape, a->rank);
+    wl__fmt_dims(&shape_2, &b->shape, b->rank);
+    bool broadcast_able[WL_MAX_DIMS] = {0};
+    for (uint32_t i=0; i < WL_MAX_DIMS; ++i)
+        broadcast_able[i] = a->shape[i] % b->shape[i] == 0;
+    char broadcast_able_str[WL_MAX_DIMS*2+4+1] = {0};
+    char* p = broadcast_able_str;
+    *p++ = '[';
+    for (uint32_t i=0; i < WL_MAX_DIMS; ++i) {
+        *p++ = broadcast_able[i] ? 'Y' : 'N';
+        *p++ = i < WL_MAX_DIMS-1 ? ',' : ']';
+    }
+    *p = '\0';
     fprintf(stderr,
         "Failed to execute operation: %s.\n"
         "ERROR: Input tensor shapes must be broadcast-able.\n"
-        "    - Input Tensor 1 '%s' Shape: [%zu %zu %zu %zu]\n"
-        "    - Input Tensor 2 '%s' Shape: [%zu %zu %zu %zu]\n"
-        "    Broadcast-able: [%s, %s, %s, %s]\n"
+        "    - Input Tensor 1 '%s' Shape: %s\n"
+        "    - Input Tensor 2 '%s' Shape: %s\n"
+        "    Broadcast-able: %s\n"
         "    Hint: Adjust tensor shapes using transposition or permutation.\n",
         wl_op_get_name(op),
-        a->name, (size_t)a->shape[0], (size_t)a->shape[1], (size_t)a->shape[2], (size_t)a->shape[3],
-        b->name, (size_t)b->shape[0], (size_t)b->shape[1], (size_t)b->shape[2], (size_t)b->shape[3],
-        a->shape[0] % b->shape[0] == 0 ? "YES" : "NO",
-        a->shape[1] % b->shape[1] == 0 ? "YES" : "NO",
-        a->shape[2] % b->shape[2] == 0 ? "YES" : "NO",
-        a->shape[3] % b->shape[3] == 0 ? "YES" : "NO"
+        a->name, shape_1,
+        b->name, shape_2,
+        broadcast_able_str
     );
     wl__validate_print_separator();
     fputc('\n', stderr);
@@ -1662,6 +1696,24 @@ wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs,
     return R;
 }
 
+static WL__AINLINE void wl_tensor_virtual_to_physical_index(const wl_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[WL_MAX_DIMS]) {
+    wl_static_assert(WL_MAX_DIMS == 6);
+    wl__load_local_storage_group(t, d, shape);
+    (*p_idx)[5] = v_idx / (d4*d3*d2*d1*d0);
+    (*p_idx)[4] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0) / (d3*d2*d1*d0);
+    (*p_idx)[3] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0) / (d2*d1*d0);
+    (*p_idx)[2] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0) / (d1*d0);
+    (*p_idx)[1] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0) / d0;
+    (*p_idx)[0] =  v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0 - (*p_idx)[1]*d0;
+}
+
+static WL__AINLINE int64_t wl_tensor_physical_to_virtual_index(const wl_tensor_t* t, const int64_t (*p_idx)[WL_MAX_DIMS]) {
+    wl_static_assert(WL_MAX_DIMS == 6);
+    wl__load_local_storage_group(t, s, strides);
+    wl__load_local_storage_group_arr(*p_idx, i);
+    return s0*i0 + s1*i1 + s2*i2 + s3*i3 + s4*i4 + s5*i5;
+}
+
 wl_tensor_t* wl_tensor_get_arg(const wl_tensor_t* t, size_t slot) {
     wl__assert(slot < WL_MAX_INPUT_TENSORS, "Slot must be within [0, %d)", WL_MAX_INPUT_TENSORS);
     return t->op_inputs[slot];
@@ -1708,6 +1760,39 @@ size_t wl_tensor_get_memory_usage(const wl_tensor_t* t) {
     return sizeof(*t) + wl__tensor_data_size(t);
 }
 
+static void wl__print_tensor_recursive(FILE* f, const wl_tensor_t* t, int64_t (*idx)[WL_MAX_DIMS], const int64_t (*stri)[WL_MAX_DIMS], int64_t curr_dim, int64_t total_dims, int indent) {
+    int64_t dim_size = t->shape[curr_dim];
+    wl__load_local_storage_group_arr(*stri, s);
+    if (curr_dim == total_dims - 1) {
+        fprintf(f, "%*s[", indent, "");
+        for (int64_t i = 0; i < dim_size; ++i) {
+            (*idx)[curr_dim] = i;
+            wl__load_local_storage_group_arr(*idx, i);
+            float val = *(const float*)((const uint8_t*)t->buf + i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5);
+            char fmt_buf[128];
+            *wl__fmt_f64(WL__FMT_G14, (double)val, fmt_buf) = '\0';
+            fprintf(f, "%s", fmt_buf);
+            if (i < dim_size - 1) {
+                fprintf(f, " ");
+            }
+        }
+        fprintf(f, "]");
+    } else {
+        fprintf(f, "%*s[\n", indent, "");
+        for (int64_t i = 0; i < dim_size; ++i) {
+            (*idx)[curr_dim] = i;
+            wl__print_tensor_recursive(f, t, idx, stri, curr_dim + 1, total_dims, indent + 1);
+            if (i < dim_size - 1) {
+                fprintf(f, ",\n");
+            } else {
+                fprintf(f, "\n");
+            }
+        }
+        fprintf(f, "%*s]\n", indent, "");
+    }
+}
+
+
 void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
     wl__assert(t->dtype == WL_DTYPE_F32, "Tensor must be F32");
     wl__assert2(with_header || with_data);
@@ -1718,60 +1803,28 @@ void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
         double buf_size_cvt = 0.0;
         const char* buf_size_unit = NULL;
         wl__humanize_memory_size(wl_tensor_get_memory_usage(t), &buf_size_cvt, &buf_size_unit);
-        fprintf(f, "Tensor '%s', DType: %s, Rank: %zu, Elements: %zu, Shape: [%zu %zu %zu %zu %zu %zu], Strides: [%zu %zu %zu %zu %zu %zu], Mem: %.03f %s\n",
+        char shape[WL__FMT_DIM_BUF_SIZE];
+        char strides[WL__FMT_DIM_BUF_SIZE];
+        wl__fmt_dims(&shape, &t->shape, t->rank);
+        wl__fmt_dims(&strides, &t->strides, WL_MAX_DIMS);
+        fprintf(f, "Tensor '%s', DType: %s, Rank: %" PRIi64 ", Elements: %" PRIi64 ", Shape: %s, Strides: %s, Mem: %.03f %s\n",
             t->name,
             wl_dtype_info_of(t->dtype)->name,
-            (size_t)t->rank,
-            (size_t)wl__tensor_num_elements(t),
-            (size_t)x_d0,
-            (size_t)x_d1,
-            (size_t)x_d2,
-            (size_t)x_d3,
-            (size_t)x_d4,
-            (size_t)x_d5,
-            (size_t)x_s0,
-            (size_t)x_s1,
-            (size_t)x_s2,
-            (size_t)x_s3,
-            (size_t)x_s4,
-            (size_t)x_s5,
+            t->rank,
+            wl__tensor_num_elements(t),
+            shape,
+            strides,
             buf_size_cvt,
             buf_size_unit
         );
     }
-    if (with_data) { /* TODO: Adapt 6D tensor printing */
-        const uint8_t* buf = (const uint8_t*)t->buf;
-        if (x_d3 > 1) fprintf(f, "[\n");
-        for (int64_t i3=0; i3 < x_d3; ++i3) {
-            if (x_d3 > 1) fputc('\t', f);
-            if (x_d2 > 1) fprintf(f, "[\n");
-            for (int64_t i2=0; i2 < x_d2; ++i2) {
-                if (x_d3 > 1) fputc('\t', f);
-                if (x_d2 > 1) fputc('\t', f);
-                if (x_d1 > 1) fprintf(f, "[\n");
-                for (int64_t i1=0; i1 < x_d1; ++i1) {
-                    if (x_d3 > 1) fputc('\t', f);
-                    if (x_d2 > 1) fputc('\t', f);
-                    if (x_d1 > 1) fputc('\t', f);
-                    if (x_d0 > 1) fprintf(f, "[ ");
-                    for (int64_t i0=0; i0 < x_d0; ++i0) {
-                        const float* const p_x = (const float*)(buf + i0*x_s0 + i1*x_s1 + i2*x_s2 + i3*x_s3);
-                        wl__bnd_chk(p_x, buf, wl__tensor_data_size(t));
-                        char fmt_buf[128];
-                        memset(fmt_buf, 0, sizeof(fmt_buf));
-                        *wl__fmt_f64(WL__FMT_G14, (double)*p_x, fmt_buf) = '\0';
-                        fprintf(f, "%s ", fmt_buf);
-                    }
-                    if (x_d0 > 1) fprintf(f, "]\n");
-                }
-                if (x_d3 > 1) fputc('\t', f);
-                if (x_d2 > 1) fputc('\t', f);
-                if (x_d1 > 1) fprintf(f, "]\n");
-            }
-            if (x_d3 > 1) fputc('\t', f);
-            if (x_d2 > 1) fprintf(f, "]\n");
-        }
-        if (x_d3 > 1) fprintf(f, "]\n");
+    if (with_data) {
+        int64_t strides[WL_MAX_DIMS];
+        strides[WL_MAX_DIMS-1] = sizeof(float);
+        for (int32_t i = WL_MAX_DIMS-2; i >= 0; --i)    // TODO: Fix this
+            strides[i] = strides[i+1] * t->shape[i+1];
+        int64_t idx[WL_MAX_DIMS] = {0};
+        wl__print_tensor_recursive(f, t, &idx, &strides, 0, t->rank, 0);
     }
 }
 
@@ -1860,24 +1913,6 @@ bool wl_tensor_is_permuted(const wl_tensor_t* t) {
     return false;
 }
 
-static WL__AINLINE void wl_tensor_virtual_to_physical_index(const wl_tensor_t* t, int64_t v_idx, int64_t(*p_idx)[WL_MAX_DIMS]) {
-    wl_static_assert(WL_MAX_DIMS == 6);
-    wl__load_local_storage_group(t, d, shape);
-    (*p_idx)[5] = v_idx / (d4*d3*d2*d1*d0);
-    (*p_idx)[4] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0) / (d3*d2*d1*d0);
-    (*p_idx)[3] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0) / (d2*d1*d0);
-    (*p_idx)[2] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0) / (d1*d0);
-    (*p_idx)[1] = (v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0) / d0;
-    (*p_idx)[0] =  v_idx - (*p_idx)[5]*d4*d3*d2*d1*d0 - (*p_idx)[4]*d3*d2*d1*d0 - (*p_idx)[3]*d2*d1*d0 - (*p_idx)[2]*d1*d0 - (*p_idx)[1]*d0;
-}
-
-static WL__AINLINE int64_t wl_tensor_physical_to_virtual_index(const wl_tensor_t* t, const int64_t (*p_idx)[WL_MAX_DIMS]) {
-    wl_static_assert(WL_MAX_DIMS == 6);
-    wl__load_local_storage_group(t, s, strides);
-    wl__load_local_storage_group_arr(*p_idx, i);
-    return s0*i0 + s1*i1 + s2*i2 + s3*i3 + s4*i4 + s5*i5;
-}
-
 bool wl_tensor_is_contiguous(const wl_tensor_t* t) {
     return *t->strides == wl_dtype_info_of(t->dtype)->size;
 }
@@ -1904,9 +1939,9 @@ void wl_tensor_set_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1,
 
 float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t v_idx) {
     if (!wl_tensor_is_contiguous(t)) {
-        int64_t physical_idx[WL_MAX_DIMS];
-        wl_tensor_virtual_to_physical_index(t, v_idx, &physical_idx);
-        return wl_tensor_get_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], physical_idx[4], physical_idx[5]);
+        int64_t pidx[WL_MAX_DIMS];
+        wl_tensor_virtual_to_physical_index(t, v_idx, &pidx);
+        return wl_tensor_get_scalar_physical_index(t, pidx[0], pidx[1], pidx[2], pidx[3], pidx[4], pidx[5]);
     }
     switch (t->dtype) {
         case WL_DTYPE_F32:
@@ -1918,9 +1953,9 @@ float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t v_idx) {
 
 void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x) {
     if (!wl_tensor_is_contiguous(t)) {
-        int64_t physical_idx[WL_MAX_DIMS];
-        wl_tensor_virtual_to_physical_index(t, v_idx, &physical_idx);
-        wl_tensor_set_scalar_physical_index(t, physical_idx[0], physical_idx[1], physical_idx[2], physical_idx[3], physical_idx[4], physical_idx[5], x);
+        int64_t pidx[WL_MAX_DIMS];
+        wl_tensor_virtual_to_physical_index(t, v_idx, &pidx);
+        wl_tensor_set_scalar_physical_index(t, pidx[0], pidx[1], pidx[2], pidx[3], pidx[4], pidx[5], x);
         return;
     }
     switch (t->dtype) {
@@ -2761,11 +2796,11 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
     wl__load_local_storage_group(x, x_d, shape);
     wl__load_local_storage_group(x, x_s, strides);
     double sum = 0.0;
-    for (int64_t i5 = 0; i5 < x_d5; ++i5) {
-        for (int64_t i4 = 0; i4 < x_d4; ++i4) {
-            for (int64_t i3 = 0; i3 < x_d3; ++i3) {
-                for (int64_t i2 = 0; i2 < x_d2; ++i2) {
-                    for (int64_t i1 = 0; i1 < x_d1; ++i1) {
+    for (int64_t i5=0; i5 < x_d5; ++i5) {
+        for (int64_t i4=0; i4 < x_d4; ++i4) {
+            for (int64_t i3=0; i3 < x_d3; ++i3) {
+                for (int64_t i2=0; i2 < x_d2; ++i2) {
+                    for (int64_t i1=0; i1 < x_d1; ++i1) {
                         const float* const p_x = (const float*)(b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5);
                         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
                         sum += wl__vsum_f64_f32(
@@ -2794,11 +2829,11 @@ static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
     wl__load_local_storage_group(x, x_d, shape);
     wl__load_local_storage_group(x, x_s, strides);
     double sum = 0.0;
-    for (int64_t i5 = 0; i5 < x_d5; ++i5) {
-        for (int64_t i4 = 0; i4 < x_d4; ++i4) {
-            for (int64_t i3 = 0; i3 < x_d3; ++i3) {
-                for (int64_t i2 = 0; i2 < x_d2; ++i2) {
-                    for (int64_t i1 = 0; i1 < x_d1; ++i1) {
+    for (int64_t i5=0; i5 < x_d5; ++i5) {
+        for (int64_t i4=0; i4 < x_d4; ++i4) {
+            for (int64_t i3=0; i3 < x_d3; ++i3) {
+                for (int64_t i2=0; i2 < x_d2; ++i2) {
+                    for (int64_t i1=0; i1 < x_d1; ++i1) {
                         const float* const p_x = (const float*)(b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5);
                         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
                         sum += wl__vsum_f64_f32(
@@ -3725,9 +3760,9 @@ static void WL__HOTPROC wl__blas_matmul_f32(
 ) {
     const wl_tensor_t* const x = inputs[0];
     const wl_tensor_t* const y = inputs[1];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
-    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    const float* const b_y = (const float*)y->buf;
     wl__load_local_storage_group(r, r_d, shape);
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
@@ -3736,30 +3771,62 @@ static void WL__HOTPROC wl__blas_matmul_f32(
     wl__load_local_storage_group(y, y_s, strides);
     wl__assert2(x_d2 == 1 && x_d3 == 1);
     wl__assert2(y_d2 == 1 && y_d3 == 1);
-    const float* A = (const float*)b_x;
-    const float* B = (const float*)b_y;
-    float* C = (float*)b_r;
-    const int64_t M = x_d0;
-    const int64_t N = y_d1;
-    const int64_t K = y_d0;
-    for (int64_t i = 0; i < M * N; ++i) {
-        float* p_c = C + i;
-        wl__bnd_chk(p_c, C, wl__tensor_data_size(r));
-        C[i] = 0.0f;
-    }
-    for (int64_t i = 0; i < M; ++i) {
-        for (int64_t k = 0; k < K; ++k) {
-            const float* p_x = A + (i*K + k);
-            wl__bnd_chk(p_x, A, wl__tensor_data_size(x));
-            for (int64_t j = 0; j < N; ++j) {
-                float* p_r = C + i*N + j;
-                const float* p_y = B + k*N + j;
-                wl__bnd_chk(p_r, C, wl__tensor_data_size(r));
-                wl__bnd_chk(p_y, B, wl__tensor_data_size(y));
+    const int64_t rows = x_d0;
+    const int64_t cols = x_d1;
+    const int64_t inners = y_d1;
+#if 1 /* Reordering of loops for better cache locality. */
+    for (int64_t i=0; i < rows; ++i) {
+        for (int64_t k=0; k < cols; ++k) {
+            const float* const p_x = b_x + x_d1*i + k;
+            wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+            for (int64_t j = 0; j < inners; ++j) {
+                float* const p_r = b_r + r_d1*i + j;
+                const float* const p_y = b_y + y_d1*k + j;
+                wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+                wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
                 *p_r += *p_x * *p_y;
             }
         }
     }
+#elif 1 /* Tiled matrix multiplication. */
+    const int64_t TILE_I = 256;
+    const int64_t TILE_K = 256;
+    const int64_t TILE_J = 256;
+    for (int64_t ii = 0; ii < rows; ii += TILE_I) {
+        int64_t i_end = (ii + TILE_I < rows) ? ii + TILE_I : rows;
+        for (int64_t kk = 0; kk < cols; kk += TILE_K) {
+            int64_t k_end = (kk + TILE_K < cols) ? kk + TILE_K : cols;
+            for (int64_t jj = 0; jj < inners; jj += TILE_J) {
+                int64_t j_end = (jj + TILE_J < inners) ? jj + TILE_J : inners;
+                for (int64_t i = ii; i < i_end; ++i) {
+                    for (int64_t k = kk; k < k_end; ++k) {
+                        const float* const p_x = b_x + x_d1 * i + k;
+                        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+                        for (int64_t j = jj; j < j_end; ++j) {
+                            float* const p_r = b_r + r_d1 * i + j;
+                            const float* const p_y = b_y + y_d1 * k + j;
+                            wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+                            wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
+                            *p_r += *p_x * *p_y;
+                        }
+                    }
+                }
+            }
+        }
+    }
+#else /* Vector dot call */
+    for (int64_t i = 0; i < rows; ++i) {
+        for (int64_t k = 0; k < cols; ++k) {
+            const float* const p_x = b_x + x_d1 * i + k;
+            wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+            float* const p_r = b_r + r_d1 * i;
+            const float* const p_y = b_y + y_d1 * k;
+            wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+            wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
+            *p_r = wl__vdot_f32(inners, p_x, p_y);
+        }
+    }
+#endif
 }
 
 /* Dispatch table for default CPU-implementation. */
