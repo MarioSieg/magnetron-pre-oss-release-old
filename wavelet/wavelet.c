@@ -39,15 +39,18 @@
 #endif
 
 #ifdef _WIN32
-#   error "WAVELET does not support Windows yet."
+#error "WAVELET does not support Windows yet."
 #elif defined(__APPLE__)
-#   include <mach/mach.h>
-#   include <mach/vm_statistics.h>
-#   include <sys/sysctl.h>
-#   include <sys/types.h>
-#   include <unistd.h>
+#include <mach/mach.h>
+#include <mach/vm_statistics.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#include <unistd.h>
+#ifdef MSML_USE_ACCELERATE
+#include <Accelerate/Accelerate.h>
+#endif
 #else
-#   include <unistd.h>
+#include <unistd.h>
 #endif
 
 wl_static_assert(sizeof(0u) == 4);
@@ -2177,9 +2180,13 @@ static void WL__HOTPROC wl__vadd_f32(
     const float* const x,
     const float* const y
 ) {
-    for (int64_t i=0; i < n; ++i) {
-        o[i] = x[i] + y[i];
-    }
+    #ifdef MSML_USE_ACCELERATE
+        vDSP_vadd(x, 1, y, 1, o, 1, n);
+    #else
+        for (int64_t i=0; i < n; ++i) {
+            o[i] = x[i] + y[i];
+        }
+    #endif
 }
 
 static void WL__HOTPROC wl__vsub_f32(
@@ -2350,13 +2357,6 @@ static double WL__HOTPROC wl__vsum_f64_f32( /* Σx. */
     for (int64_t i=0; i < n; ++i)
         sum += (double)x[i];
     return sum;
-}
-
-static float WL__HOTPROC wl__vsum_f32( /* Σx. */
-    const int64_t n,
-    const float* const x
-) {
-    return (float)wl__vsum_f64_f32(n, x);
 }
 
 static void WL__HOTPROC wl__vabs_f32( /* o = |x| */

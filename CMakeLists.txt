@@ -9,6 +9,9 @@ option(WAVELET_BUILD_TESTS "Build tests" ON)
 option(WAVELET_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(WAVELET_BUILD_FUZZERS "Build fuzzers" OFF)
 option(WAVELET_ENABLE_IMAGE_SUPPORT "Enable creating tensor from images support" ON)
+if (APPLE)
+    option(WAVELET_USE_ACCELERATE "Use Apple's Accelerate framework" ON)
+endif()
 
 if (${WAVELET_BUILD_TESTS})
     enable_testing()
@@ -37,7 +40,17 @@ if (NOT WIN32)
         -fvisibility=hidden
         -std=gnu99
     )
-    if (NOT APPLE) # TODO: IF x86-64
+    if (${WAVELET_USE_ACCELERATE} AND APPLE)
+        find_library(ACCELERATE_FRAMEWORK Accelerate)
+        if (ACCELERATE_FRAMEWORK)
+            message(STATUS "Accelerate framework found")
+            target_compile_definitions(wavelet PRIVATE MSML_USE_ACCELERATE)
+            target_compile_definitions(wavelet PRIVATE ACCELERATE_NEW_LAPACK)
+            target_compile_definitions(wavelet PRIVATE ACCELERATE_LAPACK_ILP64)
+        else()
+            message(WARNING "Accelerate framework not found, using fallback")
+        endif()
+    else() # todo x86
         target_compile_options(wavelet PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)
     endif()
     # Enable optimizations only for release builds
