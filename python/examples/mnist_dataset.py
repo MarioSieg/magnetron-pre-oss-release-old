@@ -30,4 +30,6 @@ def ubyte_load_labels(src: str, num_samples: int) -> np.ndarray:
 
 
 data = ubyte_load_data('../../datasets/mnist/images-idx3-ubyte.gz', 60000)
-wl.Tensor.const(data=data.flatten().tolist(), shape=(60000, 28, 28)).save('mnist_images.wavelet')
+mnist = wl.Tensor.const(data=data.tolist())
+mnist.print(True, False)
+mnist.save('mnist_images.wavelet')

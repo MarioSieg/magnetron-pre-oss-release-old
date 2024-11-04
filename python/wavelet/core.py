@@ -507,7 +507,7 @@ class Tensor:
     def load(file_path: str) -> 'Tensor':
         assert file_path.endswith('.wavelet'), 'File must be a WAVELET file'
         """Loads a tensor from a binary WAVELET file."""
-        instance = C.wl_tensor_load(Context.active, bytes(file_path, 'utf-8'))
+        instance = C.wl_tensor_load(Context.active.ctx, bytes(file_path, 'utf-8'))
         return Tensor(internal_instance=instance)
 
     @staticmethod
@@ -517,7 +517,7 @@ class Tensor:
                    resize_to_dims: (int, int) = (0, 0)) -> 'Tensor':
         """Loads an image from a file and creates a tensor from it."""
         assert isfile(file_path), f'File not found: {file_path}'
-        instance = C.wl_tensor_load_image(Context.active, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
+        instance = C.wl_tensor_load_image(Context.active.ctx, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
                                           resize_to_dims[1])
         tensor = Tensor(internal_instance=instance)
         if name is not None:
