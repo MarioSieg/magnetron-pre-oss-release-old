@@ -147,6 +147,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             wl_tensor_fill_random(y, -5.0f, 5.0f); \
             \
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x, y); \
+                                                 \
             \
             const auto* b_x = wl_tensor_data_as_f32(x); \
             const auto* b_y = wl_tensor_data_as_f32(y); \
