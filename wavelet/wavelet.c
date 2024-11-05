@@ -4382,7 +4382,7 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
             wl__cpuid(7u, 0, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(7H);
         }
-        if (wl__cpuid >= 7u) {
+        if (max_basic_leaf >= 7u) {
             wl__cpuid(7u, 1, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(7H_1H);
         }
