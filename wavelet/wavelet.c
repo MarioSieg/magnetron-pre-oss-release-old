@@ -284,6 +284,7 @@ struct wl_ctx_t {
     void (*image_load_free_fn)(uint8_t*);
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
     wl_exec_mode_t exec_mode;
+    bool profiler_enabled;
     union {
         struct {
             uint64_t state;
@@ -490,21 +491,23 @@ static inline uintptr_t wl__thread_id(void) {
     return tid;
 }
 
-static int64_t wl__hpc_clock_us(void) { /* High precision clock in microseconds. */
+static uint64_t wl__hpc_clock_us(void) { /* High precision clock in microseconds. */
     #ifdef _WIN32
     #error "WAVELET does not support Windows yet."
     #else
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
-        return (int64_t)ts.tv_sec*1000000 + (int64_t)ts.tv_nsec/1000;
+        return (uint64_t)ts.tv_sec*1000000 + (uint64_t)ts.tv_nsec/1000;
     #endif
 }
-static int64_t wl__hpc_clock_elapsed_us(int64_t start) { /* High precision clock elapsed time in microseconds. */
-    return llabs(wl__hpc_clock_us() - start);
+static uint64_t wl__hpc_clock_elapsed_us(uint64_t start) { /* High precision clock elapsed time in microseconds. */
+    return (uint64_t)llabs((int64_t)wl__hpc_clock_us() - (int64_t)start);
 }
-static double wl__hpc_clock_elapsed_ms(int64_t start) { /* High precision clock elapsed time in milliseconds. */
-    return (double)wl__hpc_clock_elapsed_us(start) * 1.0e-3;
+static double wl__hpc_clock_elapsed_ms(uint64_t start) { /* High precision clock elapsed time in milliseconds. */
+    return (double)wl__hpc_clock_elapsed_us(start) * 1.e-3;
 }
+#define wl__clock_cycles() ((uint64_t)clock())
+#define wl__cycles_per_ms() ((uint64_t)CLOCKS_PER_SEC/1000)
 
 typedef uint32_t wl__bitset_t;
 wl_static_assert(sizeof(wl__bitset_t) == 4);
