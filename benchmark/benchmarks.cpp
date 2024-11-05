@@ -15,14 +15,14 @@ auto main() -> int {
 
 
     ankerl::nanobench::Bench softmax_bench {};
-    matmul_bench.title("Matmul")
-        .unit("matmul")
+    matmul_bench.title("Tensor Add")
+        .unit("add")
         .warmup(100)
         .relative(true);
     matmul_bench.performanceCounters(true);
 
-    run_bench(matmul_bench, "Matmul Same Shape", [](wl_ctx_t* ctx) -> wl_tensor_t* {
-        constexpr std::int64_t N = 256;
+    run_bench(matmul_bench, "Tensor Add", [](wl_ctx_t* ctx) -> wl_tensor_t* {
+        constexpr std::int64_t N = 1024;
 
         wl_tensor_t* A = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N, N);
         wl_tensor_fill(A, 1.0f);
@@ -31,7 +31,7 @@ auto main() -> int {
         wl_tensor_fill(A, 1.0f);
 
         wl_tensor_t* inputs[2] = {A, B};
-        wl_tensor_t* C = wl_tensor_operator(ctx, WL_OP_MATMUL, inputs, 2, nullptr);
+        wl_tensor_t* C = wl_tensor_operator(ctx, WL_OP_ADD, inputs, 2, nullptr);
         return C;
     });
 }
