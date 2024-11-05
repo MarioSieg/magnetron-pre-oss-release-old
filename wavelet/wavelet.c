@@ -1706,10 +1706,10 @@ static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_
 static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
     wl__perf_mon_t* pmon = &R->pmon;
     wl__op_perf_info_t (*pops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
-    uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_us(); /* Profiling monitoring */
+    uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_us();    /* Profiling monitoring */
     void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
-    (*(*(dispatch_lut+op)))(bci, R, inputs); /* Dispatch to operation. */
-    if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
+    (*(*(dispatch_lut+op)))(bci, R, inputs);                /* Dispatch to operation. */
+    if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return;    /* Profiling disabled. */
     pmon->elapsed_us = wl__hpc_clock_elapsed_us(start);
     pmon->elapsed_us_acc += pmon->elapsed_us;
     pmon->mean_ms = ((double)pmon->elapsed_us_acc/1.e3)/(double)++pmon->n_execs;
@@ -1721,20 +1721,20 @@ wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor
     wl__assert2(op != WL_OP_NOP && n_inputs <= WL_MAX_INPUT_TENSORS);
     wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op);
     bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op);
-    wl_tensor_t* R = (*construct_result)(inputs, params);
-    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;
+    wl_tensor_t* R = (*construct_result)(inputs, params);                               /* Construct result tensor. */
+    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;    /* Validation failed. */
     R->flags |= WL__TFLAG_OP_OUTPUT;
     wl__assert2(R->op == WL_OP_NOP);
-    R->op = op; /* Set operation for deferred execution mode. */
-    for (uint32_t i=0; i < n_inputs; ++i) { /* Set input tensors and flags. */
+    R->op = op;                                 /* Set operation for deferred execution mode. */
+    for (uint32_t i=0; i < n_inputs; ++i) {     /* Set input tensors and flags. */
         inputs[i]->flags |= WL__TFLAG_OP_INPUT;
         R->op_inputs[i] = inputs[i];
     }
-    if (params) memcpy(R->op_params, *params, sizeof(*params)); /* Copy operation parameters */
-    if (ctx->exec_mode == WL_EXEC_MODE_EAGER) { /* In eager execution mode, we execute immediately. */
+    if (params) memcpy(R->op_params, *params, sizeof(*params));     /* Copy operation parameters */
+    if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                     /* In eager execution mode, we execute immediately. */
         wl__blas_compute_info_t bci;
-        wl__blas_compute_info_sequential(ctx, &bci); /* Sequential eager execution. */
-        wl__op_exec(R, op, (const wl_tensor_t**)inputs, &bci); /* Execute the operation immediately. */
+        wl__blas_compute_info_sequential(ctx, &bci);                /* Sequential eager execution. */
+        wl__op_exec(R, op, (const wl_tensor_t**)inputs, &bci);      /* Execute the operation immediately. */
     }
     return R;
 }
