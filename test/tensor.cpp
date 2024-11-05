@@ -106,10 +106,10 @@ TEST(wl_tensor_t, init_4d) {
     ASSERT_EQ(wl_tensor_num_elements(tensor), 10 * 4 * 2 * 5);
     ASSERT_EQ(wl_tensor_num_cols(tensor), 10);
     ASSERT_EQ(wl_tensor_num_rows(tensor), 40);
-    ASSERT_EQ(wl_tensor_strides(tensor)[0], sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[1], 10*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[2], 10*4*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[3], 10*4*2*sizeof(float));
+    ASSERT_EQ(wl_tensor_strides(tensor)[0], 1);
+    ASSERT_EQ(wl_tensor_strides(tensor)[1], 10);
+    ASSERT_EQ(wl_tensor_strides(tensor)[2], 10*4);
+    ASSERT_EQ(wl_tensor_strides(tensor)[3], 10*4*2);
     ASSERT_FALSE(wl_tensor_is_scalar(tensor));
     ASSERT_FALSE(wl_tensor_is_vector(tensor));
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
@@ -136,12 +136,12 @@ TEST(wl_tensor_t, init_5d) {
     ASSERT_EQ(wl_tensor_num_elements(tensor), 10 * 4 * 2 * 5 * 3);
     ASSERT_EQ(wl_tensor_num_cols(tensor), 10);
     ASSERT_EQ(wl_tensor_num_rows(tensor), 40*3);
-    ASSERT_EQ(wl_tensor_strides(tensor)[0], sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[1], 10*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[2], 10*4*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[3], 10*4*2*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[4], 10*4*2*5*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[5], 10*4*2*5*3*sizeof(float));
+    ASSERT_EQ(wl_tensor_strides(tensor)[0], 1);
+    ASSERT_EQ(wl_tensor_strides(tensor)[1], 10);
+    ASSERT_EQ(wl_tensor_strides(tensor)[2], 10*4);
+    ASSERT_EQ(wl_tensor_strides(tensor)[3], 10*4*2);
+    ASSERT_EQ(wl_tensor_strides(tensor)[4], 10*4*2*5);
+    ASSERT_EQ(wl_tensor_strides(tensor)[5], 10*4*2*5*3);
 
     ASSERT_FALSE(wl_tensor_is_scalar(tensor));
     ASSERT_FALSE(wl_tensor_is_vector(tensor));
@@ -169,12 +169,12 @@ TEST(wl_tensor_t, init_6d) {
     ASSERT_EQ(wl_tensor_num_elements(tensor), 10 * 4 * 2 * 5 * 3 * 2);
     ASSERT_EQ(wl_tensor_num_cols(tensor), 10);
     ASSERT_EQ(wl_tensor_num_rows(tensor), 40*3*2);
-    ASSERT_EQ(wl_tensor_strides(tensor)[0], sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[1], 10*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[2], 10*4*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[3], 10*4*2*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[4], 10*4*2*5*sizeof(float));
-    ASSERT_EQ(wl_tensor_strides(tensor)[5], 10*4*2*5*3*sizeof(float));
+    ASSERT_EQ(wl_tensor_strides(tensor)[0], 1);
+    ASSERT_EQ(wl_tensor_strides(tensor)[1], 10);
+    ASSERT_EQ(wl_tensor_strides(tensor)[2], 10*4);
+    ASSERT_EQ(wl_tensor_strides(tensor)[3], 10*4*2);
+    ASSERT_EQ(wl_tensor_strides(tensor)[4], 10*4*2*5);
+    ASSERT_EQ(wl_tensor_strides(tensor)[5], 10*4*2*5*3);
 
     ASSERT_FALSE(wl_tensor_is_scalar(tensor));
     ASSERT_FALSE(wl_tensor_is_vector(tensor));

@@ -2212,7 +2212,7 @@ static void WL__HOTPROC wl__vadd_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vadd(x, 1, y, 1, o, 1, n);
+        vDSP_vadd(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] + y[i];
@@ -2226,7 +2226,7 @@ static void WL__HOTPROC wl__vsub_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vsub(x, 1, y, 1, o, 1, n);
+        vDSP_vsub(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] - y[i];
@@ -2240,7 +2240,7 @@ static void WL__HOTPROC wl__vmul_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vmul(x, 1, y, 1, o, 1, n);
+        vDSP_vmul(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] * y[i];
@@ -2254,7 +2254,7 @@ static void WL__HOTPROC wl__vdiv_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vdiv(x, 1, y, 1, o, 1, n);
+        vDSP_vdiv(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] / y[i];
