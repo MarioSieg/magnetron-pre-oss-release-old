@@ -4221,7 +4221,7 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
         GetLogicalProcessorInformation(NULL, &size);
         if (wl__unlikely(!size)) return;
         SYSTEM_LOGICAL_PROCESSOR_INFORMATION* info = wl_alloc(NULL, size);
-        if (wl__unlikely(!GetLogicalProcessorInformation(info, &size))) return;
+        if (wl__unlikely(!GetLogicalProcessorInformation(info, &size))) goto end;
         for (DWORD i=0; i < size/sizeof(*info); ++i) {
             switch (info[i].Relationship) {
                 default: continue;
@@ -4235,7 +4235,7 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
                 } continue;
             }
         }
-        wl_alloc(info, 0);
+        end: wl_alloc(info, 0);
     #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
