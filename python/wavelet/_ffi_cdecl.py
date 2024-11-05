@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-10-31 10:49:23.350332, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-04 20:07:05.573521, do NOT edit!
 
 __WL_CDECLS: str = '''
 

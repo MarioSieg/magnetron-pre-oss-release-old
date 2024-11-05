@@ -7,7 +7,7 @@ from os.path import isfile
 from cffi import FFI
 
 
-def load_native_wl_lib(path: str | None = None, build_dir: str = 'release') -> (FFI, object):
+def load_native_wl_lib(path: str | None = None, build_dir: str = 'debug') -> (FFI, object):
     lib_path: str | None = path
 
     if lib_path is None or not isfile(lib_path):

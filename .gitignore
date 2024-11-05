@@ -19,8 +19,8 @@ _deps
 /python/.vscode
 /python/.idea
 /python/__pycache__
-/python/wavelet/__pycache__
-/python/examples/__pycache__
+/python/wavelet/__pycache__/
+/python/examples/__pycache__/
 **/.DS_Store
 .vs/
 out/
