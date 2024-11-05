@@ -250,6 +250,11 @@ static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
 
 typedef struct wl__blas_compute_info_t wl__blas_compute_info_t; /* Forward declaration. */
 
+typedef struct wl__op_perf_info_t { /* Profiling performance monitor per op. */
+    uint64_t elapsed_us;
+    uint64_t n_execs;
+} wl__op_perf_info_t;
+
 /*
 ** Context contains all isolated state and data.
 ** Lifetimes of tensors and compute graphs are bound to the context - the context is the owner.
@@ -285,6 +290,7 @@ struct wl_ctx_t {
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
     wl_exec_mode_t exec_mode;
     bool profiler_enabled;
+    wl__op_perf_info_t op_perf_mons_total[WL_OP__COUNT];
     union {
         struct {
             uint64_t state;
@@ -1167,6 +1173,18 @@ uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx) { return ctx->sys
 uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 bool wl_ctx_is_numa_system(const wl_ctx_t* ctx) { return false; /* TODO */ }
 
+void wl_ctx_start_profiling(wl_ctx_t* ctx) {
+    if (ctx->profiler_enabled) return;
+    memset(ctx->op_perf_mons_total, 0, sizeof(ctx->op_perf_mons_total));
+    ctx->profiler_enabled = true;
+}
+
+void wl_ctx_stop_profiling(wl_ctx_t* ctx) {
+    if (!ctx->profiler_enabled) return;
+    ctx->profiler_enabled = false;
+}
+
+
 void wl_ctx_destroy(wl_ctx_t* ctx) {
     size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
     size_t mem_mapped = ctx->pool.mapped_total;
@@ -1685,8 +1703,9 @@ static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_
     };
 }
 
-static void WL__AINLINE wl__op_exec(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
+static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
     wl__perf_mon_t* pmon = &R->pmon;
+    wl__op_perf_info_t (*pops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
     uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_us(); /* Profiling monitoring */
     void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
     (*(*(dispatch_lut+op)))(bci, R, inputs); /* Dispatch to operation. */
@@ -1694,9 +1713,11 @@ static void WL__AINLINE wl__op_exec(wl_tensor_t* R, wl_op_t op, const wl_tensor_
     pmon->elapsed_us = wl__hpc_clock_elapsed_us(start);
     pmon->elapsed_us_acc += pmon->elapsed_us;
     pmon->mean_ms = ((double)pmon->elapsed_us_acc/1.e3)/(double)++pmon->n_execs;
+    ++((*pops)[op]).n_execs;
+    ((*pops)[op]).elapsed_us = pmon->elapsed_us;
 }
 
-wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
+wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     wl__assert2(op != WL_OP_NOP && n_inputs <= WL_MAX_INPUT_TENSORS);
     wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op);
     bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op);
