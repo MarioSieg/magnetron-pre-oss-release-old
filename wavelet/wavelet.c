@@ -310,8 +310,16 @@ typedef enum wl__tensor_flags_t {
     WL__TFLAG_EXEC_EAGER = 1<<3,   /* Tensor is executed eagerly. */
     WL__TFLAG_IMAGE = 1<<4,        /* Tensor was loaded from an image. */
     WL__TFLAG_FROM_FS = 1<<5,      /* Tensor was loaded from the file system. Also true for WL__TFLAG_IMAGE. */
+    WL__TFLAG_RECORD_PERF = 1<<6,  /* Record performance data. */
 } wl__tensor_flags_t;
 wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
+
+typedef struct wl__perf_mon_t { /* Profiling performance monitor per op. */
+    uint64_t elapsed_us;
+    uint64_t elapsed_us_acc;
+    uint64_t n_execs;
+    double mean_ms;
+} wl__perf_mon_t;
 
 /*
 ** Tensor with up to 6 Dimensions.
@@ -330,6 +338,7 @@ struct wl_tensor_t {
     wl_op_param_t op_params[WL_MAX_OP_PARAMS];      /* Operator parameters. */
     wl_tensor_t* view;                              /* View tensor. */
     size_t view_offs;                               /* Offset in view tensor. */
+    wl__perf_mon_t pmon;                            /* Performance monitor. */
     char name[WL_MAX_TENSOR_NAME_LEN];              /* Tensor debug name. */
     void* ud;                                       /* User data. */
 };
@@ -1608,13 +1617,14 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     wl__assert2(!view || !bytes_total || bytes_total + view_offs <= wl__tensor_data_size(view)); /* Slice must be within viewed tensor data range. */
     wl_tensor_t* t = (wl_tensor_t*)wl_ctx_pool_alloc(ctx, sizeof(*t) + (view ? 0 : bytes_total)); /* Allocate memory for tensor struct and data */
     memset(t, 0, sizeof(*t));
+    wl__tensor_flags_t flags = (view ? WL__TFLAG_VIEW : 0) | (ctx->profiler_enabled ? WL__TFLAG_RECORD_PERF : 0);
     *t = (wl_tensor_t) {
         .name = "tensor",
         .ctx = ctx,
         .rank = rank,
         .dtype = type,
         .num_elems = elems_total,
-        .flags = view ? WL__TFLAG_VIEW : WL__TFLAG_NONE,
+        .flags = flags,
         .view = view,
         .view_offs = view_offs,
     };
@@ -1675,9 +1685,15 @@ static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_
     };
 }
 
-static void WL__AINLINE wl__op_execute(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
+static void WL__AINLINE wl__op_exec(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
+    wl__perf_mon_t* pmon = &R->pmon;
+    uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_us(); /* Profiling monitoring */
     void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
     (*(*(dispatch_lut+op)))(bci, R, inputs); /* Dispatch to operation. */
+    if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
+    pmon->elapsed_us = wl__hpc_clock_elapsed_us(start);
+    pmon->elapsed_us_acc += pmon->elapsed_us;
+    pmon->mean_ms = ((double)pmon->elapsed_us_acc/1.e3)/(double)++pmon->n_execs;
 }
 
 wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
@@ -1697,7 +1713,7 @@ wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs,
     if (ctx->exec_mode == WL_EXEC_MODE_EAGER) { /* In eager execution mode, we execute immediately. */
         wl__blas_compute_info_t bci;
         wl__blas_compute_info_sequential(ctx, &bci); /* Sequential eager execution. */
-        wl__op_execute(R, op, (const wl_tensor_t**)inputs, &bci); /* Execute the operation immediately. */
+        wl__op_exec(R, op, (const wl_tensor_t**)inputs, &bci); /* Execute the operation immediately. */
     }
     return R;
 }
@@ -3980,7 +3996,7 @@ wl_tensor_t* WL__HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
     wl__blas_compute_info_sequential(gra->ctx, &bci);
     for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
         wl_tensor_t* R = nodes[i];
-        wl__op_execute(R, R->op, (const wl_tensor_t**)R->op_inputs, &bci);
+        wl__op_exec(R, R->op, (const wl_tensor_t**)R->op_inputs, &bci);
     }
     return root;
 }
