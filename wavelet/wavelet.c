@@ -25,29 +25,30 @@
 #include <errno.h>
 
 #ifdef _MSC_VER
-#   include <intrin.h>
+#include <intrin.h>
 #endif
 
 #ifdef __aarch64__
-#   include <arm_neon.h>
-#   include <arm_acle.h>
+#include <arm_neon.h>
+#include <arm_acle.h>
 #elif defined(__x86_64__) || defined(_M_X64)
-#   include <immintrin.h>
-#   ifndef _MSC_VER
-#       include <cpuid.h>
-#   endif
+#include <immintrin.h>
+#ifndef _MSC_VER
+#include <cpuid.h>
+#endif
 #endif
 
 #ifdef _WIN32
-#   error "WAVELET does not support Windows yet."
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
 #elif defined(__APPLE__)
-#   include <mach/mach.h>
-#   include <mach/vm_statistics.h>
-#   include <sys/sysctl.h>
-#   include <sys/types.h>
-#   include <unistd.h>
+#include <mach/mach.h>
+#include <mach/vm_statistics.h>
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#include <unistd.h>
 #else
-#   include <unistd.h>
+#include <unistd.h>
 #endif
 
 wl_static_assert(sizeof(0u) == 4);
@@ -114,6 +115,7 @@ static __forceinline uint32_t wl__ffs64(const uint64_t x) {
 static __forceinline uint32_t wl__fls64(const uint64_t x) {
   unsigned long r; _BitScanReverse64(&r, x); return (uint32_t)r;
 }
+#define __alignof__ __alignof
 #endif
 
 #define wl__swap(T, a, b) do { T tmp = a; a = b; b = tmp; } while (0)
@@ -489,7 +491,17 @@ static inline uintptr_t wl__thread_id(void) {
 
 static int64_t wl__hpc_clock_us(void) { /* High precision clock in microseconds. */
     #ifdef _WIN32
-    #error "WAVELET does not support Windows yet."
+        static LONGLONG t_freq;
+        static LONGLONG t_boot;
+        static bool t_init = false;
+        if (!t_init) { /* Reducce chance of integer overflow when uptime is high. */
+            LARGE_INTEGER li;
+            QueryPerformanceFrequency(&li);
+            t_freq = li.QuadPart;
+            QueryPerformanceCounter(&li);
+            t_boot = li.QuadPart;
+            t_init = true;
+        }
     #else
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -838,8 +850,8 @@ static wl__hashset_t wl__hashset_create_pooled(wl_ctx_t* ctx, size_t size) {
     size = wl__hashset_compute_hash_size(size);
     wl__hashset_t set = {
         .len = size,
-        .used = (wl__bitset_t*)wl_ctx_pool_alloc_aligned(ctx, wl__bitset_size(size)*sizeof(*set.used), __alignof__(*set.used)),
-        .keys = (const wl_tensor_t**)wl_ctx_pool_alloc_aligned(ctx, size*sizeof(*set.keys), __alignof__(*set.used)),
+        .used = (wl__bitset_t*)wl_ctx_pool_alloc_aligned(ctx, wl__bitset_size(size)*sizeof(*set.used), __alignof__(wl__bitset_t)),
+        .keys = (const wl_tensor_t**)wl_ctx_pool_alloc_aligned(ctx, size*sizeof(*set.keys), __alignof__(wl__bitset_t)),
         .is_pool = true
     };
     memset(set.used, 0, wl__bitset_size(size)*sizeof(*set.used));
@@ -1019,7 +1031,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__log_info("WAVELET v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d", wl_version_major(WL_VERSION), wl_version_minor(WL_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
 
     /* Enable fast math optimizations for x86-64 platforms. */
-    #if WL_CFG_X86_64_FAST_MATH && (defined(__x86_64__) || defined(_M_X64))
+    #if WL_CFG_X86_64_FAST_MATH && (defined(__x86_64__) || defined(_M_X64)) && !defined(_MSC_VER)
         /*
         ** Enable non-IEEE hardware optimizations in MXCSR:
         ** 0x0040: DAZ (Denormals Are Zeros) -> Converts denormal inputs to zero.
@@ -3930,15 +3942,15 @@ wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, w
     wl__assert2(total_nodes > 0);
     uintptr_t mem_req = 0; /* Memory required for compute graph. */
     wl__pincr((void**)&mem_req, sizeof(wl_compute_graph_t), __alignof__(wl_compute_graph_t)); /* Graph struct itself */
-    wl__pincr((void**)&mem_req, total_nodes*sizeof(*((wl_compute_graph_t*)0)->internal_nodes), __alignof__(*((wl_compute_graph_t*)0)->internal_nodes)); /* Nodes. */
-    wl__pincr((void**)&mem_req, total_nodes*sizeof(*((wl_compute_graph_t*)0)->leaf_nodes), __alignof__(*((wl_compute_graph_t*)0)->leaf_nodes)); /* Leafs. */
-    wl_compute_graph_t* gra = (wl_compute_graph_t*)wl_ctx_pool_alloc_aligned(ctx, mem_req, __alignof__(*gra));
+    wl__pincr((void**)&mem_req, total_nodes*sizeof(*((wl_compute_graph_t*)0)->internal_nodes), __alignof__(wl_tensor_t*)); /* Nodes. */
+    wl__pincr((void**)&mem_req, total_nodes*sizeof(*((wl_compute_graph_t*)0)->leaf_nodes), __alignof__(wl_tensor_t*)); /* Leafs. */
+    wl_compute_graph_t* gra = (wl_compute_graph_t*)wl_ctx_pool_alloc_aligned(ctx, mem_req, __alignof__(wl_compute_graph_t));
     void* data = gra+1; /* Start of data, end of header */
     memset(gra, 0, mem_req);
     gra->ctx = ctx;
     gra->num_nodes_total = total_nodes;
-    gra->internal_nodes = wl__pincr(&data, total_nodes*sizeof(*gra->internal_nodes), __alignof__(*gra->internal_nodes)); /* Fetch nodes. */
-    gra->leaf_nodes = wl__pincr(&data, total_nodes*sizeof(*gra->leaf_nodes), __alignof__(*gra->leaf_nodes)); /* Fetch leafs. */
+    gra->internal_nodes = wl__pincr(&data, total_nodes*sizeof(*gra->internal_nodes), __alignof__(wl_tensor_t*)); /* Fetch nodes. */
+    gra->leaf_nodes = wl__pincr(&data, total_nodes*sizeof(*gra->leaf_nodes), __alignof__(wl_tensor_t*)); /* Fetch leafs. */
     gra->mem_size_total = mem_req;
     gra->order = order;
     gra->visited_hs = wl__hashset_create_pooled(ctx, total_nodes);
@@ -4171,7 +4183,7 @@ size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return
 
 static void wl_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get OS name */
     #ifdef _WIN32
-    #error "Unsupported platform"
+        
     #elif defined(__APPLE__)
         size_t len;
         uint8_t tmp[256];
@@ -4184,7 +4196,13 @@ static void wl_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get
 
 static void wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* Get CPU name */
     #ifdef _WIN32
-    #error "Unsupported platform"
+        HKEY key;
+        if (wl__unlikely(RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &key))) return;
+        char tmp[64+1] = {0};
+        DWORD len = sizeof(tmp);
+        if (wl__unlikely(RegQueryValueExA(key, "ProcessorNameString", NULL, NULL, (LPBYTE)tmp, &len))) return;
+        if (wl__likely(strlen(tmp))) tmp[strlen(tmp)-1] = '\0';
+        snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", tmp);
     #elif defined(__APPLE__)
         size_t len;
         uint8_t tmp[256];
@@ -4199,7 +4217,25 @@ static void wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* G
 
 static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t* out_physical, uint32_t* out_sockets) { /* Get CPU virtual (logical) cores. */
     #ifdef _WIN32
-    #error "Unsupported platform"
+        DWORD size = 0;
+        GetLogicalProcessorInformation(NULL, &size);
+        if (wl__unlikely(!size)) return;
+        SYSTEM_LOGICAL_PROCESSOR_INFORMATION* info = wl_alloc(NULL, size);
+        if (wl__unlikely(!GetLogicalProcessorInformation(info, &size))) return;
+        for (DWORD i=0; i < size/sizeof(*info); ++i) {
+            switch (info[i].Relationship) {
+                default: continue;
+                case RelationProcessorPackage: ++*out_sockets; continue;
+                case RelationProcessorCore: {
+                    ++*out_physical;
+                    uintptr_t m = (uintptr_t)info[i].ProcessorMask;
+                    m = m - ((m>>1) & 0x5555555555555555);
+                    m = (m & 0x3333333333333333) + ((m>>2) & 0x3333333333333333);
+                    *out_virtual += (((m + (m>>4)) & 0xf0f0f0f0f0f0f0f) * 0x101010101010101)>>56;
+                } continue;
+            }
+        }
+        wl_alloc(info, 0);
     #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
@@ -4269,7 +4305,12 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
 
 static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint64_t* out_phys_mem_free) { /* Get physical memory */
     #ifdef _WIN32
-    #error "Unsupported platform"
+        MEMORYSTATUSEX mem;
+        mem.dwLength = sizeof(mem);
+        if (wl__likely(GlobalMemoryStatusEx(&mem))) {
+            *out_phys_mem_total = mem.ullTotalPhys;
+            *out_phys_mem_free = mem.ullAvailPhys;
+        }
     #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
@@ -4294,6 +4335,19 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
 }
 
 #if defined(__x86_64__) || defined(_M_X64)
+    static void wl__cpuid(uint32_t leaf, int32_t sub, uint32_t* oeax, uint32_t* oebx, uint32_t* oecx, uint32_t* oedx) {
+        #ifdef _MSC_VER
+            int regs[4];
+            if (sub >= 0) __cpuidex(regs, leaf, sub);
+            else __cpuid(regs, leaf);
+            *oeax = regs[0], *oebx = regs[1], *oecx = regs[2], *oedx = regs[3];
+        #else
+            uint32_t eax, ebx, ecx, edx;
+            if (sub >= 0) __cpuid_count(leaf, sub, eax, ebx, ecx, edx);
+            else __cpuid(leaf, eax, ebx, ecx, edx);
+            *oeax = eax, *oebx = ebx, *oecx = ecx, *oedx = edx;
+        #endif
+    }
     static uint64_t WL__AINLINE wl__xgetbv(void) { /* Query extended control register value. */
         #ifdef _MSC_VER
             return _xgetbv(0);
@@ -4309,40 +4363,39 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
         (*features)[WL__X86_64_CPUID_##id][WL__X86_64_CPUID_ECX] = ecx; \
         (*features)[WL__X86_64_CPUID_##id][WL__X86_64_CPUID_EDX] = edx
     static void wl__system_info_query_x86_64_cpu_features(uint32_t (*features)[8][4]) {
-        uint32_t eax, ebx, ecx, edx;
+        uint32_t eax=0, ebx=0, ecx=0, edx=0;
         uint32_t max_basic_leaf, max_extended_leaf;
-
-        __cpuid(0, eax, ebx, ecx, edx);
+        wl__cpuid(0, -1, &eax, &ebx, &ecx, &edx);
         wl__cpy_regs(0H);
         max_basic_leaf = eax;
-        __cpuid(0x80000000u, eax, ebx, ecx, edx);
+        wl__cpuid(0x80000000u, -1, &eax, &ebx, &ecx, &edx);
         max_extended_leaf = eax;
         if (max_basic_leaf >= 1u) {
-            __cpuid(1, eax, ebx, ecx, edx);
+            wl__cpuid(1, -1, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(1H);
         }
         if (max_basic_leaf >= 2u) {
-            __cpuid(2u, eax, ebx, ecx, edx);
+            wl__cpuid(2u, -1, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(2H);
         }
         if (max_basic_leaf >= 7u) {
-            __cpuid_count(7u, 0, eax, ebx, ecx, edx);
+            wl__cpuid(7u, 0, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(7H);
         }
-        if (max_basic_leaf >= 7u) {
-            __cpuid_count(7u, 1, eax, ebx, ecx, edx);
+        if (wl__cpuid >= 7u) {
+            wl__cpuid(7u, 1, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(7H_1H);
         }
         if (max_basic_leaf >= 0x16u) {
-            __cpuid(0x16u, eax, ebx, ecx, edx);
+            wl__cpuid(0x16u, -1, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(16H);
         }
         if (max_extended_leaf >= 0x80000001u) {
-            __cpuid(0x80000001u, eax, ebx, ecx, edx);
+            wl__cpuid(0x80000001u, -1, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(80000001H);
         }
         if (max_extended_leaf >= 0x80000007u) {
-            __cpuid(0x80000007u, eax, ebx, ecx, edx);
+            wl__cpuid(0x80000007u, -1, &eax, &ebx, &ecx, &edx);
             wl__cpy_regs(80000007H);
         }
         bool cpu_avx_support = ((*features)[WL__X86_64_CPUID_1H][WL__X86_64_CPUID_ECX] & 0x10000000u) != 0;

@@ -10,6 +10,9 @@ option(WAVELET_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(WAVELET_BUILD_FUZZERS "Build fuzzers" OFF)
 option(WAVELET_ENABLE_IMAGE_SUPPORT "Enable creating tensor from images support" ON)
 
+set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
+set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
+
 if (${WAVELET_BUILD_TESTS})
     enable_testing()
     add_subdirectory(test)
@@ -25,7 +28,8 @@ endif()
 
 add_library(wavelet SHARED wavelet/wavelet.h wavelet/wavelet.c)
 target_include_directories(wavelet PRIVATE wavelet/optional)
-if (NOT WIN32)
+if (WIN32)
+else ()
     target_link_libraries(wavelet m) # link math library
     target_compile_options(wavelet PRIVATE
         -Wall
