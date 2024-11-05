@@ -8,7 +8,7 @@ A = wl.Tensor.random((N, N), name='A')
 B = wl.Tensor.random((N, N), name='B')
 print(A.shape)
 
-flop = N * N * 2 * N
+flop = 2*N**3
 avg = 0
 I = 10
 for _ in range(I):
