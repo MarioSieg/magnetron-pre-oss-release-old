@@ -46,7 +46,7 @@
 #include <sys/sysctl.h>
 #include <sys/types.h>
 #include <unistd.h>
-#ifdef MSML_USE_ACCELERATE
+#ifdef WL_USE_ACCELERATE
 #include <Accelerate/Accelerate.h>
 #endif
 #else
@@ -2180,12 +2180,11 @@ static void WL__HOTPROC wl__vadd_f32(
     const float* const x,
     const float* const y
 ) {
-    #ifdef MSML_USE_ACCELERATE
+    #ifdef WL_USE_ACCELERATE
         vDSP_vadd(x, 1, y, 1, o, 1, n);
     #else
-        for (int64_t i=0; i < n; ++i) {
+        for (int64_t i=0; i < n; ++i)
             o[i] = x[i] + y[i];
-        }
     #endif
 }
 
@@ -2195,9 +2194,12 @@ static void WL__HOTPROC wl__vsub_f32(
     const float* const x,
     const float* const y
 ) {
-    for (int64_t i=0; i < n; ++i) {
-        o[i] = x[i] - y[i];
-    }
+    #ifdef WL_USE_ACCELERATE
+        vDSP_vsub(x, 1, y, 1, o, 1, n);
+    #else
+        for (int64_t i=0; i < n; ++i)
+            o[i] = x[i] - y[i];
+    #endif
 }
 
 static void WL__HOTPROC wl__vmul_f32(
@@ -2206,9 +2208,12 @@ static void WL__HOTPROC wl__vmul_f32(
     const float* const x,
     const float* const y
 ) {
-    for (int64_t i=0; i < n; ++i) {
-        o[i] = x[i] * y[i];
-    }
+    #ifdef WL_USE_ACCELERATE
+        vDSP_vmul(x, 1, y, 1, o, 1, n);
+    #else
+        for (int64_t i=0; i < n; ++i)
+            o[i] = x[i] * y[i];
+    #endif
 }
 
 static void WL__HOTPROC wl__vdiv_f32(
@@ -2217,9 +2222,12 @@ static void WL__HOTPROC wl__vdiv_f32(
     const float* const x,
     const float* const y
 ) {
-    for (int64_t i=0; i < n; ++i) {
-        o[i] = x[i] / y[i];
-    }
+    #ifdef WL_USE_ACCELERATE
+        vDSP_vdiv(x, 1, y, 1, o, 1, n);
+    #else
+        for (int64_t i=0; i < n; ++i)
+            o[i] = x[i] / y[i];
+    #endif
 }
 
 static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
@@ -2353,10 +2361,16 @@ static double WL__HOTPROC wl__vsum_f64_f32( /* Σx. */
     const int64_t n,
     const float* const x
 ) {
-    double sum = 0.0;
-    for (int64_t i=0; i < n; ++i)
-        sum += (double)x[i];
-    return sum;
+    #ifdef WL_USE_ACCELERATE
+        float sum;
+        vDSP_sve(x, 1, &sum, n);
+        return (double)sum;
+    #else
+        double sum = 0.0;
+        for (int64_t i=0; i < n; ++i)
+            sum += (double)x[i];
+        return sum;
+    #endif
 }
 
 static void WL__HOTPROC wl__vabs_f32( /* o = |x| */

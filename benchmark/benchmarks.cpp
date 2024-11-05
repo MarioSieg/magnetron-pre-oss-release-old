@@ -22,12 +22,12 @@ auto main() -> int {
     matmul_bench.performanceCounters(true);
 
     run_bench(matmul_bench, "Tensor Add", [](wl_ctx_t* ctx) -> wl_tensor_t* {
-        constexpr std::int64_t N = 128;
+        constexpr std::int64_t N = 1024;
 
         wl_tensor_t* A = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N, N);
         wl_tensor_fill(A, 1.0f);
 
-        wl_tensor_t* B = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N/2, N/2);
+        wl_tensor_t* B = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N, N);
         wl_tensor_fill(A, 1.0f);
 
         wl_tensor_t* inputs[2] = {A, B};
