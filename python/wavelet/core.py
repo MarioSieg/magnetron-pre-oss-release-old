@@ -234,6 +234,15 @@ class Context:
         """Returns the total memory allocated in the context in bytes."""
         return C.wl_ctx_total_allocated_pool_memory(self.ctx)
 
+    def start_profiler(self) -> None:
+        C.wl_ctx_profile_start_recording(self.ctx)
+
+    def stop_profiler(self) -> None:
+        C.wl_ctx_profile_stop_recording(self.ctx)
+
+    def print_profiler_report(self) -> None:
+        C.wl_ctx_profile_print_report(self.ctx)
+
     def __del__(self):
         C.wl_ctx_destroy(self.ctx)
         self.ctx = ffi.NULL

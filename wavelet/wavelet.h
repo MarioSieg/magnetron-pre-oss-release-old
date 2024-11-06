@@ -108,8 +108,9 @@ extern WL_EXPORT uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx); /* Get th
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx); /* Get the total physical memory in bytes */
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx); /* Get the free physical memory in bytes */
 extern WL_EXPORT bool wl_ctx_is_numa_system(const wl_ctx_t* ctx); /* Check if the system is NUMA */
-extern WL_EXPORT void wl_ctx_start_profiling(wl_ctx_t* ctx); /* Start profiling */
-extern WL_EXPORT void wl_ctx_stop_profiling(wl_ctx_t* ctx); /* Stop profiling */
+extern WL_EXPORT void wl_ctx_profile_start_recording(wl_ctx_t* ctx); /* Start profiling */
+extern WL_EXPORT void wl_ctx_profile_stop_recording(wl_ctx_t* ctx); /* Stop profiling */
+extern WL_EXPORT void wl_ctx_profile_print_report(const wl_ctx_t* ctx); /* Reset profiling data */
 extern WL_EXPORT void wl_ctx_destroy(wl_ctx_t* ctx); /* Destroy context and free memory */
 
 typedef enum wl_dtype_t {

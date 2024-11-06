@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-04 20:07:05.573521, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-06 00:46:02.397750, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -34,6 +34,9 @@ extern   uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx);
 extern   bool wl_ctx_is_numa_system(const wl_ctx_t* ctx);
+extern   void wl_ctx_profile_start_recording(wl_ctx_t* ctx);
+extern   void wl_ctx_profile_stop_recording(wl_ctx_t* ctx);
+extern   void wl_ctx_profile_print_report(const wl_ctx_t* ctx);
 extern   void wl_ctx_destroy(wl_ctx_t* ctx);
 extern   const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 extern   const char* wl_op_get_name(wl_op_t op);

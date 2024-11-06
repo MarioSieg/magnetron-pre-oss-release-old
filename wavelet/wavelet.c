@@ -324,7 +324,6 @@ typedef struct wl__perf_mon_t { /* Profiling performance monitor per op. */
     uint64_t elapsed_us;
     uint64_t elapsed_us_acc;
     uint64_t n_execs;
-    double mean_ms;
 } wl__perf_mon_t;
 
 /*
@@ -1173,17 +1172,40 @@ uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx) { return ctx->sys
 uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 bool wl_ctx_is_numa_system(const wl_ctx_t* ctx) { return false; /* TODO */ }
 
-void wl_ctx_start_profiling(wl_ctx_t* ctx) {
+void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     if (ctx->profiler_enabled) return;
     memset(ctx->op_perf_mons_total, 0, sizeof(ctx->op_perf_mons_total));
     ctx->profiler_enabled = true;
 }
 
-void wl_ctx_stop_profiling(wl_ctx_t* ctx) {
+void wl_ctx_profile_stop_recording(wl_ctx_t* ctx) {
     if (!ctx->profiler_enabled) return;
     ctx->profiler_enabled = false;
 }
 
+static int wl_cmp_perf_info(const void* x, const void* y) {
+    const wl__op_perf_info_t* op1 = (const wl__op_perf_info_t *)x;
+    const wl__op_perf_info_t* op2 = (const wl__op_perf_info_t *)y;
+    if (op1->n_execs < op2->n_execs) return 1;
+    if (op1->n_execs > op2->n_execs) return -1;
+    return 0;
+}
+
+void wl_ctx_profile_print_report(const wl_ctx_t* ctx) {
+    FILE* f = stdout;
+    fprintf(f, "==== WAVELET Profiler Report ====\n");
+    wl__op_perf_info_t* sorted = (wl__op_perf_info_t*)wl_alloc(NULL, sizeof(ctx->op_perf_mons_total));
+    memcpy(sorted, ctx->op_perf_mons_total, sizeof(ctx->op_perf_mons_total));
+    qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info);
+    for (wl_op_t op=0; op < WL_OP__COUNT; ++op) {
+        const wl__op_perf_info_t* info = sorted + op;
+        if (!info->n_execs) continue;
+        const char* op_name = wl_op_get_name(op);
+        double time_ms = (double)info->elapsed_us / 1.e3;
+        fprintf(f, "%16s %032zu %.05f ms\n", op_name, (size_t)info->n_execs, time_ms);
+    }
+    wl_alloc(sorted, 0);
+}
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {
     size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
@@ -1705,16 +1727,15 @@ static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_
 
 static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
     wl__perf_mon_t* pmon = &R->pmon;
-    wl__op_perf_info_t (*pops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
+    wl__op_perf_info_t (*pmon_op)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
     uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_us();    /* Profiling monitoring */
     void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
     (*(*(dispatch_lut+op)))(bci, R, inputs);                /* Dispatch to operation. */
-    if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return;    /* Profiling disabled. */
+    if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
     pmon->elapsed_us = wl__hpc_clock_elapsed_us(start);
     pmon->elapsed_us_acc += pmon->elapsed_us;
-    pmon->mean_ms = ((double)pmon->elapsed_us_acc/1.e3)/(double)++pmon->n_execs;
-    ++((*pops)[op]).n_execs;
-    ((*pops)[op]).elapsed_us = pmon->elapsed_us;
+    ++((*pmon_op)[op]).n_execs;
+    ((*pmon_op)[op]).elapsed_us = pmon->elapsed_us;
 }
 
 wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
