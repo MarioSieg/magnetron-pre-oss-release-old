@@ -251,7 +251,7 @@ static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
 typedef struct wl__blas_compute_info_t wl__blas_compute_info_t; /* Forward declaration. */
 
 typedef struct wl__op_perf_info_t { /* Profiling performance monitor per op. */
-    uint64_t elapsed_us;
+    uint64_t elapsed_ns;
     uint64_t n_execs;
 } wl__op_perf_info_t;
 
@@ -321,8 +321,8 @@ typedef enum wl__tensor_flags_t {
 wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
 
 typedef struct wl__perf_mon_t { /* Profiling performance monitor per op. */
-    uint64_t elapsed_us;
-    uint64_t elapsed_us_acc;
+    uint64_t elapsed_ns;
+    uint64_t elapsed_ns_acc;
     uint64_t n_execs;
 } wl__perf_mon_t;
 
@@ -391,6 +391,11 @@ static void wl__humanize_memory_size(size_t n, double* out, const char** unit) {
         *out = (double)n/(double)(1<<30);
         *unit = "GiB";
     }
+}
+
+static void WL__COLDPROC wl__print_separator(FILE* f) {
+    f = f ? f : stdout;
+    fprintf(f, "------------------------------------------------------------\n");
 }
 
 #define WL__FMT_DIM_BUF_SIZE ((21+4)*WL_MAX_DIMS)
@@ -505,20 +510,20 @@ static inline uintptr_t wl__thread_id(void) {
     return tid;
 }
 
-static uint64_t wl__hpc_clock_us(void) { /* High precision clock in microseconds. */
+static uint64_t wl__hpc_clock_ns(void) { /* High precision clock in nanoseconds. */
     #ifdef _WIN32
     #error "WAVELET does not support Windows yet."
     #else
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
-        return (uint64_t)ts.tv_sec*1000000 + (uint64_t)ts.tv_nsec/1000;
+        return (uint64_t)ts.tv_sec * 1000000000 + (uint64_t)ts.tv_nsec;
     #endif
 }
-static uint64_t wl__hpc_clock_elapsed_us(uint64_t start) { /* High precision clock elapsed time in microseconds. */
-    return (uint64_t)llabs((int64_t)wl__hpc_clock_us() - (int64_t)start);
+static uint64_t wl__hpc_clock_elapsed_ns(uint64_t start) { /* High precision clock elapsed time in microseconds. */
+    return (uint64_t)llabs((int64_t)wl__hpc_clock_ns() - (int64_t)start);
 }
 static double wl__hpc_clock_elapsed_ms(uint64_t start) { /* High precision clock elapsed time in milliseconds. */
-    return (double)wl__hpc_clock_elapsed_us(start) * 1.e-3;
+    return (double)wl__hpc_clock_elapsed_ns(start) * 1.e6;
 }
 #define wl__clock_cycles() ((uint64_t)clock())
 #define wl__cycles_per_ms() ((uint64_t)CLOCKS_PER_SEC/1000)
@@ -1018,7 +1023,7 @@ static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_featu
 
 wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__log_info("Creating WAVELET context...");
-    int64_t time_stamp_start = wl__hpc_clock_us();
+    int64_t time_stamp_start = wl__hpc_clock_ns();
 
     /* Print WAVELET version and compiler info. */
     const char* compiler_name = "Unknown";
@@ -1183,28 +1188,45 @@ void wl_ctx_profile_stop_recording(wl_ctx_t* ctx) {
     ctx->profiler_enabled = false;
 }
 
+typedef struct wl__sorted_per_data_t {
+    wl__op_perf_info_t perf;
+    wl_op_t op;
+} wl__op_perf_record_t;
+
 static int wl_cmp_perf_info(const void* x, const void* y) {
-    const wl__op_perf_info_t* op1 = (const wl__op_perf_info_t *)x;
-    const wl__op_perf_info_t* op2 = (const wl__op_perf_info_t *)y;
-    if (op1->n_execs < op2->n_execs) return 1;
-    if (op1->n_execs > op2->n_execs) return -1;
+    const wl__op_perf_record_t* op1 = (const wl__op_perf_record_t *)x;
+    const wl__op_perf_record_t* op2 = (const wl__op_perf_record_t *)y;
+    if (op1->perf.n_execs < op2->perf.n_execs) return 1;
+    if (op1->perf.n_execs > op2->perf.n_execs) return -1;
     return 0;
 }
 
 void wl_ctx_profile_print_report(const wl_ctx_t* ctx) {
     FILE* f = stdout;
-    fprintf(f, "==== WAVELET Profiler Report ====\n");
-    wl__op_perf_info_t* sorted = (wl__op_perf_info_t*)wl_alloc(NULL, sizeof(ctx->op_perf_mons_total));
-    memcpy(sorted, ctx->op_perf_mons_total, sizeof(ctx->op_perf_mons_total));
-    qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info);
-    for (wl_op_t op=0; op < WL_OP__COUNT; ++op) {
-        const wl__op_perf_info_t* info = sorted + op;
-        if (!info->n_execs) continue;
-        const char* op_name = wl_op_get_name(op);
-        double time_ms = (double)info->elapsed_us / 1.e3;
-        fprintf(f, "%16s %032zu %.05f ms\n", op_name, (size_t)info->n_execs, time_ms);
+    wl__print_separator(f);
+    fprintf(f, "%16s %16s %16s %8s\n", "Operation", "Executions", "Elapsed (ns)", "Exec (%%)");
+    wl__op_perf_record_t sorted[WL_OP__COUNT];
+    uint64_t exec_total = 0;
+    for (wl_op_t op=WL_OP_NOP; op < WL_OP__COUNT; ++op) {
+        sorted[op].op = op;
+        sorted[op].perf = ctx->op_perf_mons_total[op];
+        exec_total += sorted[op].perf.n_execs;
     }
-    wl_alloc(sorted, 0);
+    qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info); /* Sort by number of executions as time might be too low to sample stable. */
+    for (wl_op_t i=WL_OP_NOP; i < WL_OP__COUNT; ++i) {
+        const wl__op_perf_record_t* info = sorted+i;
+        if (!info->perf.n_execs) continue; /* Op never executed. */
+        const char* op_name = wl_op_get_name(info->op);
+        fprintf(f, "%16s %16" PRIu64, op_name, info->perf.n_execs);
+        double perc = (double)info->perf.n_execs/(double)exec_total*100.0;
+        char perc_str[64];
+        snprintf(perc_str, sizeof(perc_str), "%3.3f", perc);
+        if (info->perf.elapsed_ns) fprintf(f, " %16" PRIu64 " %8s\n", info->perf.elapsed_ns, perc_str);
+        else fprintf(f, " %16s %8s\n", "N/A", perc_str);
+    }
+    fputc('\n', f);
+    fprintf(f, "Total operations profiled: %" PRIu64 "\n", exec_total);
+    wl__print_separator(f);
 }
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {
@@ -1319,48 +1341,43 @@ printf("SHORT ERROR DESCRIPTION"
 );
 */
 
-static void WL__COLDPROC wl__validate_print_separator(void) {
-    for (uint32_t i=0; i <= 128; ++i) fputc('=', stderr);
-    fputc('\n', stderr);
-}
-
 static bool wl__validate_inputs(wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs) {
     if (wl__unlikely(n_inputs > WL_MAX_INPUT_TENSORS)) {
-        wl__validate_print_separator();
+        wl__print_separator(stderr);
         fprintf(stderr,
             "Failed to execute operation: %s.\n"
             "ERROR: Operation requires at most %u input tensors, but %u were provided.\n"
             "    Hint: Ensure the correct number of input tensors are provided.\n",
             wl_op_get_name(op), WL_MAX_INPUT_TENSORS, n_inputs
         );
-        wl__validate_print_separator();
+        wl__print_separator(stderr);
         fputc('\n', stderr);
         fflush(stderr);
         return false;
     }
     if (wl__unlikely(wl_op_get_argcount(op) != n_inputs)) {
-        wl__validate_print_separator();
+        wl__print_separator(stderr);
         fprintf(stderr,
             "Failed to execute operation: %s.\n"
             "ERROR: Operation requires %u input tensors, but %u were provided.\n"
             "    Hint: Ensure the correct number of input tensors are provided.\n",
             wl_op_get_name(op), wl_op_get_argcount(op), n_inputs
         );
-        wl__validate_print_separator();
+        wl__print_separator(stderr);
         fputc('\n', stderr);
         fflush(stderr);
         return false;
     }
     for (uint32_t i=0; i < wl_op_get_argcount(op); ++i) {
         if (wl__unlikely(!inputs[i])) {
-            wl__validate_print_separator();
+            wl__print_separator(stderr);
             fprintf(stderr,
                 "Failed to execute operation: %s.\n"
                 "ERROR: Input tensor %u is NULL.\n"
                 "    Hint: Ensure all input tensors are valid and non-NULL.\n",
                 wl_op_get_name(op), i
             );
-            wl__validate_print_separator();
+            wl__print_separator(stderr);
             fputc('\n', stderr);
             fflush(stderr);
             return false;
@@ -1371,7 +1388,7 @@ static bool wl__validate_inputs(wl_op_t op, wl_tensor_t** inputs, uint32_t n_inp
 
 static bool wl__validate_shape_eq(wl_op_t op, const wl_tensor_t* a, const wl_tensor_t* b) {
     if (wl__likely(wl_tensor_is_shape_eq(a, b))) return true;
-    wl__validate_print_separator();
+    wl__print_separator(stderr);
     char shape_1[WL__FMT_DIM_BUF_SIZE];
     char shape_2[WL__FMT_DIM_BUF_SIZE];
     wl__fmt_dims(&shape_1, &a->shape, a->rank);
@@ -1386,7 +1403,7 @@ static bool wl__validate_shape_eq(wl_op_t op, const wl_tensor_t* a, const wl_ten
         a->name, shape_1,
         b->name, shape_2
     );
-    wl__validate_print_separator();
+    wl__print_separator(stderr);
     fputc('\n', stderr);
     fflush(stderr);
     return false;
@@ -1394,7 +1411,7 @@ static bool wl__validate_shape_eq(wl_op_t op, const wl_tensor_t* a, const wl_ten
 
 static bool wl__validate_shape_broadcastable(wl_op_t op, const wl_tensor_t* a, const wl_tensor_t* b) { /* Check if tensor shapes are broadcast-able. (b into a) */
     if (wl__likely(wl_tensor_can_broadcast(b, a))) return true;
-    wl__validate_print_separator();
+    wl__print_separator(stderr);
     char shape_1[WL__FMT_DIM_BUF_SIZE];
     char shape_2[WL__FMT_DIM_BUF_SIZE];
     wl__fmt_dims(&shape_1, &a->shape, a->rank);
@@ -1422,7 +1439,7 @@ static bool wl__validate_shape_broadcastable(wl_op_t op, const wl_tensor_t* a, c
         b->name, shape_2,
         broadcast_able_str
     );
-    wl__validate_print_separator();
+    wl__print_separator(stderr);
     fputc('\n', stderr);
     fflush(stderr);
     return false;
@@ -1725,17 +1742,18 @@ static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_
     };
 }
 
-static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl_op_t op, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
+static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
     wl__perf_mon_t* pmon = &R->pmon;
-    wl__op_perf_info_t (*pmon_op)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
-    uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_us();    /* Profiling monitoring */
+    wl__op_perf_info_t (*pmon_ops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
+    wl__op_perf_info_t* pmon_op = (*pmon_ops)+R->op;
+    uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_ns();    /* Profiling monitoring */
     void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
-    (*(*(dispatch_lut+op)))(bci, R, inputs);                /* Dispatch to operation. */
+    (*(*(dispatch_lut+R->op)))(bci, R, inputs);                /* Dispatch to operation. */
     if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
-    pmon->elapsed_us = wl__hpc_clock_elapsed_us(start);
-    pmon->elapsed_us_acc += pmon->elapsed_us;
-    ++((*pmon_op)[op]).n_execs;
-    ((*pmon_op)[op]).elapsed_us = pmon->elapsed_us;
+    pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
+    pmon->elapsed_ns_acc += pmon->elapsed_ns;
+    ++pmon_op->n_execs;
+    pmon_op->elapsed_ns = pmon->elapsed_ns;
 }
 
 wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
@@ -1755,7 +1773,7 @@ wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor
     if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                     /* In eager execution mode, we execute immediately. */
         wl__blas_compute_info_t bci;
         wl__blas_compute_info_sequential(ctx, &bci);                /* Sequential eager execution. */
-        wl__op_exec(R, op, (const wl_tensor_t**)inputs, &bci);      /* Execute the operation immediately. */
+        wl__op_exec(R, (const wl_tensor_t**)inputs, &bci);          /* Execute the operation immediately. */
     }
     return R;
 }
@@ -4038,7 +4056,7 @@ wl_tensor_t* WL__HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
     wl__blas_compute_info_sequential(gra->ctx, &bci);
     for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
         wl_tensor_t* R = nodes[i];
-        wl__op_exec(R, R->op, (const wl_tensor_t**)R->op_inputs, &bci);
+        wl__op_exec(R, (const wl_tensor_t**)R->op_inputs, &bci);
     }
     return root;
 }

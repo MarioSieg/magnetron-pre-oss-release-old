@@ -8,6 +8,34 @@ TEST(core, op_param_int) {
     ASSERT_EQ(wl_op_param_unpack_int(p), 1234);
 }
 
+TEST(core, profiler_small_dims) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    wl_ctx_profile_start_recording(ctx);
+    for (int i=0; i < 1000000; ++i) {
+        wl_tensor_t* A = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 3, 3);
+        wl_tensor_t* B =  wl_tensor_emit_op_va(ctx, WL_OP_SIN, A);
+        wl_tensor_t* C =  wl_tensor_emit_op_va(ctx, WL_OP_COS, B);
+        [[maybe_unused]]
+        wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
+    }
+    wl_ctx_profile_stop_recording(ctx);
+    wl_ctx_profile_print_report(ctx);
+    wl_ctx_destroy(ctx);
+}
+
+TEST(core, profiler_big_dims) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    wl_ctx_profile_start_recording(ctx);
+    wl_tensor_t* A = wl_tensor_create_6d(ctx, WL_DTYPE_F32, 32, 32, 32, 32, 32, 32);
+    wl_tensor_t* B =  wl_tensor_emit_op_va(ctx, WL_OP_SIN, A);
+    wl_tensor_t* C =  wl_tensor_emit_op_va(ctx, WL_OP_COS, B);
+    [[maybe_unused]]
+    wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
+    wl_ctx_profile_stop_recording(ctx);
+    wl_ctx_profile_print_report(ctx);
+    wl_ctx_destroy(ctx);
+}
+
 #if 0
 TEST(core, crc32) {
     ASSERT_EQ(wl__crc32c("Hello, World!", std::strlen("Hello, World!")), 1297420392);
