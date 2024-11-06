@@ -3,11 +3,11 @@
 import numpy as np
 import time
 
-N = 4096
+N = 1024
 A = np.random.randn(N, N).astype(dtype=np.float32)
 B = np.random.randn(N, N).astype(dtype=np.float32)
 
-flop = N * N * 2 * N
+flop = 2*N**3
 avg = 0
 I = 10
 for _ in range(I):

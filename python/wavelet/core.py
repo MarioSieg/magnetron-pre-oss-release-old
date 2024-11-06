@@ -234,6 +234,15 @@ class Context:
         """Returns the total memory allocated in the context in bytes."""
         return C.wl_ctx_total_allocated_pool_memory(self.ctx)
 
+    def start_profiler(self) -> None:
+        """Start recording profiling information of operations. Slightly decreases performance. Recording must be stopped to generate report."""
+        C.wl_ctx_profile_start_recording(self.ctx)
+
+    def stop_profiler(self, export_csv_file: str | None = None) -> None:
+        """Stop recording profiling information of operations and generate profiling report."""
+        csv_file = ffi.NULL if export_csv_file is None else bytes(export_csv_file, 'utf-8')
+        C.wl_ctx_profile_stop_recording(self.ctx, csv_file)
+
     def __del__(self):
         C.wl_ctx_destroy(self.ctx)
         self.ctx = ffi.NULL
@@ -507,7 +516,7 @@ class Tensor:
     def load(file_path: str) -> 'Tensor':
         assert file_path.endswith('.wavelet'), 'File must be a WAVELET file'
         """Loads a tensor from a binary WAVELET file."""
-        instance = C.wl_tensor_load(Context.active, bytes(file_path, 'utf-8'))
+        instance = C.wl_tensor_load(Context.active.ctx, bytes(file_path, 'utf-8'))
         return Tensor(internal_instance=instance)
 
     @staticmethod
@@ -517,7 +526,7 @@ class Tensor:
                    resize_to_dims: (int, int) = (0, 0)) -> 'Tensor':
         """Loads an image from a file and creates a tensor from it."""
         assert isfile(file_path), f'File not found: {file_path}'
-        instance = C.wl_tensor_load_image(Context.active, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
+        instance = C.wl_tensor_load_image(Context.active.ctx, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
                                           resize_to_dims[1])
         tensor = Tensor(internal_instance=instance)
         if name is not None:
