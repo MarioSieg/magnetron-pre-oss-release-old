@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-04 20:07:05.573521, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-06 13:50:21.897570, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -16,7 +16,8 @@ typedef int wl_op_t;
 typedef int wl_op_param_type_t;
 typedef int wl_graph_eval_order_t;
 
-extern   void* wl_default_allocator_impl(void* blk, size_t size);
+extern   void* (*wl_get_alloc_fn(void))(void* blk, size_t size);
+extern   void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size));
 extern   wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info);
 extern   wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size);
 extern   void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size);
@@ -34,6 +35,8 @@ extern   uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx);
 extern   bool wl_ctx_is_numa_system(const wl_ctx_t* ctx);
+extern   void wl_ctx_profile_start_recording(wl_ctx_t* ctx);
+extern   void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file);
 extern   void wl_ctx_destroy(wl_ctx_t* ctx);
 extern   const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 extern   const char* wl_op_get_name(wl_op_t op);

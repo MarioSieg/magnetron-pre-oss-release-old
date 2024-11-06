@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 EPOCHS: int = 10000
 LEARNING_RATE: float = 0.8
 
+wl.Context.active.start_profiler()
+
 # Inputs
 inputs = [
     wl.Tensor.const([0.0, 0.0]),
@@ -36,6 +38,8 @@ for input_tensor in inputs:
     input_data = input_tensor.data_as_f32()
     output: float = mlp.forward(input_tensor).scalar()
     print(f'{input_data[0]} ^ {input_data[1]} = {output}')
+
+wl.Context.active.stop_profiler(export_csv_file='perf.csv')
 
 # Plot MSE loss
 plt.plot(list(range(0, EPOCHS - 1)), losses)
