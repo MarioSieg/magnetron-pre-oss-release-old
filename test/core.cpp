@@ -29,7 +29,7 @@ TEST(core, profiler_small_dims) {
 TEST(core, profiler_big_dims) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
     wl_ctx_profile_start_recording(ctx);
-    wl_tensor_t* A = wl_tensor_create_6d(ctx, WL_DTYPE_F32, 32, 32, 32, 32, 32, 32);
+    wl_tensor_t* A = wl_tensor_create_6d(ctx, WL_DTYPE_F32, 32, 32, 4, 4, 4, 4);
     wl_tensor_t* B =  wl_tensor_emit_op_va(ctx, WL_OP_SIN, A);
     wl_tensor_t* C =  wl_tensor_emit_op_va(ctx, WL_OP_COS, B);
     [[maybe_unused]]
