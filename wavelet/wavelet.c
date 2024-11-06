@@ -61,12 +61,14 @@ wl_static_assert(sizeof(0ull) == 8);
 #define WL__STORAGE_EXT ".wavelet"
 
 #ifdef WL_ENABLE_IMAGE_SUPPORT
-#define STBI_MALLOC(sz) wl_alloc(NULL, (sz))
-#define STBI_FREE(ptr) wl_alloc((ptr), 0)
-#define STBI_REALLOC(ptr, sz) wl_alloc((ptr), (sz))
-#define STBIW_MALLOC(sz) wl_alloc(NULL, (sz))
-#define STBIW_FREE(ptr) wl_alloc((ptr), 0)
-#define STBIW_REALLOC(ptr, sz) wl_alloc((ptr), (sz))
+/*
+    #define STBI_MALLOC(sz) (*wl__alloc)(NULL, (sz))
+    #define STBI_FREE(ptr) (*wl__alloc)((ptr), 0)
+    #define STBI_REALLOC(ptr, sz) (*wl__alloc)((ptr), (sz))
+    #define STBIW_MALLOC(sz) (*wl__alloc)(NULL, (sz))
+    #define STBIW_FREE(ptr) (*wl__alloc)((ptr), 0)
+    #define STBIW_REALLOC(ptr, sz) (*wl__alloc)((ptr), (sz))
+*/
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -248,6 +250,33 @@ static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
 #undef wl_x86_64_feature_def
 #endif
 
+
+static void* wl_default_allocator_impl(void* blk, size_t size) {
+    if (!size) {
+        free(blk);
+        return NULL;
+    } else if(!blk) {
+        blk = malloc(size);
+        wl__assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
+        return blk;
+    } else {
+        void* block = realloc(blk, size);
+        wl__assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
+        return block;
+    }
+}
+
+static void* (*wl__alloc)(void* blk, size_t size) = &wl_default_allocator_impl;
+
+void* (*wl_get_alloc_fn(void))(void* blk, size_t size) {
+    return wl__alloc;
+}
+
+void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size)) {
+    wl__assert2(alloc);
+    wl__alloc = alloc;
+}
+
 typedef struct wl__blas_compute_info_t wl__blas_compute_info_t; /* Forward declaration. */
 typedef struct wl__perf_mon_t { /* Profiling performance monitor per op. */
     uint64_t elapsed_ns;
@@ -265,7 +294,6 @@ typedef struct wl__op_perf_info_t {
 ** Context itself is not thread-safe, use a thread-local context or synchronize access. (Multiple contexts can be used.)
 */
 struct wl_ctx_t {
-    void* (*alloc_fn)(void* blk, size_t size); /* Memory allocator. */
     struct {
         char os_name[128];                          /* OS name. */
         char cpu_name[128];                         /* CPU name. */
@@ -359,21 +387,6 @@ struct wl_tensor_t {
 #else
 #define wl__bnd_chk(ptr, base, n)
 #endif
-
-void* wl_default_allocator_impl(void* blk, size_t size) {
-    if (!size) {
-        free(blk);
-        return NULL;
-    } else if(!blk) {
-        blk = malloc(size);
-        wl__assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
-        return blk;
-    } else {
-        void* block = realloc(blk, size);
-        wl__assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
-        return block;
-    }
-}
 
 static void wl__humanize_memory_size(size_t n, double* out, const char** unit) {
     if (n < (1<<10)) {
@@ -852,8 +865,8 @@ static wl__hashset_t wl__hashset_create(size_t size) {
     size = wl__hashset_compute_hash_size(size);
     wl__hashset_t set = {
         .len = size,
-        .used = (wl__bitset_t*)wl_alloc(NULL, wl__bitset_size(size)*sizeof(*set.used)),
-        .keys = (const wl_tensor_t**)wl_alloc(NULL, size*sizeof(*set.keys)),
+        .used = (wl__bitset_t*)(*wl__alloc)(NULL, wl__bitset_size(size)*sizeof(*set.used)),
+        .keys = (const wl_tensor_t**)(*wl__alloc)(NULL, size*sizeof(*set.keys)),
         .is_pool = false
     };
     memset(set.used, 0, wl__bitset_size(size)*sizeof(*set.used));
@@ -906,8 +919,8 @@ static void wl__hashset_reset(wl__hashset_t* set) {
 
 static void wl_hashset_destroy(wl__hashset_t* set) {
     wl__assert2(!set->is_pool); /* Cannot destroy pooled hashset. */
-    wl_alloc(set->used, 0);
-    wl_alloc(set->keys, 0);
+    (*wl__alloc)(set->used, 0);
+    (*wl__alloc)(set->keys, 0);
 }
 
 static bool WL__AINLINE wl__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
@@ -996,12 +1009,12 @@ static void wl__prng_init(wl_ctx_t* ctx, uint64_t seed) {
 }
 
 static void wl__ctx_push_chunk(wl_ctx_t* ctx) {
-    uint8_t* chunk = (uint8_t*)(*ctx->alloc_fn)(NULL, ctx->pool.chunk_size);
+    uint8_t* chunk = (uint8_t*)(*wl__alloc)(NULL, ctx->pool.chunk_size);
     if (ctx->pool.warmup_chunks) memset(chunk, 0, ctx->pool.chunk_size);
     ctx->pool.mapped_total += ctx->pool.chunk_size;
     ctx->pool.delta = chunk + ctx->pool.chunk_size;
     if (ctx->pool.chunk_len == ctx->pool.chunk_cap)
-        ctx->pool.chunks = (uint8_t**)(*ctx->alloc_fn)(ctx->pool.chunks, (ctx->pool.chunk_cap<<=1) * sizeof(*ctx->pool.chunks));
+        ctx->pool.chunks = (uint8_t**)(*wl__alloc)(ctx->pool.chunks, (ctx->pool.chunk_cap<<=1) * sizeof(*ctx->pool.chunks));
     ctx->pool.chunks[ctx->pool.chunk_len++] = chunk;
 }
 
@@ -1061,10 +1074,8 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     /* Initialize context with default values or from context info. */
     wl_ctx_info_t ctx_info = {0};
     if (info) ctx_info = *info;
-    ctx_info.alloc_fn = ctx_info.alloc_fn ? ctx_info.alloc_fn : &wl_alloc; /* Use default allocator if not provided. */
-    wl_ctx_t* ctx = (wl_ctx_t*)(*ctx_info.alloc_fn)(NULL, sizeof(*ctx)); /* Allocate context. */
+    wl_ctx_t* ctx = (wl_ctx_t*)(*wl__alloc)(NULL, sizeof(*ctx)); /* Allocate context. */
     memset(ctx, 0, sizeof(*ctx));
-    ctx->alloc_fn = ctx_info.alloc_fn;
     ctx->ud = ctx_info.user_data;
     ctx->pool.chunk_size = ctx_info.pool_chunk_size ? wl__max(ctx_info.pool_chunk_size, 8) : WL_DEFAULT_CHUNK_SIZE;
     ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? wl__max(ctx_info.pool_chunks_cap, 1) : WL_DEFAULT_CHUNK_CAP;
@@ -1093,7 +1104,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 
     /* Prepare memory pool. */
-    ctx->pool.chunks = (uint8_t**)(*ctx->alloc_fn)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
+    ctx->pool.chunks = (uint8_t**)(*wl__alloc)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
     wl__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
     #if WL_ENABLE_IMAGE_SUPPORT
@@ -1184,7 +1195,7 @@ void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     ctx->profiler_enabled = true;
 }
 
-typedef struct wl__sorted_per_data_t {
+typedef struct wl__op_perf_record_t {
     wl__op_perf_info_t perf;
     wl_op_t op;
 } wl__op_perf_record_t;
@@ -1275,12 +1286,11 @@ void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file) {
 void wl_ctx_destroy(wl_ctx_t* ctx) {
     size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
     size_t mem_mapped = ctx->pool.mapped_total;
-    void* (*alloc)(void* blk, size_t size) = ctx->alloc_fn;
     for (size_t i=0; i < ctx->pool.chunk_len; ++i) /* Free individual chunks */
-        (*alloc)(ctx->pool.chunks[i], 0);
-    (*alloc)(ctx->pool.chunks, 0);
+        (*wl__alloc)(ctx->pool.chunks[i], 0);
+    (*wl__alloc)(ctx->pool.chunks, 0);
     memset(ctx, (uintptr_t)ctx & 0xff, sizeof(*ctx));
-    (*alloc)(ctx, 0);
+    (*wl__alloc)(ctx, 0);
     ctx = NULL;
     double alloc_total, mapped_total;
     const char* alloc_unit, *mapped_unit;
@@ -4725,7 +4735,7 @@ static size_t wl__sto_total_size(const wl_tensor_t** tensors, size_t n) {
 static uint8_t* wl__sto_write_buffered(const wl_tensor_t** tensors, size_t n_tensors, size_t* out_size, uint32_t version) {
     if (wl__unlikely(!tensors || !n_tensors || n_tensors > UINT32_MAX || !out_size || !version || version > WL_STORAGE_VERSION)) return NULL;  /* Check input */
     *out_size = wl__sto_total_size(tensors, n_tensors);
-    uint8_t* base = (uint8_t*)wl_alloc(NULL, *out_size );     /* Allocate buffer */
+    uint8_t* base = (uint8_t*)(*wl__alloc)(NULL, *out_size );     /* Allocate buffer */
     uint8_t* needle = base;
     const uint8_t* end = base + *out_size ;
     if (wl__unlikely(!wl__sto_write_file_header(&needle, end, version, (uint32_t)n_tensors, 0))) goto error;     /* Write file header */
@@ -4750,7 +4760,7 @@ static uint8_t* wl__sto_write_buffered(const wl_tensor_t** tensors, size_t n_ten
     }
     return base;
     error: /* Error handling */
-        wl_alloc(base, 0);
+        (*wl__alloc)(base, 0);
         return NULL;
 }
 
@@ -4763,7 +4773,7 @@ WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf,
     if (wl__unlikely(!wl__sto_read_file_header(&needle, end, out_version, &n_tensors, &ud))) return NULL;   /* Read file header */
     if (wl__unlikely(!*out_version || *out_version > WL_VERSION)) return NULL;
     if (wl__unlikely(!n_tensors)) return NULL;
-    wl_tensor_t** tensors = (wl_tensor_t**)wl_alloc(NULL, n_tensors*sizeof(*tensors));   /* Allocate return tensor array */
+    wl_tensor_t** tensors = (wl_tensor_t**)(*wl__alloc)(NULL, n_tensors*sizeof(*tensors));   /* Allocate return tensor array */
     for (size_t i=0; i < n_tensors; ++i) {  /* Read tensor headers */
         char name[WL_MAX_TENSOR_NAME_LEN] = {0};
         wl__tensor_flags_t flags = 0;
@@ -4785,7 +4795,7 @@ WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf,
     *out_n_tensors = n_tensors;
     return tensors;
     error:
-        wl_alloc(tensors, 0);
+        (*wl__alloc)(tensors, 0);
         return NULL;
 }
 
@@ -4805,7 +4815,7 @@ void wl_tensor_save(const wl_tensor_t* t, const char* file) {
     uint8_t* ser = wl__sto_write_buffered(&t, n_tensors, &n_bytes, version);   /* Serialize tensor */
     wl__assert(ser && n_bytes, "Failed to serialize tensor to file: %s", file);   /* Check serialization */
     wl__assert(fwrite(ser, 1, n_bytes, f) == n_bytes, "Failed to write %zu bytes to file: %s", n_bytes, file);    /* Write to file */
-    wl_alloc(ser, 0);     /* Free buffer */
+    (*wl__alloc)(ser, 0);     /* Free buffer */
     fflush(f);
     fclose(f);
     double mem;
@@ -4822,7 +4832,7 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     long n_bytes = ftell(f);    /* Get file size */
     wl__assert(n_bytes > WL__STO_FILE_HEADER_SIZE + WL__STO_TENSOR_HEADER_SIZE + 1, "Malformed file size");   /* Check file size */
     wl__assert2(fseek(f, 0, SEEK_SET) == 0); /* Seek to start */
-    uint8_t* buf = (uint8_t*)wl_alloc(NULL, n_bytes);  /* Allocate buffer */
+    uint8_t* buf = (uint8_t*)(*wl__alloc)(NULL, n_bytes);  /* Allocate buffer */
     wl__assert(fread(buf, 1, n_bytes, f) == n_bytes, "Failed to read %zu bytes from file: %s", n_bytes, file);    /* Read while file into buffer */
     fclose(f), f = NULL;    /* Close file */
     size_t n_tensors = 0;
@@ -4831,8 +4841,8 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     wl__assert(version > 0 && version <= WL_VERSION, "Unsupported storage version: %u", version);   /* Check version */
     wl__assert(tensors && n_tensors > 0, "Failed to load tensor from file: %s", file);
     wl_tensor_t* target = *tensors;
-    wl_alloc(buf, 0);     /* Free buffer */
-    wl_alloc(tensors, 0);     /* Free tensor array */
+    (*wl__alloc)(buf, 0);     /* Free buffer */
+    (*wl__alloc)(tensors, 0);     /* Free tensor array */
     double mem;
     const char* unit;
     wl__humanize_memory_size(n_bytes, &mem, &unit);
@@ -4848,7 +4858,7 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
     uint8_t* src = (*loader)(file, &whc, channels);
     wl__assert(src, "Failed to load tensor from image: '%s'", file);
     if (rw && rh) { /* Resize requested. */
-        float* ori = (*ctx->alloc_fn)(NULL, whc[2]*whc[1]*whc[0]*sizeof(*ori));
+        float* ori = (*wl__alloc)(NULL, whc[2]*whc[1]*whc[0]*sizeof(*ori));
         for (int64_t k=0; k < whc[2]; ++k) { /* Convert from interleaved to planar representation. */
             for (int64_t j=0; j < whc[1]; ++j) {
                 for (int64_t i=0; i < whc[0]; ++i) {
@@ -4858,7 +4868,7 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
         }
         wl_tensor_t* t = wl_tensor_create_3d(ctx, WL_DTYPE_F32, whc[2], rh, rw);
         float* dst = wl_tensor_data_as_f32(t);
-        float* part = (*ctx->alloc_fn)(NULL, whc[2]*whc[1]*rw*sizeof(*part));
+        float* part = (*wl__alloc)(NULL, whc[2]*whc[1]*rw*sizeof(*part));
         float ws = (float)(whc[0] - 1)/(float)(rw - 1);
         float hs = (float)(whc[1] - 1)/(float)(rh - 1);
         for (uint32_t k = 0; k < whc[2]; ++k){
@@ -4893,8 +4903,8 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
                 }
             }
         }
-        (*ctx->alloc_fn)(ori, 0);
-        (*ctx->alloc_fn)(part, 0);
+        (*wl__alloc)(ori, 0);
+        (*wl__alloc)(part, 0);
         wl__assert(rw*rh*whc[2] == wl__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", rw*rh*whc[2], (size_t)wl__tensor_num_elements(t));
         (*load_free)(src);
         wl__log_info("Loaded and resized tensor from image: %s, %u x %u x %u", file, rw, rh, whc[2]);
@@ -4927,14 +4937,14 @@ void wl_tensor_save_image(const wl_tensor_t* t, const char* file) {
     int64_t c = wl_tensor_image_channels(t);
     wl__assert(c == 1 || c == 3 || c == 4, "Invalid number of channels: %zu", (size_t)c);
     wl__assert(w*h*c == wl__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", w*h*c, (size_t)wl__tensor_num_elements(t));
-    uint8_t* dst = (*t->ctx->alloc_fn)(NULL, w*h*c); /* Allocate memory for image data */
+    uint8_t* dst = (*wl__alloc)(NULL, w*h*c); /* Allocate memory for image data */
     const float* src = wl_tensor_data_as_f32(t);
     for (int64_t k = 0; k < c; ++k) /* Convert from planar to interleaved format. */
         for (int64_t i = 0; i < w*h; ++i)
             dst[i*c + k] = (uint8_t)(src[i + k*w*h]*255.0f);
     const uint32_t whc[3] = {(uint32_t)w,(uint32_t)h,(uint32_t)c};
     wl__assert((*saver)(file, dst, &whc), "Failed to save tensor to image: %s", file);
-    (*t->ctx->alloc_fn)(dst, 0); /* Free image data */
+    (*wl__alloc)(dst, 0); /* Free image data */
     wl__log_info("Saved tensor to image: %s, width: %d, height: %d, channels: %d", file, (int)w, (int)h, (int)c);
 }
 
