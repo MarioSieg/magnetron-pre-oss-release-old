@@ -249,9 +249,13 @@ static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
 #endif
 
 typedef struct wl__blas_compute_info_t wl__blas_compute_info_t; /* Forward declaration. */
-
-typedef struct wl__op_perf_info_t { /* Profiling performance monitor per op. */
+typedef struct wl__perf_mon_t { /* Profiling performance monitor per op. */
     uint64_t elapsed_ns;
+    uint64_t elapsed_ns_acc;
+    uint64_t n_execs;
+} wl__perf_mon_t;
+typedef struct wl__op_perf_info_t {
+    uint64_t elapsed_ns_acc;
     uint64_t n_execs;
 } wl__op_perf_info_t;
 
@@ -319,12 +323,6 @@ typedef enum wl__tensor_flags_t {
     WL__TFLAG_RECORD_PERF = 1<<6,  /* Record performance data. */
 } wl__tensor_flags_t;
 wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
-
-typedef struct wl__perf_mon_t { /* Profiling performance monitor per op. */
-    uint64_t elapsed_ns;
-    uint64_t elapsed_ns_acc;
-    uint64_t n_execs;
-} wl__perf_mon_t;
 
 /*
 ** Tensor with up to 6 Dimensions.
@@ -395,7 +393,7 @@ static void wl__humanize_memory_size(size_t n, double* out, const char** unit) {
 
 static void WL__COLDPROC wl__print_separator(FILE* f) {
     f = f ? f : stdout;
-    fprintf(f, "------------------------------------------------------------\n");
+    fprintf(f, "------------------------------------------------------------------------\n");
 }
 
 #define WL__FMT_DIM_BUF_SIZE ((21+4)*WL_MAX_DIMS)
@@ -1196,15 +1194,15 @@ typedef struct wl__sorted_per_data_t {
 static int wl_cmp_perf_info(const void* x, const void* y) {
     const wl__op_perf_record_t* op1 = (const wl__op_perf_record_t *)x;
     const wl__op_perf_record_t* op2 = (const wl__op_perf_record_t *)y;
-    if (op1->perf.n_execs < op2->perf.n_execs) return 1;
-    if (op1->perf.n_execs > op2->perf.n_execs) return -1;
+    if (op1->perf.elapsed_ns_acc < op2->perf.elapsed_ns_acc) return 1;
+    if (op1->perf.elapsed_ns_acc > op2->perf.elapsed_ns_acc) return -1;
     return 0;
 }
 
 void wl_ctx_profile_print_report(const wl_ctx_t* ctx) {
     FILE* f = stdout;
     wl__print_separator(f);
-    fprintf(f, "%16s %16s %16s %8s\n", "Operation", "Executions", "Elapsed (ns)", "Exec (%%)");
+    fprintf(f, "%16s %16s %16s %16s\n", "Operation", "Executions", "Usage (%)", "AVG Time (μs)");
     wl__op_perf_record_t sorted[WL_OP__COUNT];
     uint64_t exec_total = 0;
     for (wl_op_t op=WL_OP_NOP; op < WL_OP__COUNT; ++op) {
@@ -1212,17 +1210,19 @@ void wl_ctx_profile_print_report(const wl_ctx_t* ctx) {
         sorted[op].perf = ctx->op_perf_mons_total[op];
         exec_total += sorted[op].perf.n_execs;
     }
-    qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info); /* Sort by number of executions as time might be too low to sample stable. */
+    qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info);
     for (wl_op_t i=WL_OP_NOP; i < WL_OP__COUNT; ++i) {
         const wl__op_perf_record_t* info = sorted+i;
-        if (!info->perf.n_execs) continue; /* Op never executed. */
+        const wl__op_perf_info_t* perf = &info->perf;
+        if (!perf->n_execs) continue; /* Op never executed. */
         const char* op_name = wl_op_get_name(info->op);
-        fprintf(f, "%16s %16" PRIu64, op_name, info->perf.n_execs);
-        double perc = (double)info->perf.n_execs/(double)exec_total*100.0;
-        char perc_str[64];
-        snprintf(perc_str, sizeof(perc_str), "%3.3f", perc);
-        if (info->perf.elapsed_ns) fprintf(f, " %16" PRIu64 " %8s\n", info->perf.elapsed_ns, perc_str);
-        else fprintf(f, " %16s %8s\n", "N/A", perc_str);
+        double perc_exec = (double)perf->n_execs/(double)exec_total * 100.0;
+        char perc_exec_str[64];
+        snprintf(perc_exec_str, sizeof(perc_exec_str), "%f", perc_exec);
+        double avg_time = (double)(perf->elapsed_ns_acc/1000)/(double)perf->n_execs;
+        char avg_time_str[64];
+        snprintf(avg_time_str, sizeof(avg_time_str), "%f", avg_time);
+        fprintf(f, "%16s %16" PRIu64 " %16s%16s\n", op_name, perf->n_execs, perc_exec_str, avg_time_str);
     }
     fputc('\n', f);
     fprintf(f, "Total operations profiled: %" PRIu64 "\n", exec_total);
@@ -1752,8 +1752,9 @@ static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, 
     if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
     pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
     pmon->elapsed_ns_acc += pmon->elapsed_ns;
+    ++pmon->n_execs;
+    pmon_op->elapsed_ns_acc += pmon->elapsed_ns;
     ++pmon_op->n_execs;
-    pmon_op->elapsed_ns = pmon->elapsed_ns;
 }
 
 wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
