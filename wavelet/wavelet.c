@@ -524,7 +524,7 @@ static uint64_t wl__hpc_clock_elapsed_ns(uint64_t start) { /* High precision clo
     return (uint64_t)llabs((int64_t)wl__hpc_clock_ns() - (int64_t)start);
 }
 static double wl__hpc_clock_elapsed_ms(uint64_t start) { /* High precision clock elapsed time in milliseconds. */
-    return (double)wl__hpc_clock_elapsed_ns(start) * 1.e6;
+    return (double)wl__hpc_clock_elapsed_ns(start) / 1e6;
 }
 #define wl__clock_cycles() ((uint64_t)clock())
 #define wl__cycles_per_ms() ((uint64_t)CLOCKS_PER_SEC/1000)
@@ -1076,13 +1076,13 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__log_info("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
     #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
         printf("CPU Features:");
-        for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
-            if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
-                if (k++ % 8 == 0) printf("\n\t");
-                printf("%s ", wl__x86_64_feature_names[i]);
+            for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
+                if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
+                    if (k++ % 8 == 0) printf("\n\t");
+                    printf("%s ", wl__x86_64_feature_names[i]);
+                }
             }
-        }
-        putchar('\n');
+            putchar('\n');
     #endif
     double mem_total, mem_free, mem_used;
     const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
@@ -1184,11 +1184,6 @@ void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     ctx->profiler_enabled = true;
 }
 
-void wl_ctx_profile_stop_recording(wl_ctx_t* ctx) {
-    if (!ctx->profiler_enabled) return;
-    ctx->profiler_enabled = false;
-}
-
 typedef struct wl__sorted_per_data_t {
     wl__op_perf_info_t perf;
     wl_op_t op;
@@ -1202,25 +1197,54 @@ static int wl_cmp_perf_info(const void* x, const void* y) {
     return 0;
 }
 
-void wl_ctx_profile_generate_report(const wl_ctx_t* ctx) {
-    wl__assert(!ctx->profiler_enabled, "Profiler must be stopped to generate report");
-    FILE* f = stdout;
-    wl__print_separator(f);
-    fprintf(f, "%6s %16s %16s %16s %16s %16s\n", "Opcode", "Operation", "Executions", "Usage (%)", "AVG Time (μs)", "Time (μs)");
+void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file) {
+    wl__assert(ctx->profiler_enabled, "Profiler must be enabled to generate report");
+    ctx->profiler_enabled = false;
+    bool csv = export_csv_file && *export_csv_file;
+    if (!csv) {
+        wl__print_separator(stdout);
+        printf("OS/Kernel: %s\n", ctx->sys.os_name);
+        printf("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u\n", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
+        #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
+        printf("CPU Features:");
+            for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
+                if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
+                    if (k++ % 8 == 0) printf("\n\t");
+                    fprintf(f, "%s ", wl__x86_64_feature_names[i]);
+                }
+            }
+            fputc('\n', f);
+        #endif
+        double mem_total, mem_free, mem_used;
+        const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
+        wl__humanize_memory_size(ctx->sys.phys_mem_total, &mem_total, &mem_unit_total);
+        wl__humanize_memory_size(ctx->sys.phys_mem_free, &mem_free, &mem_unit_free);
+        wl__humanize_memory_size((size_t)llabs((int64_t)ctx->sys.phys_mem_total-(int64_t)ctx->sys.phys_mem_free), &mem_used, &mem_unit_used);
+        double mem_used_percent = fabs((double)(ctx->sys.phys_mem_total-ctx->sys.phys_mem_free))/(double)ctx->sys.phys_mem_total*100.0;
+        printf("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)\n", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
+        wl__print_separator(stdout);
+        printf("%16s %16s %16s %16s %16s\n", "Operation", "Executions", "Usage (%)", "AVG Time (μs)", "Total Time (μs)");
+    }
     wl__op_perf_record_t sorted[WL_OP__COUNT];
     uint64_t exec_total = 0;
-    for (wl_op_t op=WL_OP_NOP; op < WL_OP__COUNT; ++op) {
+    for (wl_op_t op=WL_OP_NOP; op < WL_OP__COUNT; ++op) { /* Convert to sortable record. */
         sorted[op].op = op;
         sorted[op].perf = ctx->op_perf_mons_total[op];
         exec_total += sorted[op].perf.n_execs;
     }
-    if (wl__unlikely(!exec_total)) {
-        fprintf(f, "\n! No operations profiled. Enable profiler and execute any operation to see results.\n");
-        wl__print_separator(f);
+    if (wl__unlikely(!exec_total) && !csv) {
+        printf("\n! No operations profiled. Enable profiler and execute any operation to see results.\n");
+        wl__print_separator(stdout);
         return;
     }
-    qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info);
-    for (wl_op_t i=WL_OP_NOP; i < WL_OP__COUNT; ++i) {
+    qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info); /* Quicksort by time descending. */
+    FILE* f = NULL;
+    if (csv) {
+        f = wl__fopen(export_csv_file, "wt");
+        wl__assert(f, "Failed to open CSV file: %s", export_csv_file);
+        fprintf(f, "Operation,Executions,Usage,AVG Time,Total Time\n"); /* CSV Header */
+    }
+    for (wl_op_t i=WL_OP_NOP; i < WL_OP__COUNT; ++i) { /* Format sorted performance data */
         const wl__op_perf_record_t* info = sorted+i;
         const wl__op_perf_info_t* perf = &info->perf;
         if (!perf->n_execs) continue; /* Op never executed. */
@@ -1230,17 +1254,22 @@ void wl_ctx_profile_generate_report(const wl_ctx_t* ctx) {
         snprintf(perc_exec_str, sizeof(perc_exec_str), "%.1f", perc_exec);
         double avg_time = (double)perf->elapsed_ns_acc/1e3/(double)perf->n_execs;
         char avg_time_str[64];
-        snprintf(avg_time_str, sizeof(avg_time_str), "%g", avg_time);
+        snprintf(avg_time_str, sizeof(avg_time_str), "%f", avg_time);
         double tot_time = (double)perf->elapsed_ns_acc/1e3;
         char tot_time_str[64];
-        snprintf(tot_time_str, sizeof(tot_time_str), "%g", tot_time);
-        char opcode[6];
-        snprintf(opcode, sizeof(opcode), "0x%02x", (uint32_t)info->op);
-        fprintf(f, "%6s %16s %16" PRIu64 " %16s%16s%16s\n", opcode, op_name, perf->n_execs, perc_exec_str, avg_time_str, tot_time_str);
+        snprintf(tot_time_str, sizeof(tot_time_str), "%f", tot_time);
+        if (csv) {
+            fprintf(f, "%s,%" PRIu64 ",%s,%s,%s\n", op_name, perf->n_execs, perc_exec_str, avg_time_str, tot_time_str);
+        } else {
+            printf("%16s %16" PRIu64 " %16s%16s%16s\n", op_name, perf->n_execs, perc_exec_str, avg_time_str, tot_time_str);
+        }
     }
-    fputc('\n', f);
-    fprintf(f, "Total operations profiled: %" PRIu64 "\n", exec_total);
-    wl__print_separator(f);
+    if (csv) fclose(f);
+    else {
+        putchar('\n');
+        printf("Total operations profiled: %" PRIu64 "\n", exec_total);
+        wl__print_separator(stdout);
+    }
 }
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {

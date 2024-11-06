@@ -238,10 +238,10 @@ class Context:
         """Start recording profiling information of operations. Slightly decreases performance. Recording must be stopped to generate report."""
         C.wl_ctx_profile_start_recording(self.ctx)
 
-    def stop_profiler(self) -> None:
+    def stop_profiler(self, export_csv_file: str | None = None) -> None:
         """Stop recording profiling information of operations and generate profiling report."""
-        C.wl_ctx_profile_stop_recording(self.ctx)
-        C.wl_ctx_profile_generate_report(self.ctx)
+        csv_file = ffi.NULL if export_csv_file is None else bytes(export_csv_file, 'utf-8')
+        C.wl_ctx_profile_stop_recording(self.ctx, csv_file)
 
     def __del__(self):
         C.wl_ctx_destroy(self.ctx)

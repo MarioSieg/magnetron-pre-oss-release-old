@@ -2,6 +2,8 @@
 
 #include "prelude.hpp"
 
+#include <filesystem>
+
 TEST(core, op_param_int) {
     wl_op_param_t p = wl_op_param_int(1234);
     ASSERT_TRUE(wl_op_param_is_int(p));
@@ -18,8 +20,9 @@ TEST(core, profiler_small_dims) {
         [[maybe_unused]]
         wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
     }
-    wl_ctx_profile_stop_recording(ctx);
-    wl_ctx_profile_generate_report(ctx);
+    wl_ctx_profile_stop_recording(ctx, "perf.csv");
+    ASSERT_TRUE(std::filesystem::exists("perf.csv"));
+    std::filesystem::remove("perf.csv");
     wl_ctx_destroy(ctx);
 }
 
@@ -31,8 +34,7 @@ TEST(core, profiler_big_dims) {
     wl_tensor_t* C =  wl_tensor_emit_op_va(ctx, WL_OP_COS, B);
     [[maybe_unused]]
     wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
-    wl_ctx_profile_stop_recording(ctx);
-    wl_ctx_profile_generate_report(ctx);
+    wl_ctx_profile_stop_recording(ctx, NULL);
     wl_ctx_destroy(ctx);
 }
 
