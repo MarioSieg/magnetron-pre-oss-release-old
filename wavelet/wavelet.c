@@ -375,6 +375,7 @@ struct wl_tensor_t {
     wl_tensor_t* op_inputs[WL_MAX_INPUT_TENSORS];   /* Input tensors for operators. */
     wl_op_param_t op_params[WL_MAX_OP_PARAMS];      /* Operator parameters. */
     wl_tensor_t* view;                              /* View tensor. */
+    wl_tensor_t* grad;                              /* ∇f - Gradient tensor. */
     size_t view_offs;                               /* Offset in view tensor. */
     wl__perf_mon_t pmon;                            /* Performance monitor. */
     char name[WL_MAX_TENSOR_NAME_LEN];              /* Tensor debug name. */
