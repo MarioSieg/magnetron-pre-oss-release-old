@@ -393,7 +393,10 @@ static void wl__humanize_memory_size(size_t n, double* out, const char** unit) {
 
 static void WL__COLDPROC wl__print_separator(FILE* f) {
     f = f ? f : stdout;
-    fprintf(f, "------------------------------------------------------------------------\n");
+    char sep[100+1];
+    for (size_t i=0; i < (sizeof(sep)/sizeof(*sep))-1; ++i) sep[i] = '-';
+    sep[sizeof(sep)/sizeof(*sep)-1] = '\0';
+    fprintf(f, "%s\n", sep);
 }
 
 #define WL__FMT_DIM_BUF_SIZE ((21+4)*WL_MAX_DIMS)
@@ -1199,16 +1202,22 @@ static int wl_cmp_perf_info(const void* x, const void* y) {
     return 0;
 }
 
-void wl_ctx_profile_print_report(const wl_ctx_t* ctx) {
+void wl_ctx_profile_generate_report(const wl_ctx_t* ctx) {
+    wl__assert(!ctx->profiler_enabled, "Profiler must be stopped to generate report");
     FILE* f = stdout;
     wl__print_separator(f);
-    fprintf(f, "%16s %16s %16s %16s\n", "Operation", "Executions", "Usage (%)", "AVG Time (μs)");
+    fprintf(f, "%6s %16s %16s %16s %16s %16s\n", "Opcode", "Operation", "Executions", "Usage (%)", "AVG Time (μs)", "Time (μs)");
     wl__op_perf_record_t sorted[WL_OP__COUNT];
     uint64_t exec_total = 0;
     for (wl_op_t op=WL_OP_NOP; op < WL_OP__COUNT; ++op) {
         sorted[op].op = op;
         sorted[op].perf = ctx->op_perf_mons_total[op];
         exec_total += sorted[op].perf.n_execs;
+    }
+    if (wl__unlikely(!exec_total)) {
+        fprintf(f, "\n! No operations profiled. Enable profiler and execute any operation to see results.\n");
+        wl__print_separator(f);
+        return;
     }
     qsort(sorted, WL_OP__COUNT, sizeof(*sorted), &wl_cmp_perf_info);
     for (wl_op_t i=WL_OP_NOP; i < WL_OP__COUNT; ++i) {
@@ -1218,11 +1227,16 @@ void wl_ctx_profile_print_report(const wl_ctx_t* ctx) {
         const char* op_name = wl_op_get_name(info->op);
         double perc_exec = (double)perf->n_execs/(double)exec_total * 100.0;
         char perc_exec_str[64];
-        snprintf(perc_exec_str, sizeof(perc_exec_str), "%f", perc_exec);
-        double avg_time = (double)(perf->elapsed_ns_acc/1000)/(double)perf->n_execs;
+        snprintf(perc_exec_str, sizeof(perc_exec_str), "%.1f", perc_exec);
+        double avg_time = (double)perf->elapsed_ns_acc/1e3/(double)perf->n_execs;
         char avg_time_str[64];
-        snprintf(avg_time_str, sizeof(avg_time_str), "%f", avg_time);
-        fprintf(f, "%16s %16" PRIu64 " %16s%16s\n", op_name, perf->n_execs, perc_exec_str, avg_time_str);
+        snprintf(avg_time_str, sizeof(avg_time_str), "%g", avg_time);
+        double tot_time = (double)perf->elapsed_ns_acc/1e3;
+        char tot_time_str[64];
+        snprintf(tot_time_str, sizeof(tot_time_str), "%g", tot_time);
+        char opcode[6];
+        snprintf(opcode, sizeof(opcode), "0x%02x", (uint32_t)info->op);
+        fprintf(f, "%6s %16s %16" PRIu64 " %16s%16s%16s\n", opcode, op_name, perf->n_execs, perc_exec_str, avg_time_str, tot_time_str);
     }
     fputc('\n', f);
     fprintf(f, "Total operations profiled: %" PRIu64 "\n", exec_total);

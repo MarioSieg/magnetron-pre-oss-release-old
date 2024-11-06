@@ -19,7 +19,7 @@ TEST(core, profiler_small_dims) {
         wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
     }
     wl_ctx_profile_stop_recording(ctx);
-    wl_ctx_profile_print_report(ctx);
+    wl_ctx_profile_generate_report(ctx);
     wl_ctx_destroy(ctx);
 }
 
@@ -32,7 +32,7 @@ TEST(core, profiler_big_dims) {
     [[maybe_unused]]
     wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
     wl_ctx_profile_stop_recording(ctx);
-    wl_ctx_profile_print_report(ctx);
+    wl_ctx_profile_generate_report(ctx);
     wl_ctx_destroy(ctx);
 }
 
