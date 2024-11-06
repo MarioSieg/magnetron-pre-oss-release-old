@@ -1046,7 +1046,7 @@ static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_featu
     const uint8_t (*leafs)[49] = &wl__x86_64_feature_leaves;
     const uint8_t (*regs)[49] = &wl__x86_64_feature_regs;
     const uint32_t (*features)[8][4] = &ctx->sys.x86_64_cpu_features;
-    const uint32_t (*masks)[49] = msml__x86_64_feature_masks;
+    const uint32_t (*masks)[49] = &msml__x86_64_feature_masks;
     return (*features)[(*leafs)[feature]][(*regs)[feature]] & (*masks)[feature];
 }
 #endif
