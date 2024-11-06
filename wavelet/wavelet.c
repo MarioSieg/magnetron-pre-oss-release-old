@@ -359,7 +359,7 @@ struct wl_tensor_t {
     wl_ctx_t* ctx;                                  /* Host context. */
     int64_t rank;                                   /* Number of active dimensions. [1, MAX_DIMS] */
     int64_t shape[WL_MAX_DIMS];                     /* Shape of the tensor. */
-    int64_t strides[WL_MAX_DIMS];                   /* Strides of the tensor. */
+    int64_t strides[WL_MAX_DIMS];                   /* Strides of the tensor. We store the strides in element counts and NOT in bytes. */
     wl_dtype_t dtype;                               /* Data type of the tensor. */
     void* buf;                                      /* Data buffer. */
     int64_t num_elems;                              /* Number of elements in the tensor. */
@@ -1523,8 +1523,8 @@ static bool wl__validate_op_binary(wl_op_t op, wl_tensor_t* result, wl_tensor_t*
     if (wl__unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
     if (wl__unlikely(!wl__validate_shape_eq(op, result, inputs[0]))) return false;
     if (wl__unlikely(!wl__validate_shape_broadcastable(op, inputs[0], inputs[1]))) return false;
-    wl__validate_expr_gen(result->strides[0] == wl_dtype_info_of(result->dtype)->size, "Result must be contiguous.");
-    wl__validate_expr_gen(inputs[0]->strides[0] == wl_dtype_info_of(result->dtype)->size, "First tensor must be contiguous.");
+    wl__validate_expr_gen(wl_tensor_is_contiguous(result), "Result must be contiguous.");
+    wl__validate_expr_gen(wl_tensor_is_contiguous(inputs[0]), "First tensor must be contiguous.");
     return true;
 }
 
@@ -1537,7 +1537,7 @@ static bool wl__validate_op_transpose(wl_op_t op, wl_tensor_t* result, wl_tensor
 static bool wl__validate_op_scalar(wl_op_t op, wl_tensor_t* result, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     (void)params;
     if (wl__unlikely(!wl__validate_inputs(op, inputs, n_inputs))) return false;
-    wl__validate_expr_gen(inputs[0]->strides[0] == sizeof(float), "Mean");
+    wl__validate_expr_gen(wl_tensor_is_contiguous(inputs[0]), "Mean"); /* TODO */
     wl__validate_expr_gen(result->shape[0] == 1, "Mean");
     wl__validate_expr_gen(result->shape[1] == inputs[0]->shape[1], "Mean");
     wl__validate_expr_gen(result->shape[2] == inputs[0]->shape[2], "Mean");
@@ -1741,9 +1741,9 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     #pragma GCC unroll 6
     for (uint32_t i=0; i < WL_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
         t->shape[i] = i < rank ? dims[i] : 1;
-    *t->strides = scalar_size;
+    *t->strides = 1;
     #pragma GCC unroll 5
-    for (uint32_t i=1; i < WL_MAX_DIMS; ++i)    /* Calculate strides and check for overflow. */
+    for (uint32_t i=1; i < WL_MAX_DIMS; ++i)  /* Calculate strides and check for overflow. */
         wl__assert2(!wl__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
     t->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(t + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     return t;
@@ -1904,7 +1904,7 @@ static void wl__print_tensor_recursive(FILE* f, const wl_tensor_t* t, int64_t (*
         for (int64_t i = 0; i < dim_size; ++i) {
             (*idx)[curr_dim] = i;
             wl__load_local_storage_group_arr(*idx, i);
-            float val = *(const float*)((const uint8_t*)t->buf + i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5);
+            float val = *((const float*)t->buf + i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5);
             char fmt_buf[128];
             *wl__fmt_f64(WL__FMT_G14, (double)val, fmt_buf) = '\0';
             fprintf(f, "%s", fmt_buf);
@@ -1956,7 +1956,7 @@ void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
     }
     if (with_data) {
         int64_t strides[WL_MAX_DIMS];
-        strides[WL_MAX_DIMS-1] = sizeof(float);
+        strides[WL_MAX_DIMS-1] = 1;
         for (int32_t i = WL_MAX_DIMS-2; i >= 0; --i)    // TODO: Fix this
             strides[i] = strides[i+1] * t->shape[i+1];
         int64_t idx[WL_MAX_DIMS] = {0};
@@ -2050,15 +2050,14 @@ bool wl_tensor_is_permuted(const wl_tensor_t* t) {
 }
 
 bool wl_tensor_is_contiguous(const wl_tensor_t* t) {
-    return *t->strides == wl_dtype_info_of(t->dtype)->size;
+    return *t->strides == 1;
 }
 
 float wl_tensor_get_scalar_physical_index(const wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5) {
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, s, strides);
-    const uint8_t* dst = (const uint8_t*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5;
     switch (t->dtype) {
-        case WL_DTYPE_F32: return *(const float*)dst;
+        case WL_DTYPE_F32: return *((const float*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5);
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
 }
@@ -2066,9 +2065,8 @@ float wl_tensor_get_scalar_physical_index(const wl_tensor_t* t, int64_t d0, int6
 void wl_tensor_set_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, float x) {
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, s, strides);
-    uint8_t* dst = (uint8_t*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5;
     switch (t->dtype) {
-        case WL_DTYPE_F32: *(float*)dst = x; break;
+        case WL_DTYPE_F32: *((float*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5) = x; break;
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
 }
@@ -2081,7 +2079,7 @@ float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t v_idx) {
     }
     switch (t->dtype) {
         case WL_DTYPE_F32:
-            return ((const float*)t->buf)[v_idx];
+            return *((const float*)t->buf + v_idx);
         default:
             wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
@@ -2095,9 +2093,7 @@ void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x) 
         return;
     }
     switch (t->dtype) {
-        case WL_DTYPE_F32:
-            ((float*)t->buf)[v_idx] = x;
-            break;
+        case WL_DTYPE_F32: *((float*)t->buf + v_idx) = x; break;
         default:
             wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
@@ -2349,7 +2345,7 @@ static void WL__HOTPROC wl__vadd_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vadd(x, 1, y, 1, o, 1, n);
+        vDSP_vadd(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] + y[i];
@@ -2363,7 +2359,7 @@ static void WL__HOTPROC wl__vsub_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vsub(x, 1, y, 1, o, 1, n);
+        vDSP_vsub(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] - y[i];
@@ -2377,7 +2373,7 @@ static void WL__HOTPROC wl__vmul_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vmul(x, 1, y, 1, o, 1, n);
+        vDSP_vmul(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] * y[i];
@@ -2391,7 +2387,7 @@ static void WL__HOTPROC wl__vdiv_f32(
     const float* const y
 ) {
     #ifdef WL_USE_ACCELERATE
-        vDSP_vdiv(x, 1, y, 1, o, 1, n);
+        vDSP_vdiv(y, 1, x, 1, o, 1, n);
     #else
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] / y[i];
@@ -2925,8 +2921,8 @@ static void wl__blas_clone(
 ) {
     const wl_tensor_t* const x = inputs[0];
     wl__assert2(wl_tensor_is_shape_eq(x, r));
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     memcpy(b_r, b_x, wl__tensor_data_size(r));
 }
 
@@ -2937,8 +2933,8 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
     wl__load_local_storage_group(x, x_s, strides);
@@ -2948,7 +2944,7 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
             for (int64_t i3=0; i3 < x_d3; ++i3) {
                 for (int64_t i2=0; i2 < x_d2; ++i2) {
                     for (int64_t i1=0; i1 < x_d1; ++i1) {
-                        const float* const p_x = (const float*)(b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5);
+                        const float* const p_x = b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5;
                         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
                         sum += wl__vsum_f64_f32(
                             x_d0,
@@ -2960,7 +2956,7 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
         }
     }
     sum /= (double)x->num_elems;
-    *(float*)b_r = (float)sum;
+    *b_r = (float)sum;
 }
 
 static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
@@ -2970,8 +2966,8 @@ static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
     wl__load_local_storage_group(x, x_s, strides);
@@ -2981,7 +2977,7 @@ static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
             for (int64_t i3=0; i3 < x_d3; ++i3) {
                 for (int64_t i2=0; i2 < x_d2; ++i2) {
                     for (int64_t i1=0; i1 < x_d1; ++i1) {
-                        const float* const p_x = (const float*)(b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5);
+                        const float* const p_x = b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5;
                         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
                         sum += wl__vsum_f64_f32(
                             x_d0,
@@ -2992,7 +2988,7 @@ static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
             }
         }
     }
-    *(float*)b_r = (float)sum;
+    *b_r = (float)sum;
 }
 
 static void WL__HOTPROC wl__blas_abs_f32(
@@ -3002,15 +2998,15 @@ static void WL__HOTPROC wl__blas_abs_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vabs_f32(cc, p_r, p_x);
@@ -3024,15 +3020,15 @@ static void WL__HOTPROC wl__blas_neg_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vneg_f32(cc, p_r, p_x);
@@ -3046,15 +3042,15 @@ static void WL__HOTPROC wl__blas_log_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vlog_f32(cc, p_r, p_x);
@@ -3068,15 +3064,15 @@ static void WL__HOTPROC wl__blas_sqr_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsqr_f32(cc, p_r, p_x);
@@ -3090,15 +3086,15 @@ static void WL__HOTPROC wl__blas_sqrt_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsqrt_f32(cc, p_r, p_x);
@@ -3112,15 +3108,15 @@ static void WL__HOTPROC wl__blas_sin_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsin_f32(cc, p_r, p_x);
@@ -3134,15 +3130,15 @@ static void WL__HOTPROC wl__blas_cos_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vcos_f32(cc, p_r, p_x);
@@ -3156,15 +3152,15 @@ static void WL__HOTPROC wl__blas_step_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vstep_f32(cc, p_r, p_x);
@@ -3178,15 +3174,15 @@ static void WL__HOTPROC wl__blas_softmax_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsoftmax_f32(cc, p_r, p_x);
@@ -3200,15 +3196,15 @@ static void WL__HOTPROC wl__blas_softmax_dv_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsoftmax_dv_f32(cc, p_r, p_x);
@@ -3222,15 +3218,15 @@ static void WL__HOTPROC wl__blas_sigmoid_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsigmoid_f32(cc, p_r, p_x);
@@ -3244,15 +3240,15 @@ static void WL__HOTPROC wl__blas_sigmoid_dv_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsigmoid_dv_f32(cc, p_r, p_x);
@@ -3266,15 +3262,15 @@ static void WL__HOTPROC wl__blas_hard_sigmoid_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vhard_sigmoid_f32(cc, p_r, p_x);
@@ -3288,15 +3284,15 @@ static void WL__HOTPROC wl__blas_silu_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsilu_f32(cc, p_r, p_x);
@@ -3310,15 +3306,15 @@ static void WL__HOTPROC wl__blas_silu_dv_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vsilu_dv_f32(cc, p_r, p_x);
@@ -3332,15 +3328,15 @@ static void WL__HOTPROC wl__blas_tanh_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vtanh_f32(cc, p_r, p_x);
@@ -3354,15 +3350,15 @@ static void WL__HOTPROC wl__blas_tanh_dv_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vtanh_dv_f32(cc, p_r, p_x);
@@ -3376,15 +3372,15 @@ static void WL__HOTPROC wl__blas_relu_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vrelu_f32(cc, p_r, p_x);
@@ -3398,15 +3394,15 @@ static void WL__HOTPROC wl__blas_relu_dv_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vrelu_dv_f32(cc, p_r, p_x);
@@ -3420,15 +3416,15 @@ static void WL__HOTPROC wl__blas_gelu_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vgelu_f32(cc, p_r, p_x);
@@ -3442,15 +3438,15 @@ static void WL__HOTPROC wl__blas_gelu_dv_f32(
 ) {
     (void)bci;
     const wl_tensor_t* const x = inputs[0];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_s, strides);
     const int64_t rc = wl__tensor_num_rows(x);
     const int64_t cc = wl__tensor_num_cols(x);
     for (int64_t ri=0; ri < rc; ++ri) {
-        float* const p_r = (float*)(b_r + ri*r_s1);
-        const float* const p_x = (const float*)(b_x + ri*x_s1);
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
         wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
         wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
         wl__vgelu_dv_f32(cc, p_r, p_x);
@@ -3464,9 +3460,9 @@ static void WL__HOTPROC wl__blas_add_f32(
 ) {
     const wl_tensor_t* const x = inputs[0];
     const wl_tensor_t* const y = inputs[1];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
-    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    const float* const b_y = (const float*)y->buf;
     wl__load_local_storage_group(r, r_d, shape);
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
@@ -3479,7 +3475,7 @@ static void WL__HOTPROC wl__blas_add_f32(
     int64_t x_i3 = 0;
     int64_t x_i4 = 0;
     int64_t x_i5 = 0;
-    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+    if (y_s0 == 1) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
             /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
@@ -3487,9 +3483,9 @@ static void WL__HOTPROC wl__blas_add_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
-            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
+            const float* const p_y = b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5;
             wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
             const int64_t pa = x_d0 / y_d0;
             for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
@@ -3526,10 +3522,10 @@ static void WL__HOTPROC wl__blas_add_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
             for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
-                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                const float* const p_y = b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5; /* Compute result ptr. */
                 wl__bnd_chk(p_r+i, b_r, wl__tensor_data_size(r));
                 wl__bnd_chk(p_x+i, b_x, wl__tensor_data_size(x));
                 wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
@@ -3564,9 +3560,9 @@ static void WL__HOTPROC wl__blas_sub_f32(
 ) {
     const wl_tensor_t* const x = inputs[0];
     const wl_tensor_t* const y = inputs[1];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
-    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    const float* const b_y = (const float*)y->buf;
     wl__load_local_storage_group(r, r_d, shape);
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
@@ -3579,7 +3575,7 @@ static void WL__HOTPROC wl__blas_sub_f32(
     int64_t x_i3 = 0;
     int64_t x_i4 = 0;
     int64_t x_i5 = 0;
-    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+    if (y_s0 == 1) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
             /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
@@ -3587,9 +3583,9 @@ static void WL__HOTPROC wl__blas_sub_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
-            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
+            const float* const p_y = b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5;
             wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
             const int64_t pa = x_d0 / y_d0;
             for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
@@ -3626,10 +3622,10 @@ static void WL__HOTPROC wl__blas_sub_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
             for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
-                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                const float* const p_y = b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5; /* Compute result ptr. */
                 wl__bnd_chk(p_r+i, b_r, wl__tensor_data_size(r));
                 wl__bnd_chk(p_x+i, b_x, wl__tensor_data_size(x));
                 wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
@@ -3664,9 +3660,9 @@ static void WL__HOTPROC wl__blas_mul_f32(
 ) {
     const wl_tensor_t* const x = inputs[0];
     const wl_tensor_t* const y = inputs[1];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
-    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    const float* const b_y = (const float*)y->buf;
     wl__load_local_storage_group(r, r_d, shape);
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
@@ -3679,7 +3675,7 @@ static void WL__HOTPROC wl__blas_mul_f32(
     int64_t x_i3 = 0;
     int64_t x_i4 = 0;
     int64_t x_i5 = 0;
-    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+    if (y_s0 == 1) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
             /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
@@ -3687,9 +3683,9 @@ static void WL__HOTPROC wl__blas_mul_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
-            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
+            const float* const p_y = b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5;
             wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
             const int64_t pa = x_d0 / y_d0;
             for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
@@ -3726,10 +3722,10 @@ static void WL__HOTPROC wl__blas_mul_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
             for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
-                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                const float* const p_y = b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5; /* Compute result ptr. */
                 wl__bnd_chk(p_r+i, b_r, wl__tensor_data_size(r));
                 wl__bnd_chk(p_x+i, b_x, wl__tensor_data_size(x));
                 wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
@@ -3764,9 +3760,9 @@ static void WL__HOTPROC wl__blas_div_f32(
 ) {
     const wl_tensor_t* const x = inputs[0];
     const wl_tensor_t* const y = inputs[1];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
-    const uint8_t* const b_y = (const uint8_t*)y->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    const float* const b_y = (const float*)y->buf;
     wl__load_local_storage_group(r, r_d, shape);
     wl__load_local_storage_group(r, r_s, strides);
     wl__load_local_storage_group(x, x_d, shape);
@@ -3779,7 +3775,7 @@ static void WL__HOTPROC wl__blas_div_f32(
     int64_t x_i3 = 0;
     int64_t x_i4 = 0;
     int64_t x_i5 = 0;
-    if (y_s0 == sizeof(float)) { /* Fast path for contiguous input tensors. */
+    if (y_s0 == 1) { /* Fast path for contiguous input tensors. */
         for (int64_t ri=0; ri < rc; ++ri) { /* For each row */
             /* Compute broadcasted 5D indices for y and the resulting buffer ptrs for r,x,y. */
             const int64_t y_i5 = x_i5 % y_d5;
@@ -3787,9 +3783,9 @@ static void WL__HOTPROC wl__blas_div_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
-            const float* const p_y = (const float*)(b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
+            const float* const p_y = b_y + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5;
             wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
             const int64_t pa = x_d0 / y_d0;
             for (int64_t i=0; i < pa; ++i) {  /* For each element in row */
@@ -3826,10 +3822,10 @@ static void WL__HOTPROC wl__blas_div_f32(
             const int64_t y_i3 = x_i3 % y_d3;
             const int64_t y_i2 = x_i2 % y_d2;
             const int64_t y_i1 = x_i1 % y_d1;
-            float* const p_r = (float*)(b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5);
-            const float* const p_x = (const float*)(b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5);
+            float* const p_r = b_r + x_i1*r_s1 + x_i2*r_s2 + x_i3*r_s3 + x_i4*r_s4 + x_i5*r_s5;
+            const float* const p_x = b_x + x_i1*x_s1 + x_i2*x_s2 + x_i3*x_s3 + x_i4*x_s4 + x_i5*x_s5;
             for (int64_t i=0; i < r_d0; ++i) {  /* For each element in row */
-                const float* const p_y = (const float*)(b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5); /* Compute result ptr. */
+                const float* const p_y = b_y + i%y_d0*y_s0 + y_i1*y_s1 + y_i2*y_s2 + y_i3*y_s3 + y_i4*y_s4 + y_i5*y_s5; /* Compute result ptr. */
                 wl__bnd_chk(p_r+i, b_r, wl__tensor_data_size(r));
                 wl__bnd_chk(p_x+i, b_x, wl__tensor_data_size(x));
                 wl__bnd_chk(p_y, b_y, wl__tensor_data_size(y));
@@ -3865,8 +3861,8 @@ static void WL__HOTPROC wl__blas_matmul_f32(
 ) {
     const wl_tensor_t* const x = inputs[0];
     const wl_tensor_t* const y = inputs[1];
-    uint8_t* const b_r = (uint8_t*)r->buf;
-    const uint8_t* const b_x = (const uint8_t*)x->buf;
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
     const uint8_t* const b_y = (const uint8_t*)y->buf;
     wl__load_local_storage_group(r, r_d, shape);
     wl__load_local_storage_group(r, r_s, strides);
