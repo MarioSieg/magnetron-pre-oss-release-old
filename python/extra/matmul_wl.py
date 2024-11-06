@@ -5,8 +5,8 @@ import time
 
 
 N = 1024
-A = wl.Tensor.random((N, N), name='A')
-B = wl.Tensor.random((N, N), name='B')
+A = wl.Tensor.rand((N, N), name='A')
+B = wl.Tensor.rand((N, N), name='B')
 print(A.shape)
 
 wl.Context.active.start_profiler()

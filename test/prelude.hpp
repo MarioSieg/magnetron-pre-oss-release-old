@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <gtest/gtest.h>
 #include <wavelet.h>
 
@@ -13,5 +14,7 @@ inline auto wl_tensor_evaluate_static_graph(wl_tensor_t* root, wl_graph_eval_ord
 template <typename... Args>
 [[nodiscard]] inline auto wl_tensor_emit_op_va(wl_ctx_t* ctx, wl_op_t op, Args&&... args) -> wl_tensor_t* {
     std::array<wl_tensor_t*, sizeof...(Args)> tensors {args...};
-    return wl_tensor_operator(ctx, op, tensors.data(), tensors.size(), nullptr);
+    auto* opt = wl_tensor_operator(ctx, op, tensors.data(), tensors.size(), nullptr);
+    if (!opt) throw std::runtime_error("wl_tensor_emit_op_va: failed to emit operation");
+    return opt;
 }

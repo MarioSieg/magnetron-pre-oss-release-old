@@ -13,6 +13,9 @@ if (APPLE)
     option(WAVELET_USE_ACCELERATE "Use Apple's Accelerate framework" ON)
 endif()
 
+set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
+set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
+
 if (${WAVELET_BUILD_TESTS})
     enable_testing()
     add_subdirectory(test)
@@ -28,7 +31,13 @@ endif()
 
 add_library(wavelet SHARED wavelet/wavelet.h wavelet/wavelet.c)
 target_include_directories(wavelet PRIVATE wavelet/optional)
-if (NOT WIN32)
+if (WIN32)
+    target_compile_options(wavelet PRIVATE /W3 /Oi)
+    # Enable optimizations only for release builds
+    if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        target_compile_options(wavelet PRIVATE /O2 /Oy)
+    endif()
+else ()
     target_link_libraries(wavelet m) # link math library
     target_compile_options(wavelet PRIVATE
         -Wall
@@ -40,16 +49,18 @@ if (NOT WIN32)
         -fvisibility=hidden
         -std=gnu99
     )
-    if (${WAVELET_USE_ACCELERATE} AND APPLE)
-        find_library(ACCELERATE_FRAMEWORK Accelerate)
-        if (ACCELERATE_FRAMEWORK)
-            message(STATUS "Accelerate framework found")
-            target_compile_definitions(wavelet PRIVATE WL_USE_ACCELERATE)
-            target_compile_definitions(wavelet PRIVATE ACCELERATE_NEW_LAPACK)
-            target_compile_definitions(wavelet PRIVATE ACCELERATE_LAPACK_ILP64)
-            target_link_libraries(wavelet ${ACCELERATE_FRAMEWORK})
-        else()
-            message(WARNING "Accelerate framework not found, using fallback")
+    if (APPLE)
+        if (${WAVELET_USE_ACCELERATE})
+            find_library(ACCELERATE_FRAMEWORK Accelerate)
+            if (ACCELERATE_FRAMEWORK)
+                message(STATUS "Accelerate framework found")
+                target_compile_definitions(wavelet PRIVATE WL_USE_ACCELERATE)
+                target_compile_definitions(wavelet PRIVATE ACCELERATE_NEW_LAPACK)
+                target_compile_definitions(wavelet PRIVATE ACCELERATE_LAPACK_ILP64)
+                target_link_libraries(wavelet ${ACCELERATE_FRAMEWORK})
+            else()
+                message(WARNING "Accelerate framework not found, using fallback")
+            endif()
         endif()
     else() # todo x86
         target_compile_options(wavelet PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)
