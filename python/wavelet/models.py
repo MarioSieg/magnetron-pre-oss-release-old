@@ -18,8 +18,8 @@ def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
 
 class DenseLayer:
     def __init__(self, in_features: int, out_features: int, activation: wl.Op = wl.Op.SIGMOID):
-        self.weight = wl.Tensor.random(shape=(out_features, in_features))
-        self.bias = wl.Tensor.random(shape=(out_features, 1))
+        self.weight = wl.Tensor.rand(shape=(out_features, in_features))
+        self.bias = wl.Tensor.rand(shape=(out_features, 1))
         self.activation = activation
         self.cache = None
 

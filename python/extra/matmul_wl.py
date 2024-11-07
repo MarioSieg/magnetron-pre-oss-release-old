@@ -3,12 +3,15 @@
 import wavelet.core as wl
 import time
 
+
 N = 1024
-A = wl.Tensor.random((N, N), name='A')
-B = wl.Tensor.random((N, N), name='B')
+A = wl.Tensor.rand((N, N), name='A')
+B = wl.Tensor.rand((N, N), name='B')
 print(A.shape)
 
-flop = N * N * 2 * N
+wl.Context.active.start_profiler()
+
+flop = 2*N**3
 avg = 0
 I = 10
 for _ in range(I):
@@ -18,5 +21,8 @@ for _ in range(I):
     s = et - st
     print(f'{flop/s * 1e-12} TFLOP/s')
     avg += flop/s
+
+wl.Context.active.stop_profiler()
+wl.Context.active.print_profiler_report()
 
 print(f'Average: {avg/I * 1e-12} TFLOP/s')

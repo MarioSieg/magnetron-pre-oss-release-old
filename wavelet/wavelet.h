@@ -52,11 +52,6 @@ extern "C" {
 #define wl_assert_name(line) wl_assert_name2(_assert_, line)
 #define wl_static_assert(expr) extern void wl_assert_name(__LINE__)(bool STATIC_ASSERTION_FAILED[((expr)?1:-1)])
 
-extern WL_EXPORT void* wl_default_allocator_impl(void* blk, size_t size); /* Default memory allocator */
-#ifndef wl_alloc /* Default allocator, can be overridden by defining it before.  */
-#define wl_alloc wl_default_allocator_impl
-#endif
-
 typedef enum wl_exec_mode_t {
     WL_EXEC_MODE_EAGER = 0, /* Execute operations immediately. (Dynamic computation graph, like PyTorch). */
     WL_EXEC_MODE_DEFERRED = 1 /* Build computation graph and execute later. (Static computation graph, like TensorFlow 1.0). */
@@ -75,8 +70,10 @@ typedef enum wl_color_channels_t {
     WL_COLOR_CHANNELS_RGBA   /* R32G32B32A32 */
 } wl_color_channels_t;
 
+extern WL_EXPORT void* (*wl_get_alloc_fn(void))(void* blk, size_t size); /* Get global allocator. */
+extern WL_EXPORT void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size)); /* Set global allocator. */
+
 typedef struct wl_ctx_info_t {
-    void* (*alloc_fn)(void* blk, size_t size); /* Custom allocator function */
     size_t pool_chunk_size; /* Size of each memory pool chunk */
     size_t pool_chunks_cap; /* Maximum chunks in the pool */
     uint64_t prng_seed; /* Seed for PRNG if prng_init_seed == true */
@@ -108,6 +105,8 @@ extern WL_EXPORT uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx); /* Get th
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx); /* Get the total physical memory in bytes */
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx); /* Get the free physical memory in bytes */
 extern WL_EXPORT bool wl_ctx_is_numa_system(const wl_ctx_t* ctx); /* Check if the system is NUMA */
+extern WL_EXPORT void wl_ctx_profile_start_recording(wl_ctx_t* ctx); /* Start profiling */
+extern WL_EXPORT void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file); /* Reset profiling data */
 extern WL_EXPORT void wl_ctx_destroy(wl_ctx_t* ctx); /* Destroy context and free memory */
 
 typedef enum wl_dtype_t {

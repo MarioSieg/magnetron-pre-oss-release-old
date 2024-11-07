@@ -25,15 +25,6 @@ WL_MAX_OP_PARAMS: int = 6
 DIM_MAX: int = ((1 << 64) - 1) >> 1
 
 
-def humanize_memory_size(size: int) -> str:
-    units = ['B', 'KiB', 'MiB', 'GiB', 'TiB']
-    unit = 0
-    while size >= (1 << 10) and unit < len(units) - 1:
-        size /= (1 << 10)
-        unit += 1
-    return f'{size:.2f} {units[unit]}'
-
-
 def pack_color(r: int, g: int, b: int) -> int:
     return C.wl_pack_color_u8(r, g, b)
 
@@ -234,6 +225,15 @@ class Context:
         """Returns the total memory allocated in the context in bytes."""
         return C.wl_ctx_total_allocated_pool_memory(self.ctx)
 
+    def start_profiler(self) -> None:
+        """Start recording profiling information of operations. Slightly decreases performance. Recording must be stopped to generate report."""
+        C.wl_ctx_profile_start_recording(self.ctx)
+
+    def stop_profiler(self, export_csv_file: str | None = None) -> None:
+        """Stop recording profiling information of operations and generate profiling report."""
+        csv_file = ffi.NULL if export_csv_file is None else bytes(export_csv_file, 'utf-8')
+        C.wl_ctx_profile_stop_recording(self.ctx, csv_file)
+
     def __del__(self):
         C.wl_ctx_destroy(self.ctx)
         self.ctx = ffi.NULL
@@ -246,31 +246,35 @@ class Tensor:
     """Represents a tensor in the WAVELET library."""
 
     def __init__(self, internal_instance: ffi.CData | None = None) -> None:
+        """Internal constructor to create a tensor from a C pointer."""
         self.tensor = internal_instance
 
     def __del__(self) -> None:
         """Destructor to release tensor resources."""
         self.tensor = ffi.NULL
 
-    def _new(self, ctx: Context, shape: tuple[int, ...], dtype: DType = DType.F32,
+    _DISPATCH = {
+        1: C.wl_tensor_create_1d,
+        2: C.wl_tensor_create_2d,
+        3: C.wl_tensor_create_3d,
+        4: C.wl_tensor_create_4d,
+        5: C.wl_tensor_create_5d,
+        6: C.wl_tensor_create_6d
+    }
+    assert len(_DISPATCH) == MAX_DIMS
+
+    def _new(self, ctx: Context, *, shape: tuple[int, ...], dtype: DType = DType.F32,
              name: str | None = None) -> None:
+        """Internal constructor to create a new tensor."""
         assert 0 < len(shape) <= MAX_DIMS, f'Invalid number of dimensions: {len(shape)}'
         assert all(0 < dim <= DIM_MAX for dim in shape), 'Invalid dimension size'
         self.context_ref = weakref.ref(ctx)
-        dispatch = {
-            1: C.wl_tensor_create_1d,
-            2: C.wl_tensor_create_2d,
-            3: C.wl_tensor_create_3d,
-            4: C.wl_tensor_create_4d,
-            5: C.wl_tensor_create_5d,
-            6: C.wl_tensor_create_6d
-        }
-        assert len(shape) in dispatch
-        self.tensor = dispatch[len(shape)](ctx.ctx, dtype.value, *shape)
+        self.tensor = self._DISPATCH[len(shape)](ctx.ctx, dtype.value, *shape)
         self.name = f'Tensor {self.shape}' if name is None else name
 
     @staticmethod
     def operator(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
+        """Applies an operation to one or more tensors"""
         c_para: ffi.CData
         c_para_ptr: ffi.CData = ffi.NULL
         if params is not None:
@@ -286,15 +290,89 @@ class Tensor:
         assert instance != ffi.NULL, 'Operation invalid'
         return Tensor(instance)
 
-    def fill(self, x: float) -> None:
-        """Sets all elements of the tensor to x."""
-        C.wl_tensor_fill(self.tensor, x)
+    @staticmethod
+    def empty(shape: tuple[int, ...], *, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+        """Creates an empty tensor, with uninitialized data."""
+        tensor = Tensor(None)
+        tensor._new(Context.active, shape=shape, dtype=dtype, name=name)
+        return tensor
 
-    def fill_random(self, interval: (float, float) = (0.0, 1.0)) -> None:
-        """Sets all elements of the tensor to random values within [min, max]"""
+    @staticmethod
+    def full(shape: tuple[int, ...], *, fill_value: float, dtype: DType = DType.F32,
+             name: str | None = None) -> 'Tensor':
+        """Creates a tensor filled with a constant value."""
+        tensor = Tensor(None)
+        tensor._new(Context.active, shape=shape, dtype=dtype, name=name)
+        C.wl_tensor_fill(tensor.tensor, fill_value)
+        return tensor
+
+    @staticmethod
+    def const(data, *, dtype: DType = DType.F32,
+              name: str | None = None) -> 'Tensor':
+        """Creates a tensor filled with data from a list."""
+
+        def determine_shape_and_flatten(nested) -> (tuple[int, ...], list[float]):
+            if not isinstance(nested, list):
+                return (), [nested]
+            elif len(nested) == 0:
+                return (0,), []
+            else:
+                shapes = []
+                flattened = []
+                for item in nested:
+                    shape_lst, flat = determine_shape_and_flatten(item)
+                    shapes.append(shape_lst)
+                    flattened.extend(flat)
+                first_shape = shapes[0]
+                for s in shapes:
+                    assert s == first_shape, "All sub-lists must have the same shape"
+                return (len(nested),) + first_shape, flattened
+
+        shape, flattened_data = determine_shape_and_flatten(data)
+        tensor = Tensor(None)
+        tensor._new(Context.active, shape=tuple(shape), dtype=dtype, name=name)
+        size: int = len(flattened_data) * ffi.sizeof('float')
+        C.wl_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(flattened_data)}]', flattened_data), size)
+        return tensor
+
+    @staticmethod
+    def zeros(shape: tuple[int, ...], *, dtype: DType = DType.F32,
+              name: str | None = None) -> 'Tensor':
+        """Creates a tensor filled with zeros."""
+        return Tensor.full(shape, fill_value=1.0, dtype=dtype, name=name)
+
+    @staticmethod
+    def rand(shape: tuple[int, ...], *, interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
+             name: str | None = None) -> 'Tensor':
+        """Creates a tensor filled with random values within [min, max]."""
+        tensor = Tensor(None)
+        tensor._new(Context.active, shape=shape, dtype=dtype, name=name)
         if interval[1] < interval[0]:
             interval = (interval[1], interval[0])
-        C.wl_tensor_fill_random(self.tensor, interval[0], interval[1])
+        C.wl_tensor_fill_random(tensor.tensor, interval[0], interval[1])
+        return tensor
+
+    @staticmethod
+    def load(file_path: str) -> 'Tensor':
+        assert file_path.endswith('.wavelet'), 'File must be a WAVELET file'
+        """Loads a tensor from a binary WAVELET file."""
+        instance = C.wl_tensor_load(Context.active.ctx, bytes(file_path, 'utf-8'))
+        return Tensor(internal_instance=instance)
+
+    @staticmethod
+    def load_image(file_path: str, *,
+                   name: str | None = None,
+                   channels=ColorChannels.AUTO,
+                   resize_to_dims: (int, int) = (0, 0)) -> 'Tensor':
+        """Loads an image from a file and creates a tensor from it."""
+        assert isfile(file_path), f'File not found: {file_path}'
+        instance = C.wl_tensor_load_image(Context.active.ctx, bytes(file_path, 'utf-8'), channels.value,
+                                          resize_to_dims[0],
+                                          resize_to_dims[1])
+        tensor = Tensor(internal_instance=instance)
+        if name is not None:
+            tensor.name = name
+        return tensor
 
     def print(self, print_header: bool = False, print_data: bool = True) -> None:
         """Prints the tensor metadata and optionally its data."""
@@ -444,85 +522,6 @@ class Tensor:
         assert self.rank == 3, 'Tensor must be a 3D image tensor'
         assert self.channels in (1, 3, 4), 'Invalid number of color channels'
         C.wl_tensor_save_image(self.tensor, bytes(file_path, 'utf-8'))
-
-    @staticmethod
-    def empty(shape: tuple[int, ...], dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
-        """Creates an empty tensor, with uninitialized data."""
-        tensor = Tensor(None)
-        tensor._new(Context.active, shape, dtype, name)
-        return tensor
-
-    @staticmethod
-    def full(shape: tuple[int, ...], fill_value: float, dtype: DType = DType.F32,
-             name: str | None = None) -> 'Tensor':
-        """Creates a tensor filled with a constant value."""
-        tensor = Tensor(None)
-        tensor._new(Context.active, shape, dtype, name)
-        tensor.fill(fill_value)
-        return tensor
-
-    @staticmethod
-    def const(data, dtype: DType = DType.F32,
-              name: str | None = None) -> 'Tensor':
-        """Creates a tensor filled with data from a list."""
-        def determine_shape_and_flatten(nested) -> (tuple[int, ...], list[float]):
-            if not isinstance(nested, list):
-                return (), [nested]
-            elif len(nested) == 0:
-                return (0,), []
-            else:
-                shapes = []
-                flattened = []
-                for item in nested:
-                    shape_lst, flat = determine_shape_and_flatten(item)
-                    shapes.append(shape_lst)
-                    flattened.extend(flat)
-                first_shape = shapes[0]
-                for s in shapes:
-                    assert s == first_shape, "All sub-lists must have the same shape"
-                return (len(nested),) + first_shape, flattened
-        shape, flattened_data = determine_shape_and_flatten(data)
-        tensor = Tensor(None)
-        tensor._new(Context.active, tuple(shape), dtype, name)
-        size: int = len(flattened_data) * ffi.sizeof('float')
-        C.wl_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(flattened_data)}]', flattened_data), size)
-        return tensor
-
-    @staticmethod
-    def zeros(shape: tuple[int, ...], dtype: DType = DType.F32,
-              name: str | None = None) -> 'Tensor':
-        """Creates a tensor filled with zeros."""
-        return Tensor.full(shape, 1.0, dtype, name)
-
-    @staticmethod
-    def random(shape: tuple[int, ...], interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
-               name: str | None = None) -> 'Tensor':
-        """Creates a tensor filled with random values within [min, max]."""
-        tensor = Tensor(None)
-        tensor._new(Context.active, shape, dtype, name)
-        tensor.fill_random(interval)
-        return tensor
-
-    @staticmethod
-    def load(file_path: str) -> 'Tensor':
-        assert file_path.endswith('.wavelet'), 'File must be a WAVELET file'
-        """Loads a tensor from a binary WAVELET file."""
-        instance = C.wl_tensor_load(Context.active.ctx, bytes(file_path, 'utf-8'))
-        return Tensor(internal_instance=instance)
-
-    @staticmethod
-    def load_image(file_path: str,
-                   name: str | None = None,
-                   channels=ColorChannels.AUTO,
-                   resize_to_dims: (int, int) = (0, 0)) -> 'Tensor':
-        """Loads an image from a file and creates a tensor from it."""
-        assert isfile(file_path), f'File not found: {file_path}'
-        instance = C.wl_tensor_load_image(Context.active.ctx, bytes(file_path, 'utf-8'), channels.value, resize_to_dims[0],
-                                          resize_to_dims[1])
-        tensor = Tensor(internal_instance=instance)
-        if name is not None:
-            tensor.name = name
-        return tensor
 
     def clone(self) -> 'Tensor':
         """Create new tensor with same shape and data as input. (deep clone)"""
