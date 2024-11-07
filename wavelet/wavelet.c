@@ -249,6 +249,11 @@ static const uint8_t wl__x86_64_feature_regs[WL__X86_64_FEATURE__COUNT] = {
     wl_x86_64_feature_def(_, WL_SEP)
 };
 #undef _
+#define _(enumerator, leaf, reg, bit) (1u<<(bit))
+static const uint32_t msml__x86_64_feature_masks[WL__X86_64_FEATURE__COUNT] = {
+    wl_x86_64_feature_def(_, WL_SEP)
+};
+#undef _
 #undef wl_x86_64_feature_def
 #endif
 
@@ -539,10 +544,13 @@ static uint64_t wl__hpc_clock_ns(void) { /* High precision clock in nanoseconds.
             t_boot = li.QuadPart;
             t_init = true;
         }
+        LARGE_INTEGER li;
+        QueryPerformanceCounter(&li);
+        return ((li.QuadPart - t_boot)*1000000000) / t_freq;
     #else
         struct timespec ts;
         clock_gettime(CLOCK_MONOTONIC, &ts);
-        return (uint64_t)ts.tv_sec * 1000000000 + (uint64_t)ts.tv_nsec;
+        return (uint64_t)ts.tv_sec*1000000000 + (uint64_t)ts.tv_nsec;
     #endif
 }
 static uint64_t wl__hpc_clock_elapsed_ns(uint64_t start) { /* High precision clock elapsed time in microseconds. */
@@ -1035,9 +1043,11 @@ static void wl__blas_compute_dispatch_table_install(wl_ctx_t* ctx); /* Install B
 
 #if defined(__x86_64__) || defined(_M_X64)
 static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_feature_t feature) {
-    const uint8_t* leafs = wl__x86_64_feature_leaves, *regs = wl__x86_64_feature_regs;
+    const uint8_t (*leafs)[49] = &wl__x86_64_feature_leaves;
+    const uint8_t (*regs)[49] = &wl__x86_64_feature_regs;
     const uint32_t (*features)[8][4] = &ctx->sys.x86_64_cpu_features;
-    return (*features)[leafs[feature]][regs[feature]] & 1u<<(uint32_t)feature;
+    const uint32_t (*masks)[49] = msml__x86_64_feature_masks;
+    return (*features)[(*leafs)[feature]][(*regs)[feature]] & (*masks)[feature];
 }
 #endif
 
@@ -2652,7 +2662,7 @@ static void WL__HOTPROC wl__vsoftmax_dv_f32( /* softmax' = softmax : ℝ -> (0, 
     float* const o,
     const float* const x
 ) {
-    return wl__vsoftmax_f32(n, o, x);
+    wl__vsoftmax_f32(n, o, x);
 }
 
 static void WL__HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^(-x)) */

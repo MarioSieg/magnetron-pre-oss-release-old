@@ -32,6 +32,11 @@ endif()
 add_library(wavelet SHARED wavelet/wavelet.h wavelet/wavelet.c)
 target_include_directories(wavelet PRIVATE wavelet/optional)
 if (WIN32)
+    target_compile_options(wavelet PRIVATE /W3 /Oi)
+    # Enable optimizations only for release builds
+    if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
+        target_compile_options(wavelet PRIVATE /O2 /Oy)
+    endif()
 else ()
     target_link_libraries(wavelet m) # link math library
     target_compile_options(wavelet PRIVATE
