@@ -357,13 +357,14 @@ struct wl_ctx_t {
 
 typedef enum wl__tensor_flags_t {
     WL__TFLAG_NONE = 0,
-    WL__TFLAG_VIEW = 1<<0,         /* Tensor is a view. */
-    WL__TFLAG_OP_INPUT = 1<<1,     /* Tensor is an operation input. */
-    WL__TFLAG_OP_OUTPUT = 1<<2,    /* Tensor is an operation output. */
-    WL__TFLAG_EXEC_EAGER = 1<<3,   /* Tensor is executed eagerly. */
-    WL__TFLAG_IMAGE = 1<<4,        /* Tensor was loaded from an image. */
-    WL__TFLAG_FROM_FS = 1<<5,      /* Tensor was loaded from the file system. Also true for WL__TFLAG_IMAGE. */
-    WL__TFLAG_RECORD_PERF = 1<<6,  /* Record performance data. */
+    WL__TFLAG_VIEW = 1<<0,          /* Tensor is a view. */
+    WL__TFLAG_OP_INPUT = 1<<1,      /* Tensor is an operation input. */
+    WL__TFLAG_OP_OUTPUT = 1<<2,     /* Tensor is an operation output. */
+    WL__TFLAG_EXEC_EAGER = 1<<3,    /* Tensor is executed eagerly. */
+    WL__TFLAG_IMAGE = 1<<4,         /* Tensor was loaded from an image. */
+    WL__TFLAG_FROM_FS = 1<<5,       /* Tensor was loaded from the file system. Also true for WL__TFLAG_IMAGE. */
+    WL__TFLAG_RECORD_PERF = 1<<6,   /* Record performance data. */
+    WL__FLAG_GRA = 1<<7,            /* Tensor is a gradient. */
 } wl__tensor_flags_t;
 wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
 
@@ -1918,9 +1919,12 @@ wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor
     wl_tensor_t* R = (*construct_result)(inputs, params);                               /* Construct result tensor. */
     if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;    /* Validation failed. */
     wl_tensor_t* grad = NULL; /* ∇ᵦL = ∂L/∂B - Upper gradient tensor. */  /* TODO */
-    R->grad = gra == WL__GRA_FWD ? NULL : R->grad
-        ? wl_tensor_operator(R->ctx, WL_OP_ADD, (wl_tensor_t*[]) {R->grad, grad}, 2, NULL) /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
-        : wl_tensor_operator(R->ctx, WL_OP_CLONE, &grad, 1, NULL); /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
+    if (gra == WL__GRA_BWD && grad) {
+        R->grad = R->grad /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
+            ? wl_tensor_operator(R->ctx, WL_OP_ADD, (wl_tensor_t* []) {R->grad, grad}, 2, NULL)
+            : wl_tensor_operator(R->ctx, WL_OP_CLONE, &grad, 1, NULL); /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
+        R->grad->flags |= WL__TFLAG_OP_OUTPUT;
+    }
     R->flags |= WL__TFLAG_OP_OUTPUT;
     wl__assert2(R->op == WL_OP_NOP);
     R->op = op;                                     /* Set operation for deferred execution mode. */
