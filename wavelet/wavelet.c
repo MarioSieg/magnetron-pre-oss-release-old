@@ -531,7 +531,7 @@ static uint64_t wl__hpc_clock_ns(void) { /* High precision clock in nanoseconds.
         static LONGLONG t_freq;
         static LONGLONG t_boot;
         static bool t_init = false;
-        if (!t_init) { /* Reducce chance of integer overflow when uptime is high. */
+        if (!t_init) { /* Reduce chance of integer overflow when uptime is high. */
             LARGE_INTEGER li;
             QueryPerformanceFrequency(&li);
             t_freq = li.QuadPart;
@@ -4363,7 +4363,7 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
         DWORD size = 0;
         GetLogicalProcessorInformation(NULL, &size);
         if (wl__unlikely(!size)) return;
-        SYSTEM_LOGICAL_PROCESSOR_INFORMATION* info = wl_alloc(NULL, size);
+        SYSTEM_LOGICAL_PROCESSOR_INFORMATION* info = (*wl__alloc)(NULL, size);
         if (wl__unlikely(!GetLogicalProcessorInformation(info, &size))) goto end;
         for (DWORD i=0; i < size/sizeof(*info); ++i) {
             switch (info[i].Relationship) {
@@ -4378,7 +4378,7 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
                 } continue;
             }
         }
-        end: wl_alloc(info, 0);
+        end: (*wl__alloc)(info, 0);
     #elif defined(__APPLE__)
         uint8_t tmp[256];
         size_t len;
@@ -4481,12 +4481,12 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
     static void wl__cpuid(uint32_t leaf, int32_t sub, uint32_t* oeax, uint32_t* oebx, uint32_t* oecx, uint32_t* oedx) {
         #ifdef _MSC_VER
             int regs[4];
-            if (sub >= 0) __cpuidex(regs, leaf, sub);
+            if (sub != -1) __cpuidex(regs, leaf, sub);
             else __cpuid(regs, leaf);
             *oeax = regs[0], *oebx = regs[1], *oecx = regs[2], *oedx = regs[3];
         #else
             uint32_t eax, ebx, ecx, edx;
-            if (sub >= 0) __cpuid_count(leaf, sub, eax, ebx, ecx, edx);
+            if (sub != -1) __cpuid_count(leaf, sub, eax, ebx, ecx, edx);
             else __cpuid(leaf, eax, ebx, ecx, edx);
             *oeax = eax, *oebx = ebx, *oecx = ecx, *oedx = edx;
         #endif
