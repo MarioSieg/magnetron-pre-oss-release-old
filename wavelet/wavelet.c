@@ -295,6 +295,10 @@ typedef struct wl__op_perf_info_t {
     uint64_t n_execs;
 } wl__op_perf_info_t;
 
+#define WL__GRA_FWD WL_GRAPH_EVAL_ORDER_FORWARD
+#define WL__GRA_BWD WL_GRAPH_EVAL_ORDER_REVERSE
+#define WL__GRA_LEN 2
+
 /*
 ** Context contains all isolated state and data.
 ** Lifetimes of tensors and compute graphs are bound to the context - the context is the owner.
@@ -343,7 +347,11 @@ struct wl_ctx_t {
     } prng_state;
     wl_prng_algorithm_t prng_algorithm;
     uintptr_t host_thread_id;
-    void (*blas_dispatch[WL_OP__COUNT])(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**); /* BLAS dispatch table. Specialized for host CPU architecture. */
+    void (*blas_dispatch[WL__GRA_LEN][WL_OP__COUNT])(
+        const wl__blas_compute_info_t*,
+        wl_tensor_t*,
+        const wl_tensor_t**
+    ); /* BLAS dispatch table with forward + backward kernels. Specialized for host CPU architecture. */
     void* ud; /* User data. */
 };
 
@@ -1578,43 +1586,78 @@ static bool wl__validate_op_matmul(wl_op_t op, wl_tensor_t* result, wl_tensor_t*
     return true;
 }
 
-static bool (*wl__op_get_validator_routine(wl_op_t op))(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
-    static bool (*const routines[WL_OP__COUNT])(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {
-        [WL_OP_NOP] = &wl__validate_op_nop,
-        [WL_OP_CLONE] = &wl__validate_op_unary,
-        [WL_OP_VIEW] = &wl__validate_op_unary,
-        [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
-        [WL_OP_PERMUTE] = &wl__validate_op_transpose,
-        [WL_OP_MEAN] = &wl__validate_op_scalar,
-        [WL_OP_SUM] = &wl__validate_op_scalar,
-        [WL_OP_ABS] = &wl__validate_op_unary,
-        [WL_OP_NEG] = &wl__validate_op_unary,
-        [WL_OP_LOG] = &wl__validate_op_unary,
-        [WL_OP_SQR] = &wl__validate_op_unary,
-        [WL_OP_SQRT] = &wl__validate_op_unary,
-        [WL_OP_SIN] = &wl__validate_op_unary,
-        [WL_OP_COS] = &wl__validate_op_unary,
-        [WL_OP_STEP] = &wl__validate_op_unary,
-        [WL_OP_SOFTMAX] = &wl__validate_op_unary,
-        [WL_OP_SOFTMAX_DV] = &wl__validate_op_unary,
-        [WL_OP_SIGMOID] = &wl__validate_op_unary,
-        [WL_OP_SIGMOID_DV] = &wl__validate_op_unary,
-        [WL_OP_HARD_SIGMOID] = &wl__validate_op_unary,
-        [WL_OP_SILU] = &wl__validate_op_unary,
-        [WL_OP_SILU_DV] = &wl__validate_op_unary,
-        [WL_OP_TANH] = &wl__validate_op_unary,
-        [WL_OP_TANH_DV] = &wl__validate_op_unary,
-        [WL_OP_RELU] = &wl__validate_op_unary,
-        [WL_OP_RELU_DV] = &wl__validate_op_unary,
-        [WL_OP_GELU] = &wl__validate_op_unary,
-        [WL_OP_GELU_DV] = &wl__validate_op_unary,
-        [WL_OP_ADD] = &wl__validate_op_binary,
-        [WL_OP_SUB] = &wl__validate_op_binary,
-        [WL_OP_MUL] = &wl__validate_op_binary,
-        [WL_OP_DIV] = &wl__validate_op_binary,
-        [WL_OP_MATMUL] = &wl__validate_op_matmul,
+static bool (*wl__op_get_validator_routine(wl_op_t op, wl_graph_eval_order_t ord))(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
+    static bool (*const routines[WL__GRA_LEN][WL_OP__COUNT])(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {{ /* Forward pass */
+            [WL_OP_NOP] = &wl__validate_op_nop,
+            [WL_OP_CLONE] = &wl__validate_op_unary,
+            [WL_OP_VIEW] = &wl__validate_op_unary,
+            [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
+            [WL_OP_PERMUTE] = &wl__validate_op_transpose,
+            [WL_OP_MEAN] = &wl__validate_op_scalar,
+            [WL_OP_SUM] = &wl__validate_op_scalar,
+            [WL_OP_ABS] = &wl__validate_op_unary,
+            [WL_OP_NEG] = &wl__validate_op_unary,
+            [WL_OP_LOG] = &wl__validate_op_unary,
+            [WL_OP_SQR] = &wl__validate_op_unary,
+            [WL_OP_SQRT] = &wl__validate_op_unary,
+            [WL_OP_SIN] = &wl__validate_op_unary,
+            [WL_OP_COS] = &wl__validate_op_unary,
+            [WL_OP_STEP] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX_DV] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID_DV] = &wl__validate_op_unary,
+            [WL_OP_HARD_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SILU] = &wl__validate_op_unary,
+            [WL_OP_SILU_DV] = &wl__validate_op_unary,
+            [WL_OP_TANH] = &wl__validate_op_unary,
+            [WL_OP_TANH_DV] = &wl__validate_op_unary,
+            [WL_OP_RELU] = &wl__validate_op_unary,
+            [WL_OP_RELU_DV] = &wl__validate_op_unary,
+            [WL_OP_GELU] = &wl__validate_op_unary,
+            [WL_OP_GELU_DV] = &wl__validate_op_unary,
+            [WL_OP_ADD] = &wl__validate_op_binary,
+            [WL_OP_SUB] = &wl__validate_op_binary,
+            [WL_OP_MUL] = &wl__validate_op_binary,
+            [WL_OP_DIV] = &wl__validate_op_binary,
+            [WL_OP_MATMUL] = &wl__validate_op_matmul,
+        }, { /* Backward pass. */
+            [WL_OP_NOP] = &wl__validate_op_nop,
+            [WL_OP_CLONE] = &wl__validate_op_unary,
+            [WL_OP_VIEW] = &wl__validate_op_unary,
+            [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
+            [WL_OP_PERMUTE] = &wl__validate_op_transpose,
+            [WL_OP_MEAN] = &wl__validate_op_scalar,
+            [WL_OP_SUM] = &wl__validate_op_scalar,
+            [WL_OP_ABS] = &wl__validate_op_unary,
+            [WL_OP_NEG] = &wl__validate_op_unary,
+            [WL_OP_LOG] = &wl__validate_op_unary,
+            [WL_OP_SQR] = &wl__validate_op_unary,
+            [WL_OP_SQRT] = &wl__validate_op_unary,
+            [WL_OP_SIN] = &wl__validate_op_unary,
+            [WL_OP_COS] = &wl__validate_op_unary,
+            [WL_OP_STEP] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX_DV] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID_DV] = &wl__validate_op_unary,
+            [WL_OP_HARD_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SILU] = &wl__validate_op_unary,
+            [WL_OP_SILU_DV] = &wl__validate_op_unary,
+            [WL_OP_TANH] = &wl__validate_op_unary,
+            [WL_OP_TANH_DV] = &wl__validate_op_unary,
+            [WL_OP_RELU] = &wl__validate_op_unary,
+            [WL_OP_RELU_DV] = &wl__validate_op_unary,
+            [WL_OP_GELU] = &wl__validate_op_unary,
+            [WL_OP_GELU_DV] = &wl__validate_op_unary,
+            [WL_OP_ADD] = &wl__validate_op_binary,
+            [WL_OP_SUB] = &wl__validate_op_binary,
+            [WL_OP_MUL] = &wl__validate_op_binary,
+            [WL_OP_DIV] = &wl__validate_op_binary,
+            [WL_OP_MATMUL] = &wl__validate_op_matmul,
+        }
     };
-    return routines[op];
+    return routines[ord][op];
 }
 
 static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int64_t* dims, int64_t rank, wl_tensor_t* view, size_t view_offs);
@@ -1660,7 +1703,7 @@ static wl_tensor_t* wl__result_constructor_routine_permuted(wl_tensor_t** inputs
     wl_tensor_t* permuted = wl__result_constructor_routine_view(inputs, params);
     uint32_t axes[WL_MAX_DIMS];
     for (uint32_t i = 0; i < WL_MAX_DIMS; ++i) /* Unpack axes */
-        axes[i] = wl_op_param_unpack_int((*params)[i]);
+        axes[i] = (uint32_t)wl_op_param_unpack_int((*params)[i]);
     for (uint32_t i = 0; i < WL_MAX_DIMS; ++i) { /* Check that all axes are unique */
         for (uint32_t j = i+1; j < WL_MAX_DIMS; ++j)
             wl__assert(axes[i] != axes[j], "Axes must be unique: %zu != %zu", axes[i], axes[j]);
@@ -1681,44 +1724,78 @@ static wl_tensor_t* wl__result_constructor_routine_matmul(wl_tensor_t** inputs, 
     return wl__tensor_create(inputs[0]->ctx, WL_DTYPE_F32, shape, 2, NULL, 0);
 }
 
-static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op))(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
-    static wl_tensor_t* (*const routines[])(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {
-        [WL_OP_NOP] = &wl__result_constructor_routine_nop,
-        [WL_OP_CLONE] = &wl__result_constructor_routine_isomorph_same_shape,
-        [WL_OP_VIEW] = &wl__result_constructor_routine_view,
-        [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
-        [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
-        [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
-        [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
-        [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_LOG] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SQR] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SQRT] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SIN] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_COS] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_STEP] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SOFTMAX] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SOFTMAX_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SIGMOID] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SIGMOID_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_HARD_SIGMOID] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SILU] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SILU_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_TANH] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_TANH_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_RELU] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_RELU_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_GELU] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_GELU_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_ADD] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
-    };
-    wl_static_assert(WL_OP__COUNT == sizeof(routines)/sizeof(*routines));
-    return routines[op];
+static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op, wl_graph_eval_order_t gra_ord))(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
+    static wl_tensor_t* (*const routines[WL__GRA_LEN][WL_OP__COUNT])(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {{ /* Forward pass */
+            [WL_OP_NOP] = &wl__result_constructor_routine_nop,
+            [WL_OP_CLONE] = &wl__result_constructor_routine_isomorph_same_shape,
+            [WL_OP_VIEW] = &wl__result_constructor_routine_view,
+            [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
+            [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
+            [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
+            [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_LOG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQR] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQRT] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIN] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_COS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_STEP] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_HARD_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADD] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
+        }, { /* Backward pass */
+            [WL_OP_NOP] = &wl__result_constructor_routine_nop,
+            [WL_OP_CLONE] = &wl__result_constructor_routine_isomorph_same_shape,
+            [WL_OP_VIEW] = &wl__result_constructor_routine_view,
+            [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
+            [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
+            [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
+            [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_LOG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQR] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQRT] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIN] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_COS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_STEP] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_HARD_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADD] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
+    }};
+    wl_static_assert(WL_OP__COUNT*WL__GRA_LEN*sizeof(void*) == sizeof(routines));
+    return routines[gra_ord][op];
 }
 
 #undef wl__validate_inputs
@@ -1818,12 +1895,12 @@ static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_
     };
 }
 
-static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
+static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci, wl_graph_eval_order_t ord) {
     wl__perf_mon_t* pmon = &R->pmon;
     wl__op_perf_info_t (*pmon_ops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
     wl__op_perf_info_t* pmon_op = (*pmon_ops)+R->op;
     uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_ns();    /* Profiling monitoring */
-    void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
+    void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch[ord]; /* Dispatch table */
     (*(*(dispatch_lut+R->op)))(bci, R, inputs);                /* Dispatch to operation. */
     if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
     pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
@@ -1834,23 +1911,28 @@ static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, 
 }
 
 wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
+    wl_graph_eval_order_t gra = WL__GRA_FWD; /* TODO */
     wl__assert2(op != WL_OP_NOP && n_inputs <= WL_MAX_INPUT_TENSORS);
-    wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op);
-    bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op);
+    wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op, gra);
+    bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op, gra);
     wl_tensor_t* R = (*construct_result)(inputs, params);                               /* Construct result tensor. */
     if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;    /* Validation failed. */
+    wl_tensor_t* grad = NULL; /* ∇ᵦL = ∂L/∂B - Upper gradient tensor. */  /* TODO */
+    R->grad = gra == WL__GRA_FWD ? NULL : R->grad
+        ? wl_tensor_operator(R->ctx, WL_OP_ADD, (wl_tensor_t*[]) {R->grad, grad}, 2, NULL) /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
+        : wl_tensor_operator(R->ctx, WL_OP_CLONE, &grad, 1, NULL); /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
     R->flags |= WL__TFLAG_OP_OUTPUT;
     wl__assert2(R->op == WL_OP_NOP);
-    R->op = op;                                 /* Set operation for deferred execution mode. */
-    for (uint32_t i=0; i < n_inputs; ++i) {     /* Set input tensors and flags. */
-        inputs[i]->flags |= WL__TFLAG_OP_INPUT;
+    R->op = op;                                     /* Set operation for deferred execution mode. */
+    for (uint32_t i=0; i < n_inputs; ++i) {         /* Set input tensors and flags. */
+        inputs[i]->flags |= WL__TFLAG_OP_INPUT;     /* Mark and copy inputs. */
         R->op_inputs[i] = inputs[i];
     }
-    if (params) memcpy(R->op_params, *params, sizeof(*params));     /* Copy operation parameters */
-    if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                     /* In eager execution mode, we execute immediately. */
+    if (params) memcpy(R->op_params, *params, sizeof(*params));                 /* Copy operation parameters */
+    if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                                 /* In eager execution mode, we execute immediately. */
         wl__blas_compute_info_t bci;
-        wl__blas_compute_info_sequential(ctx, &bci);                /* Sequential eager execution. */
-        wl__op_exec(R, (const wl_tensor_t**)inputs, &bci);          /* Execute the operation immediately. */
+        wl__blas_compute_info_sequential(ctx, &bci);                            /* Sequential eager execution. */
+        wl__op_exec(R, (const wl_tensor_t**)inputs, &bci, gra);                 /* Execute the operation immediately. */
     }
     return R;
 }
@@ -3996,40 +4078,75 @@ static void WL__HOTPROC wl__blas_matmul_f32(
 }
 
 /* Dispatch table for default CPU-implementation. */
-static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[WL_OP__COUNT])(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**)) {
-    (*dispatch_lut)[WL_OP_NOP] = &wl__blas_nop; /* No operation */
-    (*dispatch_lut)[WL_OP_CLONE] = &wl__blas_clone;
-    (*dispatch_lut)[WL_OP_VIEW] = &wl__blas_nop; /* View is a no-op */
-    (*dispatch_lut)[WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
-    (*dispatch_lut)[WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
-    (*dispatch_lut)[WL_OP_MEAN] = &wl__blas_mean_f32;
-    (*dispatch_lut)[WL_OP_SUM] = &wl__blas_sum_f32;
-    (*dispatch_lut)[WL_OP_ABS] = &wl__blas_abs_f32;
-    (*dispatch_lut)[WL_OP_NEG] = &wl__blas_neg_f32;
-    (*dispatch_lut)[WL_OP_LOG] = &wl__blas_log_f32;
-    (*dispatch_lut)[WL_OP_SQR] = &wl__blas_sqr_f32;
-    (*dispatch_lut)[WL_OP_SQRT] = &wl__blas_sqrt_f32;
-    (*dispatch_lut)[WL_OP_SIN] = &wl__blas_sin_f32;
-    (*dispatch_lut)[WL_OP_COS] = &wl__blas_cos_f32;
-    (*dispatch_lut)[WL_OP_STEP] = &wl__blas_step_f32;
-    (*dispatch_lut)[WL_OP_SOFTMAX] = &wl__blas_softmax_f32;
-    (*dispatch_lut)[WL_OP_SOFTMAX_DV] = &wl__blas_softmax_dv_f32;
-    (*dispatch_lut)[WL_OP_SIGMOID] = &wl__blas_sigmoid_f32;
-    (*dispatch_lut)[WL_OP_SIGMOID_DV] = &wl__blas_sigmoid_dv_f32;
-    (*dispatch_lut)[WL_OP_HARD_SIGMOID] = &wl__blas_hard_sigmoid_f32;
-    (*dispatch_lut)[WL_OP_SILU] = &wl__blas_silu_f32;
-    (*dispatch_lut)[WL_OP_SILU_DV] = &wl__blas_silu_dv_f32;
-    (*dispatch_lut)[WL_OP_TANH] = &wl__blas_tanh_f32;
-    (*dispatch_lut)[WL_OP_TANH_DV] = &wl__blas_tanh_dv_f32;
-    (*dispatch_lut)[WL_OP_RELU] = &wl__blas_relu_f32;
-    (*dispatch_lut)[WL_OP_RELU_DV] = &wl__blas_relu_dv_f32;
-    (*dispatch_lut)[WL_OP_GELU] = &wl__blas_gelu_f32;
-    (*dispatch_lut)[WL_OP_GELU_DV] = &wl__blas_gelu_dv_f32;
-    (*dispatch_lut)[WL_OP_ADD] = &wl__blas_add_f32;
-    (*dispatch_lut)[WL_OP_SUB] = &wl__blas_sub_f32;
-    (*dispatch_lut)[WL_OP_MUL] = &wl__blas_mul_f32;
-    (*dispatch_lut)[WL_OP_DIV] = &wl__blas_div_f32;
-    (*dispatch_lut)[WL_OP_MATMUL] = &wl__blas_matmul_f32;
+static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[WL__GRA_LEN][WL_OP__COUNT])(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**)) {
+    /* Forward pass */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_NOP] = &wl__blas_nop; /* No operation */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_CLONE] = &wl__blas_clone;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_VIEW] = &wl__blas_nop; /* View is a no-op */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MEAN] = &wl__blas_mean_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUM] = &wl__blas_sum_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_ABS] = &wl__blas_abs_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_NEG] = &wl__blas_neg_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_LOG] = &wl__blas_log_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SQR] = &wl__blas_sqr_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SQRT] = &wl__blas_sqrt_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SIN] = &wl__blas_sin_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_COS] = &wl__blas_cos_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_STEP] = &wl__blas_step_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SOFTMAX] = &wl__blas_softmax_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SOFTMAX_DV] = &wl__blas_softmax_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SIGMOID] = &wl__blas_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SIGMOID_DV] = &wl__blas_sigmoid_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_HARD_SIGMOID] = &wl__blas_hard_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SILU] = &wl__blas_silu_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SILU_DV] = &wl__blas_silu_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_TANH] = &wl__blas_tanh_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_TANH_DV] = &wl__blas_tanh_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_RELU] = &wl__blas_relu_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_RELU_DV] = &wl__blas_relu_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_GELU] = &wl__blas_gelu_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_GELU_DV] = &wl__blas_gelu_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_ADD] = &wl__blas_add_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUB] = &wl__blas_sub_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MUL] = &wl__blas_mul_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_DIV] = &wl__blas_div_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MATMUL] = &wl__blas_matmul_f32;
+    /* Backward pass */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_NOP] = &wl__blas_nop; /* No operation */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_CLONE] = &wl__blas_clone;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_VIEW] = &wl__blas_nop; /* View is a no-op */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MEAN] = &wl__blas_mean_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUM] = &wl__blas_sum_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_ABS] = &wl__blas_abs_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_NEG] = &wl__blas_neg_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_LOG] = &wl__blas_log_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SQR] = &wl__blas_sqr_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SQRT] = &wl__blas_sqrt_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SIN] = &wl__blas_sin_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_COS] = &wl__blas_cos_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_STEP] = &wl__blas_step_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SOFTMAX] = &wl__blas_softmax_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SOFTMAX_DV] = &wl__blas_softmax_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SIGMOID] = &wl__blas_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SIGMOID_DV] = &wl__blas_sigmoid_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_HARD_SIGMOID] = &wl__blas_hard_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SILU] = &wl__blas_silu_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SILU_DV] = &wl__blas_silu_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_TANH] = &wl__blas_tanh_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_TANH_DV] = &wl__blas_tanh_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_RELU] = &wl__blas_relu_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_RELU_DV] = &wl__blas_relu_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_GELU] = &wl__blas_gelu_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_GELU_DV] = &wl__blas_gelu_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_ADD] = &wl__blas_add_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUB] = &wl__blas_sub_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MUL] = &wl__blas_mul_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_DIV] = &wl__blas_div_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MATMUL] = &wl__blas_matmul_f32;
 }
 
 static void wl__blas_compute_dispatch_table_install(wl_ctx_t* const ctx) {
@@ -4092,7 +4209,7 @@ static void WL__HOTPROC wl__compute_graph_coalescence_nodes_visitor(wl_tensor_t*
 wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, wl_graph_eval_order_t order, const char* name) {
     wl__assert(root->ctx == ctx && !(root->flags & WL__TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode, to be used with static graphs.");
     size_t total_nodes = 0;
-    wl__tensor_graph_visit_node(root, &wl__compute_graph_accumulate_visitor, order == WL_GRAPH_EVAL_ORDER_FORWARD, &total_nodes);
+    wl__tensor_graph_visit_node(root, &wl__compute_graph_accumulate_visitor, order == WL__GRA_FWD, &total_nodes);
     wl__assert2(total_nodes > 0);
     uintptr_t mem_req = 0; /* Memory required for compute graph. */
     wl__pincr((void**)&mem_req, sizeof(wl_compute_graph_t), __alignof__(wl_compute_graph_t)); /* Graph struct itself */
@@ -4110,7 +4227,7 @@ wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, w
     gra->visited_hs = wl__hashset_create_pooled(ctx, total_nodes);
     wl__hashset_reset(&gra->visited_hs);
     size_t n_nodes = gra->num_internal_nodes;
-    wl__tensor_graph_visit_node(root, &wl__compute_graph_coalescence_nodes_visitor, order == WL_GRAPH_EVAL_ORDER_FORWARD, gra);
+    wl__tensor_graph_visit_node(root, &wl__compute_graph_coalescence_nodes_visitor, order == WL__GRA_FWD, gra);
     size_t new_nodes = gra->num_internal_nodes - n_nodes;
     if (new_nodes > 0) /* Latest node must be starting point. */
         wl__assert2(gra->internal_nodes[gra->num_internal_nodes - 1] == root);
@@ -4129,7 +4246,7 @@ wl_tensor_t* WL__HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
     wl__blas_compute_info_sequential(gra->ctx, &bci);
     for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
         wl_tensor_t* R = nodes[i];
-        wl__op_exec(R, (const wl_tensor_t**)R->op_inputs, &bci);
+        wl__op_exec(R, (const wl_tensor_t**)R->op_inputs, &bci, gra->order);
     }
     return root;
 }
