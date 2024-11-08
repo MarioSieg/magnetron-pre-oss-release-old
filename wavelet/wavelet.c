@@ -4848,6 +4848,8 @@ static bool wl__sto_read_tensor_header(
             wl__sto_sanitize(INT64_MAX/(*shape)[1] > (*shape)[0], false); /* Check for shape overflow */
             wl__sto_sanitize(INT64_MAX/(*shape)[2] > (*shape)[0]*(*shape)[1], false);
             wl__sto_sanitize(INT64_MAX/(*shape)[3] > (*shape)[0]*(*shape)[1]*(*shape)[2], false);
+            wl__sto_sanitize(INT64_MAX/(*shape)[4] > (*shape)[0]*(*shape)[1]*(*shape)[2]*(*shape)[3], false);
+            wl__sto_sanitize(INT64_MAX/(*shape)[5] > (*shape)[0]*(*shape)[1]*(*shape)[2]*(*shape)[3]*(*shape)[4], false);
         } break;
         default: return false;
     }
@@ -4982,7 +4984,7 @@ WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf,
 
 static bool wl__sto_has_wl_ext(const char* file) { /* Check if file path has WAVELET extension. */
     if (wl__unlikely(!file || strlen(file) < sizeof(WL__STORAGE_EXT))) return false;
-    char* dot = strrchr(file, '.');
+    const char* dot = strrchr(file, '.');
     return dot && !strcmp(dot, WL__STORAGE_EXT);
 }
 
