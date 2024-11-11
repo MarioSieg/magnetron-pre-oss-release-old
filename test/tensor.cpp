@@ -323,7 +323,7 @@ TEST(wl_tensor_t, permute) {
         wl_op_param_int(1),
         wl_op_param_int(0)
     };
-    wl_tensor_t* permuted = wl_tensor_operator(ctx, WL_OP_PERMUTE, &origin, 1, &params);
+    wl_tensor_t* permuted = wl_tensor_operator(ctx, WL_OP_PERMUTE, false, &origin, 1, &params);
     ASSERT_FALSE(wl_tensor_is_transposed(origin));
     ASSERT_FALSE(wl_tensor_is_transposed(permuted));
     ASSERT_FALSE(wl_tensor_is_permuted(origin));

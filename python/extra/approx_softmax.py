@@ -5,4 +5,4 @@ import math
 
 import wavelet.core as wl
 
-approx.plot_approximation_error('softmax', math.exp, wl.Op.SOFTMAX, domain=(-10, 10))
+approx.plot_approximation_error('softmax', math.exp, wl.Operator.SOFTMAX, domain=(-10, 10))

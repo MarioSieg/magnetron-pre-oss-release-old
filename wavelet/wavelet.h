@@ -122,42 +122,42 @@ typedef struct wl_dtype_info_t {
 extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 
 #define WL_SEP ,
-#define wl_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
-    _(NOP,              "nop",              0)/* No Operation */__\
-    _(CLONE,            "clone",            1)/* R = clone(X) */__\
-    _(VIEW,             "view",             1)/* R = X[:] */__\
-    _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ */__\
-    _(PERMUTE,          "permute",          1)/* R = permute(X, axes) */__\
-    _(MEAN,             "mean",             1)/* R = ΣX/n */__\
-    _(SUM,              "sum",              1)/* R = ΣX */__\
-    _(ABS,              "abs",              1)/* R = |X| */__\
-    _(NEG,              "neg",              1)/* R = -X */__\
-    _(LOG,              "log",              1)/* R = log X */__\
-    _(SQR,              "sqr",              1)/* R = X² */__\
-    _(SQRT,             "sqrt",             1)/* R = √X */__\
-    _(SIN,              "sin",              1)/* R = sin X */__\
-    _(COS,              "cos",              1)/* R = cos X */__\
-    _(STEP,             "step",             1)/* R = step(X) */__\
-    _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
-    _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
-    _(SIGMOID,          "sigmoid",          1)/* R = sigmoid(X) */__\
-    _(SIGMOID_DV,       "sigmoid'",         1)/* R = sigmoid'(X) */__\
-    _(HARD_SIGMOID,     "hard_sigmoid",     1)/* R = hard_sigmoid(X) */__\
-    _(SILU,             "SiLU",             1)/* R = silu(X) */__\
-    _(SILU_DV,          "SiLU'",            1)/* R = silu'(X) */__\
-    _(TANH,             "tanh",             1)/* R = tanh(X) */__\
-    _(TANH_DV,          "tanh'",            1)/* R = tanh'(X) */__\
-    _(RELU,             "ReLU",             1)/* R = relu(X) */__\
-    _(RELU_DV,          "ReLU'",            1)/* R = relu'(X) */__\
-    _(GELU,             "GeLU",             1)/* R = gelu(X) */__\
-    _(GELU_DV,          "GeLU'",            1)/* R = gelu'(X) */__\
-    _(ADD,              "+",                2)/* R = X+Y */__\
-    _(SUB,              "-",                2)/* R = X-Y */__\
-    _(MUL,              "*",                2)/* R = X*Y (Hadamard product) */__\
-    _(DIV,              "/",                2)/* R = X/Y */__\
-    _(MATMUL,           "@",                2)/* R = A@B */__
+#define wl_op_def(_, __) /* Enumerator | Mnemonic | Argcount | Inplace Support */\
+    _(NOP,              "nop",              0, true)/* No Operation */__\
+    _(CLONE,            "clone",            1, false)/* R = clone(X) */__\
+    _(VIEW,             "view",             1, false)/* R = X[:] */__\
+    _(TRANSPOSE,        "transpose",        1, false)/* R = Xᵀ */__\
+    _(PERMUTE,          "permute",          1, true)/* R = permute(X, axes) */__\
+    _(MEAN,             "mean",             1, true)/* R = ΣX/n */__\
+    _(SUM,              "sum",              1, true)/* R = ΣX */__\
+    _(ABS,              "abs",              1, true)/* R = |X| */__\
+    _(NEG,              "neg",              1, true)/* R = -X */__\
+    _(LOG,              "log",              1, true)/* R = log X */__\
+    _(SQR,              "sqr",              1, true)/* R = X² */__\
+    _(SQRT,             "sqrt",             1, true)/* R = √X */__\
+    _(SIN,              "sin",              1, true)/* R = sin X */__\
+    _(COS,              "cos",              1, true)/* R = cos X */__\
+    _(STEP,             "step",             1, true)/* R = step(X) */__\
+    _(SOFTMAX,          "softmax'",         1, true)/* R = softmax(X) */__\
+    _(SOFTMAX_DV,       "softmax'",         1, true)/* R = softmax'(X) */__\
+    _(SIGMOID,          "sigmoid",          1, true)/* R = sigmoid(X) */__\
+    _(SIGMOID_DV,       "sigmoid'",         1, true)/* R = sigmoid'(X) */__\
+    _(HARD_SIGMOID,     "hard_sigmoid",     1, true)/* R = hard_sigmoid(X) */__\
+    _(SILU,             "SiLU",             1, true)/* R = silu(X) */__\
+    _(SILU_DV,          "SiLU'",            1, true)/* R = silu'(X) */__\
+    _(TANH,             "tanh",             1, true)/* R = tanh(X) */__\
+    _(TANH_DV,          "tanh'",            1, true)/* R = tanh'(X) */__\
+    _(RELU,             "ReLU",             1, true)/* R = relu(X) */__\
+    _(RELU_DV,          "ReLU'",            1, true)/* R = relu'(X) */__\
+    _(GELU,             "GeLU",             1, true)/* R = gelu(X) */__\
+    _(GELU_DV,          "GeLU'",            1, true)/* R = gelu'(X) */__\
+    _(ADD,              "+",                2, true)/* R = X+Y */__\
+    _(SUB,              "-",                2, true)/* R = X-Y */__\
+    _(MUL,              "*",                2, true)/* R = X*Y (Hadamard product) */__\
+    _(DIV,              "/",                2, true)/* R = X/Y */__\
+    _(MATMUL,           "@",                2, true)/* R = A@B */__
 
-#define _(enumerator, mnemonic, argcount) WL_OP_##enumerator
+#define _(enumerator, mnemonic, argcount, inplace) WL_OP_##enumerator
 typedef enum wl_op_t {
     wl_op_def(_, WL_SEP)
     WL_OP__COUNT
@@ -169,6 +169,7 @@ wl_static_assert(WL_OP__COUNT <= 0xff);
 extern WL_EXPORT const char* wl_op_get_name(wl_op_t op);
 extern WL_EXPORT const char* wl_op_get_mnemonic(wl_op_t op);
 extern WL_EXPORT uint8_t wl_op_get_argcount(wl_op_t op);
+extern WL_EXPORT bool wl_op_supports_inplace(wl_op_t op);
 #define wl_op_is_unary(op) (wl_op_get_argcount(op) == 1)
 #define wl_op_is_binary(op) (wl_op_get_argcount(op) == 2)
 
@@ -205,7 +206,7 @@ extern WL_EXPORT wl_tensor_t* wl_tensor_create_4d(wl_ctx_t* ctx, wl_dtype_t type
 extern WL_EXPORT wl_tensor_t* wl_tensor_create_5d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5); /* Create 5D tensor */
 extern WL_EXPORT wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6); /* Create 6D tensor */
 
-extern WL_EXPORT wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
+extern WL_EXPORT wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
 
 extern WL_EXPORT void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size); /* Copy data into tensor buffer */
 extern WL_EXPORT void wl_tensor_fill(wl_tensor_t* t, float x); /* Set all tensor elements to a specific value */

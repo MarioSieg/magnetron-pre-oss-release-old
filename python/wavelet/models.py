@@ -17,19 +17,19 @@ def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
 
 
 class DenseLayer:
-    def __init__(self, in_features: int, out_features: int, activation: wl.Op = wl.Op.SIGMOID):
+    def __init__(self, in_features: int, out_features: int, activation: wl.Operator = wl.Operator.SIGMOID):
         self.weight = wl.Tensor.rand(shape=(out_features, in_features))
         self.bias = wl.Tensor.rand(shape=(out_features, 1))
         self.activation = activation
         self.cache = None
 
-    def forward(self, prev: wl.Tensor, activation: wl.Op | None = None) -> wl.Tensor:
+    def forward(self, prev: wl.Tensor, activation: wl.Operator | None = None) -> wl.Tensor:
         prev = (self.weight @ prev + self.bias)
-        return wl.Tensor.operator(activation if activation is not None else self.activation, None, prev)
+        return wl.Tensor.operator(activation if activation is not None else self.activation, True,  None, prev)
 
     def backward(self, is_in: bool, cache: wl.Tensor, delta: wl.Tensor, rate: wl.Tensor) -> wl.Tensor:
-        self.weight = self.weight - (delta @ cache.transpose().clone()) * rate
-        self.bias = self.bias - delta * rate
+        self.weight -= (delta @ cache.transpose().clone()) * rate
+        self.bias -= delta * rate
         if is_in:
             return (self.weight.transpose() @ delta) * cache.sigmoid(derivative=True)
         else:
@@ -43,7 +43,7 @@ class SequentialModel:
         self.cache = []
         self.loss_epoch_step = 1000
 
-    def forward(self, inputs: wl.Tensor, activation: wl.Op | None = None) -> wl.Tensor:
+    def forward(self, inputs: wl.Tensor, activation: wl.Operator | None = None) -> wl.Tensor:
         prev = inputs
         self.cache.clear()
         self.cache.append(prev)

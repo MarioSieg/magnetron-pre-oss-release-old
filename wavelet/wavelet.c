@@ -328,6 +328,8 @@ struct wl_ctx_t {
         size_t alloc_total;                         /* Total memory allocated from memory pool. */
         bool warmup_chunks;                         /* If true, fresh pool chunks are zeroed to allocate kernel pages, can improve or decrease performance depending on scenario. */
     } pool;
+    size_t tensors_created;
+    size_t tensors_alloced;
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
     void (*image_load_free_fn)(uint8_t*);
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
@@ -1318,17 +1320,19 @@ void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file) {
 void wl_ctx_destroy(wl_ctx_t* ctx) {
     size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
     size_t mem_mapped = ctx->pool.mapped_total;
+    size_t tensors_created = ctx->tensors_created;
+    size_t tensors_alloced = ctx->tensors_alloced;
     for (size_t i=0; i < ctx->pool.chunk_len; ++i) /* Free individual chunks */
         (*wl__alloc)(ctx->pool.chunks[i], 0);
     (*wl__alloc)(ctx->pool.chunks, 0);
-    memset(ctx, (uintptr_t)ctx & 0xff, sizeof(*ctx));
+    memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
     (*wl__alloc)(ctx, 0);
     ctx = NULL;
     double alloc_total, mapped_total;
     const char* alloc_unit, *mapped_unit;
     wl__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
     wl__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
-    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s", alloc_total, alloc_unit, mapped_total, mapped_unit);
+    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s, Tensors Created: %zu, Tensors Allocated: %zu", alloc_total, alloc_unit, mapped_total, mapped_unit, tensors_created, tensors_alloced);
     wl__log_info("WAVELET context destroyed.");
 }
 
@@ -1388,7 +1392,7 @@ const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type) {
 }
 
 const char* wl_op_get_name(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount) #enumerator
+    #define _(enumerator, mnemonic, argcount, inplace) #enumerator
     static const char* const names[WL_OP__COUNT] = {
         wl_op_def(_, WL_SEP)
     };
@@ -1397,7 +1401,7 @@ const char* wl_op_get_name(wl_op_t op) {
 }
 
 const char* wl_op_get_mnemonic(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount) mnemonic
+    #define _(enumerator, mnemonic, argcount, inplace) mnemonic
     static const char* const mnemonics[WL_OP__COUNT] = {
         wl_op_def(_, WL_SEP)
     };
@@ -1406,12 +1410,21 @@ const char* wl_op_get_mnemonic(wl_op_t op) {
 }
 
 uint8_t wl_op_get_argcount(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount) ((argcount)&0xff)
+    #define _(enumerator, mnemonic, argcount, inplace) ((argcount)&0xff)
     static const uint8_t arg_counts[WL_OP__COUNT] = {
         wl_op_def(_, WL_SEP)
     };
     #undef _
     return arg_counts[op];
+}
+
+bool wl_op_supports_inplace(wl_op_t op) {
+    #define _(enumerator, mnemonic, argcount, inplace) ((inplace)&1)
+        static const bool inplace_support[WL_OP__COUNT] = {
+            wl_op_def(_, WL_SEP)
+        };
+    #undef _
+    return inplace_support[op];
 }
 
 /*
@@ -1847,6 +1860,8 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     for (uint32_t i=1; i < WL_MAX_DIMS; ++i)  /* Calculate strides and check for overflow. */
         wl__assert2(!wl__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
     t->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(t + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
+    ++ctx->tensors_created;
+    if (!view) ++ctx->tensors_alloced;
     return t;
 }
 
@@ -1906,23 +1921,27 @@ static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, 
     if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
     pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
     pmon->elapsed_ns_acc += pmon->elapsed_ns;
-    ++pmon->n_execs;
     pmon_op->elapsed_ns_acc += pmon->elapsed_ns;
+    ++pmon->n_execs;
     ++pmon_op->n_execs;
 }
 
-wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
+wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     wl_graph_eval_order_t gra = WL__GRA_FWD; /* TODO */
     wl__assert2(op != WL_OP_NOP && n_inputs <= WL_MAX_INPUT_TENSORS);
-    wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op, gra);
-    bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op, gra);
-    wl_tensor_t* R = (*construct_result)(inputs, params);                               /* Construct result tensor. */
-    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;    /* Validation failed. */
-    wl_tensor_t* grad = NULL; /* ∇ᵦL = ∂L/∂B - Upper gradient tensor. */  /* TODO */
+    wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS])
+        = wl__op_get_result_constructor_routine(op, gra);
+    bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS])
+        = wl__op_get_validator_routine(op, gra);
+    wl_tensor_t* R = (inplace && n_inputs && wl_op_supports_inplace(op))                        /* Inplace requested? */
+        ? wl__tensor_create(ctx, (*inputs)->dtype, (*inputs)->shape, (*inputs)->rank, *inputs, 0)   /* View R <- X for inplace aliasing op. */
+        : (*construct_result)(inputs, params);                                                  /* Construct new result tensor. */
+    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;            /* Validation failed. */
+    wl_tensor_t* grad = NULL;                                                                   /* ∇ᵦL = ∂L/∂B - Upper gradient tensor. */  /* TODO */
     if (gra == WL__GRA_BWD && grad) {
-        R->grad = R->grad /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
-            ? wl_tensor_operator(R->ctx, WL_OP_ADD, (wl_tensor_t* []) {R->grad, grad}, 2, NULL)
-            : wl_tensor_operator(R->ctx, WL_OP_CLONE, &grad, 1, NULL); /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
+        R->grad = R->grad                                                                       /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
+            ? wl_tensor_operator(R->ctx, WL_OP_ADD, false, (wl_tensor_t*[]) {R->grad, grad}, 2, NULL)
+            : wl_tensor_operator(R->ctx, WL_OP_CLONE, false, &grad, 1, NULL);                   /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
         R->grad->flags |= WL__TFLAG_OP_OUTPUT;
     }
     R->flags |= WL__TFLAG_OP_OUTPUT;

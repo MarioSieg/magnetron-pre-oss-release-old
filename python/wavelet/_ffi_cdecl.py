@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-06 13:50:21.897570, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-11 10:40:54.663981, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -42,6 +42,7 @@ extern   const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 extern   const char* wl_op_get_name(wl_op_t op);
 extern   const char* wl_op_get_mnemonic(wl_op_t op);
 extern   uint8_t wl_op_get_argcount(wl_op_t op);
+extern   bool wl_op_supports_inplace(wl_op_t op);
 typedef uint64_t wl_op_param_t;
 extern   wl_op_param_t wl_op_param_int(uint64_t x);
 extern   bool wl_op_param_is_int(wl_op_param_t param);
@@ -54,7 +55,7 @@ extern   wl_tensor_t* wl_tensor_create_3d(wl_ctx_t* ctx, wl_dtype_t type, int64_
 extern   wl_tensor_t* wl_tensor_create_4d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
 extern   wl_tensor_t* wl_tensor_create_5d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
 extern   wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6);
-extern   wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[6]);
+extern   wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[6]);
 extern   void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size);
 extern   void wl_tensor_fill(wl_tensor_t* t, float x);
 extern   void wl_tensor_fill_random(wl_tensor_t* t, float min, float max);

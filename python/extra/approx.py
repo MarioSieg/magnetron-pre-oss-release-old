@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 matplotlib.rcParams["axes.formatter.limits"] = (-99, 99)  # Disable scientific notation to show all digits
 
 
-def plot_approximation_error(name: str, exact_func: callable, approx_op: wl.Op, domain: (float, float),
+def plot_approximation_error(name: str, exact_func: callable, approx_op: wl.Operator, domain: (float, float),
                              step: float = 0.0001):
     x_values = [i * step for i in range(int(domain[0] / step), int(domain[1] / step))]
     exact = [exact_func(x) for x in x_values]
