@@ -27,7 +27,7 @@ class DenseLayer:
         prev = (self.weight @ prev + self.bias)
         return wl.Tensor.operator(activation if activation is not None else self.activation, True,  None, prev)
 
-    def backward(self, is_in: bool, cache: wl.Tensor, delta: wl.Tensor, rate: wl.Tensor) -> wl.Tensor:
+    def backward(self, is_in: bool, cache: wl.Tensor, delta: wl.Tensor, rate: float) -> wl.Tensor:
         self.weight -= (delta @ cache.transpose().clone()) * rate
         self.bias -= delta * rate
         if is_in:
@@ -52,7 +52,7 @@ class SequentialModel:
             self.cache.append(prev)
         return prev
 
-    def backward(self, outputs: wl.Tensor, targets: wl.Tensor, rate: wl.Tensor):
+    def backward(self, outputs: wl.Tensor, targets: wl.Tensor, rate: float):
         delta = (outputs - targets) * outputs.sigmoid(derivative=True)
         for i in reversed(range(0, len(self.layers))):
             delta = self.layers[i].backward(i > 0, self.cache[i], delta, rate)
@@ -62,12 +62,11 @@ class SequentialModel:
         print(f'Training started {epochs} epochs with learning rate {learning_rate}')
         now = time.time_ns()
         losses = []
-        rate = wl.Tensor.full((1,), fill_value=learning_rate)
         for epoch in range(0, epochs - 1):
             total_loss: float = 0
             for i in range(0, len(inputs)):
                 pred: wl.Tensor = self.forward(inputs[i])
-                self.backward(pred, targets[i], rate)
+                self.backward(pred, targets[i], learning_rate)
                 total_loss += mse(pred, targets[i])
             mean_loss = total_loss / len(inputs)
             losses.append(mean_loss)

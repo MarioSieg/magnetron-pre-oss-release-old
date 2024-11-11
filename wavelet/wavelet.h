@@ -105,6 +105,8 @@ extern WL_EXPORT uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx); /* Get th
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx); /* Get the total physical memory in bytes */
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx); /* Get the free physical memory in bytes */
 extern WL_EXPORT bool wl_ctx_is_numa_system(const wl_ctx_t* ctx); /* Check if the system is NUMA */
+extern WL_EXPORT size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx); /* Get total tensors created. (Including views) */
+extern WL_EXPORT size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx); /* Get total tensors created. (Allocations only) */
 extern WL_EXPORT void wl_ctx_profile_start_recording(wl_ctx_t* ctx); /* Start profiling */
 extern WL_EXPORT void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file); /* Reset profiling data */
 extern WL_EXPORT void wl_ctx_destroy(wl_ctx_t* ctx); /* Destroy context and free memory */
@@ -151,10 +153,14 @@ extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
     _(RELU_DV,          "ReLU'",            1, true)/* R = relu'(X) */__\
     _(GELU,             "GeLU",             1, true)/* R = gelu(X) */__\
     _(GELU_DV,          "GeLU'",            1, true)/* R = gelu'(X) */__\
-    _(ADD,              "+",                2, true)/* R = X+Y */__\
-    _(SUB,              "-",                2, true)/* R = X-Y */__\
-    _(MUL,              "*",                2, true)/* R = X*Y (Hadamard product) */__\
-    _(DIV,              "/",                2, true)/* R = X/Y */__\
+    _(ADD,              "+",                2, true) /* R = X+Y */__\
+    _(SUB,              "-",                2, true) /* R = X-Y */__\
+    _(MUL,              "*",                2, true) /* R = X*Y (Hadamard product) */__\
+    _(DIV,              "/",                2, true) /* R = X/Y */__\
+    _(ADDS,             "+",                1, true) /* R = X+ξ */__\
+    _(SUBS,             "-",                1, true) /* R = X-ξ */__\
+    _(MULS,             "*",                1, true) /* R = X*ξ (Hadamard product) */__\
+    _(DIVS,             "/",                1, true) /* R = X/ξ */__\
     _(MATMUL,           "@",                2, true)/* R = A@B */__
 
 #define _(enumerator, mnemonic, argcount, inplace) WL_OP_##enumerator
@@ -185,9 +191,12 @@ typedef enum wl_op_param_type_t {     /* 2-bit Parameter type tag for operation 
 */
 typedef uint64_t wl_op_param_t;
 wl_static_assert(sizeof(wl_op_param_t) == 8);
-extern WL_EXPORT wl_op_param_t wl_op_param_int(uint64_t x); /* Create an integer parameter */
+extern WL_EXPORT wl_op_param_t wl_op_param_int(uint32_t x); /* Create an integer parameter */
 extern WL_EXPORT bool wl_op_param_is_int(wl_op_param_t param); /* Check if parameter is integer */
-extern WL_EXPORT uint64_t wl_op_param_unpack_int(wl_op_param_t param); /* Get integer value from parameter */
+extern WL_EXPORT uint32_t wl_op_param_unpack_int(wl_op_param_t param); /* Get integer value from parameter */
+extern WL_EXPORT wl_op_param_t wl_op_param_float(float x); /* Create an integer parameter */
+extern WL_EXPORT bool wl_op_param_is_float(wl_op_param_t param); /* Check if parameter is integer */
+extern WL_EXPORT float wl_op_param_unpack_float(wl_op_param_t param); /* Get integer value from parameter */
 
 extern WL_EXPORT uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
 extern WL_EXPORT uint32_t wl_pack_color_f32(float r, float g, float b);

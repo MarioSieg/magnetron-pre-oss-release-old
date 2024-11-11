@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-11 10:40:54.663981, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-11 12:07:59.962315, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -35,6 +35,8 @@ extern   uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx);
 extern   bool wl_ctx_is_numa_system(const wl_ctx_t* ctx);
+extern   size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx);
+extern   size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx);
 extern   void wl_ctx_profile_start_recording(wl_ctx_t* ctx);
 extern   void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file);
 extern   void wl_ctx_destroy(wl_ctx_t* ctx);
@@ -44,9 +46,12 @@ extern   const char* wl_op_get_mnemonic(wl_op_t op);
 extern   uint8_t wl_op_get_argcount(wl_op_t op);
 extern   bool wl_op_supports_inplace(wl_op_t op);
 typedef uint64_t wl_op_param_t;
-extern   wl_op_param_t wl_op_param_int(uint64_t x);
+extern   wl_op_param_t wl_op_param_int(uint32_t x);
 extern   bool wl_op_param_is_int(wl_op_param_t param);
-extern   uint64_t wl_op_param_unpack_int(wl_op_param_t param);
+extern   uint32_t wl_op_param_unpack_int(wl_op_param_t param);
+extern   wl_op_param_t wl_op_param_float(float x);
+extern   bool wl_op_param_is_float(wl_op_param_t param);
+extern   float wl_op_param_unpack_float(wl_op_param_t param);
 extern   uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
 extern   uint32_t wl_pack_color_f32(float r, float g, float b);
 extern   wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1);

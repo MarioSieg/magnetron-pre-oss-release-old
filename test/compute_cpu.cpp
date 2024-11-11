@@ -288,6 +288,31 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         } \
         \
         wl_ctx_destroy(ctx); \
+    } \
+    TEST(compute_cpu, name##_scalar) { \
+        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
+        for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
+        for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
+        for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
+        for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
+        for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
+            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            \
+            wl_op_param_t xi = wl_op_param_float(static_cast<float>(i0+i1+i2+i3+i4+i5)*0.221f); \
+            wl_tensor_t* r = wl_tensor_emit_op_va_op_params<false>(ctx, WL_OP_##op##S, xi, x); \
+             \
+            \
+            const auto* b_x = wl_tensor_data_as_f32(x); \
+            const auto* b_r = wl_tensor_data_as_f32(r); \
+            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
+            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op wl_op_param_unpack_float(xi)); \
+            } \
+        } \
+        \
+        wl_ctx_destroy(ctx); \
     }
 
 impl_test_binary_op(add_f32, ADD, +)

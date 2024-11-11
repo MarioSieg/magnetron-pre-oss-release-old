@@ -10,6 +10,12 @@ TEST(core, op_param_int) {
     ASSERT_EQ(wl_op_param_unpack_int(p), 1234);
 }
 
+TEST(core, op_param_float) {
+    wl_op_param_t p = wl_op_param_float(M_PI);
+    ASSERT_TRUE(wl_op_param_is_float(p));
+    ASSERT_FLOAT_EQ(wl_op_param_unpack_float(p), M_PI);
+}
+
 TEST(core, profiler_small_dims) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
     wl_ctx_profile_start_recording(ctx);

@@ -13,6 +13,19 @@
 ** 7. Add the BLAS computation routine to the 'dispatch_lut' table in 'wl__blas_compute_dispatch_table_default', at the op index.
 */
 
+/*
+** Here ⊕ denotes a binary or unary operator.
+** Note that an operators can or cannot support any of those forms. This must be specified in wl_op_def.
+**
+** Operators can have two forms:
+**
+** 1. R = A ⊕ B
+**  Result is a new tensor of shape of A and contains element-wise result of A ⊕ B, where A and B are tensors.
+**
+** 2. R = A ⊕= B
+**  Result is a view tensor of shape of A and contains element-wise result of A ⊕= B, where A and B are tensors. (Safes 1 allocation)
+*/
+
 #define WL_EXPORT_DLL
 #include "wavelet.h"
 
@@ -1222,6 +1235,8 @@ uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx) { return ctx->sys.cpu_socke
 uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_total; }
 uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 bool wl_ctx_is_numa_system(const wl_ctx_t* ctx) { return false; /* TODO */ }
+size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx) { return ctx->tensors_created; }
+size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx) { return ctx->tensors_alloced; }
 
 void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     if (ctx->profiler_enabled) return;
@@ -1337,30 +1352,29 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
 }
 
 #define wl__op_param_pack_u64(tag, x) ((wl_op_param_t)(((x)&((1ull<<(64-2))-1))|(((uint64_t)(tag)&3)<<(64-2))))
-#define wl__op_param_is_tag(param, tag) ((((param)>>(64-2))&3) == (tag))
-#define wl__op_param_unpack_u64(param) ((uint64_t)(param)&((1ull<<(64-2))-1))
-
-wl_op_param_t wl_op_param_int(uint64_t x) {
-    return wl__op_param_pack_u64(WL_OP_PARAM_INT, x);
+#define wl__op_param_tag(p) ((((p)>>(64-2))&3))
+#define wl__op_param_unpack_u64(p) ((uint64_t)(p)&((1ull<<(64-2))-1))
+wl_op_param_t wl_op_param_int(uint32_t x) { return wl__op_param_pack_u64(WL_OP_PARAM_INT, (uint64_t)x); }
+bool wl_op_param_is_int(wl_op_param_t param) { return wl__op_param_tag(param) == WL_OP_PARAM_INT; }
+uint32_t wl_op_param_unpack_int(wl_op_param_t param) { wl__assert2(wl_op_param_is_int(param)); return (uint32_t)wl__op_param_unpack_u64(param); }
+wl_op_param_t wl_op_param_float(float x) {
+    uint32_t b;
+    memcpy(&b, &x, sizeof(b));
+    return wl__op_param_pack_u64(WL_OP_PARAM_FLOAT, (uint64_t)b);
 }
-
-bool wl_op_param_is_int(wl_op_param_t param) {
-    return wl__op_param_is_tag(param, WL_OP_PARAM_INT);
+bool wl_op_param_is_float(wl_op_param_t param) { return wl__op_param_tag(param) == WL_OP_PARAM_FLOAT; }
+float wl_op_param_unpack_float(wl_op_param_t param) {
+    wl__assert2(wl_op_param_is_float(param));
+    uint32_t b = (uint32_t)wl__op_param_unpack_u64(param);
+    float f;
+    memcpy(&f, &b, sizeof(f));
+    return f;
 }
-
-uint64_t wl_op_param_unpack_int(wl_op_param_t param) {
-    wl__assert2(wl_op_param_is_int(param));
-    return wl__op_param_unpack_u64(param);
-}
-
 #undef wl__op_param_unpack_u64
 #undef wl__op_param_is_tag
 #undef wl__op_param_pack_u64
 
-uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b) {
-    return ((uint32_t)b<<16)|((uint32_t)g<<8)|(uint32_t)r;
-}
-
+uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b) { return ((uint32_t)b<<16)|((uint32_t)g<<8)|(uint32_t)r; }
 uint32_t wl_pack_color_f32(float r, float g, float b) {
     return (((uint32_t)(b*255.0f)&255)<<16)|(((uint32_t)(g*255.0f)&255)<<8)|((uint32_t)(r*255.0f)&255);
 }
@@ -1634,6 +1648,10 @@ static bool (*wl__op_get_validator_routine(wl_op_t op, wl_graph_eval_order_t ord
             [WL_OP_SUB] = &wl__validate_op_binary,
             [WL_OP_MUL] = &wl__validate_op_binary,
             [WL_OP_DIV] = &wl__validate_op_binary,
+            [WL_OP_ADDS] = &wl__validate_op_unary,
+            [WL_OP_SUBS] = &wl__validate_op_unary,
+            [WL_OP_MULS] = &wl__validate_op_unary,
+            [WL_OP_DIVS] = &wl__validate_op_unary,
             [WL_OP_MATMUL] = &wl__validate_op_matmul,
         }, { /* Backward pass. */
             [WL_OP_NOP] = &wl__validate_op_nop,
@@ -1668,6 +1686,10 @@ static bool (*wl__op_get_validator_routine(wl_op_t op, wl_graph_eval_order_t ord
             [WL_OP_SUB] = &wl__validate_op_binary,
             [WL_OP_MUL] = &wl__validate_op_binary,
             [WL_OP_DIV] = &wl__validate_op_binary,
+            [WL_OP_ADDS] = &wl__validate_op_unary,
+            [WL_OP_SUBS] = &wl__validate_op_unary,
+            [WL_OP_MULS] = &wl__validate_op_unary,
+            [WL_OP_DIVS] = &wl__validate_op_unary,
             [WL_OP_MATMUL] = &wl__validate_op_matmul,
         }
     };
@@ -1772,6 +1794,10 @@ static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op, wl_graph
             [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
             [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
             [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADDS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUBS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MULS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIVS] = &wl__result_constructor_routine_isomorph,
             [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
         }, { /* Backward pass */
             [WL_OP_NOP] = &wl__result_constructor_routine_nop,
@@ -1806,6 +1832,10 @@ static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op, wl_graph
             [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
             [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
             [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADDS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUBS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MULS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIVS] = &wl__result_constructor_routine_isomorph,
             [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
     }};
     wl_static_assert(WL_OP__COUNT*WL__GRA_LEN*sizeof(void*) == sizeof(routines));
@@ -2520,6 +2550,46 @@ static void WL__HOTPROC wl__vdiv_f32(
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] / y[i];
     #endif
+}
+
+static void WL__HOTPROC wl__vadds_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] + y;
+}
+
+static void WL__HOTPROC wl__vsubs_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] - y;
+}
+
+static void WL__HOTPROC wl__vmuls_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] * y;
+}
+
+static void WL__HOTPROC wl__vdivs_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] / y;
 }
 
 static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
@@ -3981,6 +4051,98 @@ static void WL__HOTPROC wl__blas_div_f32(
     }
 }
 
+static void WL__HOTPROC wl__blas_adds_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vadds_f32(cc, p_r, p_x, xi);
+    }
+}
+
+static void WL__HOTPROC wl__blas_subs_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vsubs_f32(cc, p_r, p_x, xi);
+    }
+}
+
+static void WL__HOTPROC wl__blas_muls_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vmuls_f32(cc, p_r, p_x, xi);
+    }
+}
+
+static void WL__HOTPROC wl__blas_divs_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vdivs_f32(cc, p_r, p_x, xi);
+    }
+}
+
 #if 0 /* Naive matrix multiplication, but no broadcasting support. */
 static void WL__HOTPROC wl__blas_matmul_f32(
     const wl__blas_compute_info_t* const bci,
@@ -4135,6 +4297,10 @@ static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUB] = &wl__blas_sub_f32;
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_MUL] = &wl__blas_mul_f32;
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_DIV] = &wl__blas_div_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_ADDS] = &wl__blas_adds_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUBS] = &wl__blas_subs_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MULS] = &wl__blas_muls_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_DIVS] = &wl__blas_divs_f32;
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_MATMUL] = &wl__blas_matmul_f32;
     /* Backward pass */
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_NOP] = &wl__blas_nop; /* No operation */
@@ -4169,6 +4335,10 @@ static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUB] = &wl__blas_sub_f32;
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_MUL] = &wl__blas_mul_f32;
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_DIV] = &wl__blas_div_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_ADDS] = &wl__blas_adds_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUBS] = &wl__blas_subs_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MULS] = &wl__blas_muls_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_DIVS] = &wl__blas_divs_f32;
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_MATMUL] = &wl__blas_matmul_f32;
 }
 

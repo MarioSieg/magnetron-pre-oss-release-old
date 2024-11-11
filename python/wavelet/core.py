@@ -82,7 +82,11 @@ class Operator(Enum):
     SUB = auto()  # R = X-Y
     MUL = auto()  # R = X*Y (Hadamard product)
     DIV = auto()  # R = X/Y
-    MATMUL = auto()  # A@B
+    ADDS = auto()  # R = X+=Y
+    SUBS = auto()  # R = X-=Y
+    MULS = auto()  # R = X*=Y
+    DIVS = auto()  # R = X/=Y
+    MATMUL = auto()  # R = A@B
 
     _COUNT = auto()
 
@@ -121,9 +125,14 @@ class OpParam:
         self.value = value
 
     @staticmethod
-    def int(x: int) -> 'OpParam':
+    def new_int(x: int) -> 'OpParam':
         """Creates an integer operation parameter."""
         return OpParam(C.wl_op_param_int(x))
+
+    @staticmethod
+    def new_float(x: float) -> 'OpParam':
+        """Creates a float operation parameter."""
+        return OpParam(C.wl_op_param_float(x))
 
     @property
     def is_int(self) -> bool:
@@ -131,10 +140,21 @@ class OpParam:
         return C.wl_op_param_is_int(self.value)
 
     @property
+    def is_float(self) -> bool:
+        """Returns if the operation parameter is a float."""
+        return C.wl_op_param_is_float(self.value)
+
+    @property
     def unpack_int(self) -> int:
         """Returns the integer value of the operation parameter."""
         assert self.is_int
         return C.wl_op_param_unpack_int(self.value)
+
+    @property
+    def unpack_float(self) -> float:
+        """Returns the integer value of the operation parameter."""
+        assert self.is_float
+        return C.wl_op_param_unpack_float(self.value)
 
 
 class GraphEvalOrder(Enum):
@@ -229,6 +249,16 @@ class Context:
         """Returns the total memory allocated in the context in bytes."""
         return C.wl_ctx_total_allocated_pool_memory(self.ctx)
 
+    @property
+    def total_tensors_created(self) -> int:
+        """Returns total count of tensors created, including views and permutations."""
+        return C.wl_ctx_get_total_tensors_created(self.ctx)
+
+    @property
+    def total_tensors_allocated(self) -> int:
+        """Returns total count of tensors allocated, not including views and permutations."""
+        return C.wl_ctx_get_total_tensors_allocated(self.ctx)
+
     def start_profiler(self) -> None:
         """Start recording profiling information of operations. Slightly decreases performance. Recording must be stopped to generate report."""
         C.wl_ctx_profile_start_recording(self.ctx)
@@ -283,7 +313,7 @@ class Tensor:
         c_para_ptr: ffi.CData = ffi.NULL
         if params is not None:
             assert 0 < len(params) <= WL_MAX_OP_PARAMS, f'Invalid number of operation parameters: {len(params)}'
-            param_vals = [param.value & ((1 << 64) - 1) for param in params] + [OpParam.int(0)] * (
+            param_vals = [param.value & ((1 << 64) - 1) for param in params] + [0] * (
                     WL_MAX_OP_PARAMS - len(params))
             c_para = ffi.new(f'wl_op_param_t[{WL_MAX_OP_PARAMS}]', param_vals)
             c_para_ptr = ffi.new(f'wl_op_param_t(*)[{WL_MAX_OP_PARAMS}]', c_para)
@@ -620,37 +650,61 @@ class Tensor:
         """Applies the GELU function to the tensor."""
         return self.operator(Operator.GELU_DV if derivative else Operator.GELU, False, None, self)
 
-    def __add__(self, other: 'Tensor') -> 'Tensor':
+    def __add__(self, other: object | int | float) -> 'Tensor':
         """X + Y"""
-        return self.operator(Operator.ADD, False, None, self, other)
+        if isinstance(other, Tensor):
+            return self.operator(Operator.ADD, False, None, self, other)
+        else:
+            return self.operator(Operator.ADDS, False, [OpParam.new_float(float(other))], self)
 
-    def __iadd__(self, other: 'Tensor') -> 'Tensor':
+    def __iadd__(self, other: object | int | float) -> 'Tensor':
         """X += Y"""
-        return self.operator(Operator.ADD, True, None, self, other)
+        if isinstance(other, Tensor):
+            return self.operator(Operator.ADD, True, None, self, other)
+        else:
+            return self.operator(Operator.ADDS, True, [OpParam.new_float(float(other))], self)
 
-    def __sub__(self, other: 'Tensor') -> 'Tensor':
-        """ X - Y"""
-        return self.operator(Operator.SUB, False, None, self, other)
+    def __sub__(self, other: object | int | float) -> 'Tensor':
+        """X - Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.SUB, False, None, self, other)
+        else:
+            return self.operator(Operator.SUBS, False, [OpParam.new_float(float(other))], self)
 
-    def __isub__(self, other: 'Tensor') -> 'Tensor':
-        """ X -= Y"""
-        return self.operator(Operator.SUB, True, None, self, other)
+    def __isub__(self, other: object | int | float) -> 'Tensor':
+        """X -= Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.SUB, True, None, self, other)
+        else:
+            return self.operator(Operator.SUBS, True, [OpParam.new_float(float(other))], self)
 
-    def __mul__(self, other: 'Tensor') -> 'Tensor':
-        """X * Y (Hadamard product)"""
-        return self.operator(Operator.MUL, False, None, self, other)
+    def __mul__(self, other: object | int | float) -> 'Tensor':
+        """X * Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.MUL, False, None, self, other)
+        else:
+            return self.operator(Operator.MULS, False, [OpParam.new_float(float(other))], self)
 
-    def __imul__(self, other: 'Tensor') -> 'Tensor':
-        """X *= Y (Hadamard product)"""
-        return self.operator(Operator.MUL, True, None, self, other)
+    def __imul__(self, other: object | int | float) -> 'Tensor':
+        """X *= Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.MUL, True, None, self, other)
+        else:
+            return self.operator(Operator.MULS, True, [OpParam.new_float(float(other))], self)
 
-    def __truediv__(self, other: 'Tensor') -> 'Tensor':
+    def __truediv__(self, other: object | int | float) -> 'Tensor':
         """X / Y"""
-        return self.operator(Operator.DIV, False, None, self, other)
+        if isinstance(other, Tensor):
+            return self.operator(Operator.DIV, False, None, self, other)
+        else:
+            return self.operator(Operator.DIVS, False, [OpParam.new_float(float(other))], self)
 
-    def __itruediv__(self, other: 'Tensor') -> 'Tensor':
+    def __itruediv__(self, other: object | int | float) -> 'Tensor':
         """X /= Y"""
-        return self.operator(Operator.DIV, True, None, self, other)
+        if isinstance(other, Tensor):
+            return self.operator(Operator.DIV, True, None, self, other)
+        else:
+            return self.operator(Operator.DIVS, True, [OpParam.new_float(float(other))], self)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """A @ B"""
