@@ -39,7 +39,7 @@ for input_tensor in inputs:
     output: float = mlp.forward(input_tensor).scalar()
     print(f'{input_data[0]} ^ {input_data[1]} = {output}')
 
-wl.Context.active.stop_profiler(export_csv_file='perf.csv')
+wl.Context.active.stop_profiler()
 
 # Plot MSE loss
 plt.plot(list(range(0, EPOCHS - 1)), losses)

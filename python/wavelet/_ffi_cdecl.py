@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-11 12:07:59.962315, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-11 12:29:20.315484, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -44,6 +44,7 @@ extern   const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 extern   const char* wl_op_get_name(wl_op_t op);
 extern   const char* wl_op_get_mnemonic(wl_op_t op);
 extern   uint8_t wl_op_get_argcount(wl_op_t op);
+extern   uint8_t wl_op_get_paramcount(wl_op_t op);
 extern   bool wl_op_supports_inplace(wl_op_t op);
 typedef uint64_t wl_op_param_t;
 extern   wl_op_param_t wl_op_param_int(uint32_t x);

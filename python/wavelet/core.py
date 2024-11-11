@@ -576,7 +576,7 @@ class Tensor:
             assert 0 <= axes[i] < MAX_DIMS, f'Invalid axis: {axes[i]}'
             for j in range(i + 1, MAX_DIMS):  # All axes must be unique
                 assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
-        return self.operator(Operator.PERMUTE, False, [OpParam.int(axis) for axis in axes], self)
+        return self.operator(Operator.PERMUTE, False, [OpParam.new_int(axis) for axis in axes], self)
 
     def mean(self) -> 'Tensor':
         """ΣX/n"""
@@ -590,9 +590,17 @@ class Tensor:
         """|X|"""
         return self.operator(Operator.ABS, False, None, self)
 
+    def abs_(self) -> 'Tensor':
+        """|X|"""
+        return self.operator(Operator.ABS, True, None, self)
+
     def neg(self) -> 'Tensor':
         """-X"""
         return self.operator(Operator.NEG, False, None, self)
+
+    def neg_(self) -> 'Tensor':
+        """-X"""
+        return self.operator(Operator.NEG, True, None, self)
 
     def __neg__(self) -> 'Tensor':
         """-X"""
@@ -602,53 +610,105 @@ class Tensor:
         """log X"""
         return self.operator(Operator.LOG, False, None, self)
 
+    def log_(self) -> 'Tensor':
+        """log X"""
+        return self.operator(Operator.LOG, True, None, self)
+
     def sqr(self) -> 'Tensor':
         """X²"""
         return self.operator(Operator.SQR, False, None, self)
+
+    def sqr_(self) -> 'Tensor':
+        """X²"""
+        return self.operator(Operator.SQR, True, None, self)
 
     def sqrt(self) -> 'Tensor':
         """√X"""
         return self.operator(Operator.SQRT, False, None, self)
 
+    def sqrt_(self) -> 'Tensor':
+        """√X"""
+        return self.operator(Operator.SQRT, True, None, self)
+
     def sin(self) -> 'Tensor':
         """sin X"""
         return self.operator(Operator.SIN, False, None, self)
+
+    def sin_(self) -> 'Tensor':
+        """sin X"""
+        return self.operator(Operator.SIN, True, None, self)
 
     def cos(self) -> 'Tensor':
         """cos X"""
         return self.operator(Operator.COS, False, None, self)
 
+    def cos_(self) -> 'Tensor':
+        """cos X"""
+        return self.operator(Operator.COS, True, None, self)
+
     def step(self) -> 'Tensor':
         """step(X)"""
         return self.operator(Operator.STEP, False, None, self)
+
+    def step_(self) -> 'Tensor':
+        """step(X)"""
+        return self.operator(Operator.STEP, True, None, self)
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """Applies the softmax function to the tensor."""
         return self.operator(Operator.SOFTMAX_DV if derivative else Operator.SOFTMAX, False, None, self)
 
+    def softmax_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the softmax function to the tensor."""
+        return self.operator(Operator.SOFTMAX_DV if derivative else Operator.SOFTMAX, True, None, self)
+
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """Applies the sigmoid function to the tensor."""
         return self.operator(Operator.SIGMOID_DV if derivative else Operator.SIGMOID, False, None, self)
+
+    def sigmoid_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the sigmoid function to the tensor."""
+        return self.operator(Operator.SIGMOID_DV if derivative else Operator.SIGMOID, True, None, self)
 
     def hard_sigmoid(self) -> 'Tensor':
         """Applies the hard sigmoid function to the tensor."""
         return self.operator(Operator.HARD_SIGMOID, False, None, self)
 
+    def hard_sigmoid_(self) -> 'Tensor':
+        """Applies the hard sigmoid function to the tensor."""
+        return self.operator(Operator.HARD_SIGMOID, True, None, self)
+
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
         return self.operator(Operator.SILU_DV if derivative else Operator.SILU, False, None, self)
+
+    def silu_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the SiLU function to the tensor."""
+        return self.operator(Operator.SILU_DV if derivative else Operator.SILU, True, None, self)
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """Applies the hyperbolic tangent function to the tensor."""
         return self.operator(Operator.TANH_DV if derivative else Operator.TANH, False, None, self)
 
+    def tanh_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the hyperbolic tangent function to the tensor."""
+        return self.operator(Operator.TANH_DV if derivative else Operator.TANH, True, None, self)
+
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
         return self.operator(Operator.RELU_DV if derivative else Operator.RELU, False, None, self)
 
+    def relu_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the ReLU function to the tensor."""
+        return self.operator(Operator.RELU_DV if derivative else Operator.RELU, True, None, self)
+
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""
         return self.operator(Operator.GELU_DV if derivative else Operator.GELU, False, None, self)
+
+    def gelu_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the GELU function to the tensor."""
+        return self.operator(Operator.GELU_DV if derivative else Operator.GELU, True, None, self)
 
     def __add__(self, other: object | int | float) -> 'Tensor':
         """X + Y"""

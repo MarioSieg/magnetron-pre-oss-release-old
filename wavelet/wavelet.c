@@ -1406,7 +1406,7 @@ const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type) {
 }
 
 const char* wl_op_get_name(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount, inplace) #enumerator
+    #define _(enumerator, mnemonic, argcount, paramcount, inplace) #enumerator
     static const char* const names[WL_OP__COUNT] = {
         wl_op_def(_, WL_SEP)
     };
@@ -1415,7 +1415,7 @@ const char* wl_op_get_name(wl_op_t op) {
 }
 
 const char* wl_op_get_mnemonic(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount, inplace) mnemonic
+    #define _(enumerator, mnemonic, argcount, paramcount, inplace) mnemonic
     static const char* const mnemonics[WL_OP__COUNT] = {
         wl_op_def(_, WL_SEP)
     };
@@ -1423,23 +1423,15 @@ const char* wl_op_get_mnemonic(wl_op_t op) {
     return mnemonics[op];
 }
 
-uint8_t wl_op_get_argcount(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount, inplace) ((argcount)&0xff)
-    static const uint8_t arg_counts[WL_OP__COUNT] = {
-        wl_op_def(_, WL_SEP)
-    };
-    #undef _
-    return arg_counts[op];
-}
+#define _(enumerator, mnemonic, args, params, inplace) ((((args)&3)<<6)|(((params)&3)<<3)|((inplace)&1))
+static const uint8_t wl__packed_op_info[WL_OP__COUNT] = {
+    wl_op_def(_, WL_SEP)
+};
+#undef _
 
-bool wl_op_supports_inplace(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount, inplace) ((inplace)&1)
-        static const bool inplace_support[WL_OP__COUNT] = {
-            wl_op_def(_, WL_SEP)
-        };
-    #undef _
-    return inplace_support[op];
-}
+uint8_t wl_op_get_argcount(wl_op_t op) { return (wl__packed_op_info[op]>>6)&3; }
+uint8_t wl_op_get_paramcount(wl_op_t op) { return (wl__packed_op_info[op]>>3)&3; }
+bool wl_op_supports_inplace(wl_op_t op) { return wl__packed_op_info[op]&1; }
 
 /*
 **  validation error print template

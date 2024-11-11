@@ -124,46 +124,46 @@ typedef struct wl_dtype_info_t {
 extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 
 #define WL_SEP ,
-#define wl_op_def(_, __) /* Enumerator | Mnemonic | Argcount | Inplace Support */\
-    _(NOP,              "nop",              0, true)/* No Operation */__\
-    _(CLONE,            "clone",            1, false)/* R = clone(X) */__\
-    _(VIEW,             "view",             1, false)/* R = X[:] */__\
-    _(TRANSPOSE,        "transpose",        1, false)/* R = Xᵀ */__\
-    _(PERMUTE,          "permute",          1, true)/* R = permute(X, axes) */__\
-    _(MEAN,             "mean",             1, true)/* R = ΣX/n */__\
-    _(SUM,              "sum",              1, true)/* R = ΣX */__\
-    _(ABS,              "abs",              1, true)/* R = |X| */__\
-    _(NEG,              "neg",              1, true)/* R = -X */__\
-    _(LOG,              "log",              1, true)/* R = log X */__\
-    _(SQR,              "sqr",              1, true)/* R = X² */__\
-    _(SQRT,             "sqrt",             1, true)/* R = √X */__\
-    _(SIN,              "sin",              1, true)/* R = sin X */__\
-    _(COS,              "cos",              1, true)/* R = cos X */__\
-    _(STEP,             "step",             1, true)/* R = step(X) */__\
-    _(SOFTMAX,          "softmax'",         1, true)/* R = softmax(X) */__\
-    _(SOFTMAX_DV,       "softmax'",         1, true)/* R = softmax'(X) */__\
-    _(SIGMOID,          "sigmoid",          1, true)/* R = sigmoid(X) */__\
-    _(SIGMOID_DV,       "sigmoid'",         1, true)/* R = sigmoid'(X) */__\
-    _(HARD_SIGMOID,     "hard_sigmoid",     1, true)/* R = hard_sigmoid(X) */__\
-    _(SILU,             "SiLU",             1, true)/* R = silu(X) */__\
-    _(SILU_DV,          "SiLU'",            1, true)/* R = silu'(X) */__\
-    _(TANH,             "tanh",             1, true)/* R = tanh(X) */__\
-    _(TANH_DV,          "tanh'",            1, true)/* R = tanh'(X) */__\
-    _(RELU,             "ReLU",             1, true)/* R = relu(X) */__\
-    _(RELU_DV,          "ReLU'",            1, true)/* R = relu'(X) */__\
-    _(GELU,             "GeLU",             1, true)/* R = gelu(X) */__\
-    _(GELU_DV,          "GeLU'",            1, true)/* R = gelu'(X) */__\
-    _(ADD,              "+",                2, true) /* R = X+Y */__\
-    _(SUB,              "-",                2, true) /* R = X-Y */__\
-    _(MUL,              "*",                2, true) /* R = X*Y (Hadamard product) */__\
-    _(DIV,              "/",                2, true) /* R = X/Y */__\
-    _(ADDS,             "+",                1, true) /* R = X+ξ */__\
-    _(SUBS,             "-",                1, true) /* R = X-ξ */__\
-    _(MULS,             "*",                1, true) /* R = X*ξ (Hadamard product) */__\
-    _(DIVS,             "/",                1, true) /* R = X/ξ */__\
-    _(MATMUL,           "@",                2, true)/* R = A@B */__
+#define wl_op_def(_, __) /* Enumerator | Mnemonic | Argcount | Paramcount, Inplace Support */\
+    _(NOP,              "nop",              0, 0, false)/* No Operation */__\
+    _(CLONE,            "clone",            1, 0, false)/* R = clone(X) */__\
+    _(VIEW,             "view",             1, 0, false)/* R = X[:] */__\
+    _(TRANSPOSE,        "transpose",        1, 0, false)/* R = Xᵀ */__\
+    _(PERMUTE,          "permute",          1, 6, false)/* R = permute(X, axes) */__\
+    _(MEAN,             "mean",             1, 0, false)/* R = ΣX/n */__\
+    _(SUM,              "sum",              1, 0, false)/* R = ΣX */__\
+    _(ABS,              "abs",              1, 0, true)/* R = |X| */__\
+    _(NEG,              "neg",              1, 0, true)/* R = -X */__\
+    _(LOG,              "log",              1, 0, true)/* R = log X */__\
+    _(SQR,              "sqr",              1, 0, true)/* R = X² */__\
+    _(SQRT,             "sqrt",             1, 0, true)/* R = √X */__\
+    _(SIN,              "sin",              1, 0, true)/* R = sin X */__\
+    _(COS,              "cos",              1, 0, true)/* R = cos X */__\
+    _(STEP,             "step",             1, 0, true)/* R = step(X) */__\
+    _(SOFTMAX,          "softmax'",         1, 0, true)/* R = softmax(X) */__\
+    _(SOFTMAX_DV,       "softmax'",         1, 0, true)/* R = softmax'(X) */__\
+    _(SIGMOID,          "sigmoid",          1, 0, true)/* R = sigmoid(X) */__\
+    _(SIGMOID_DV,       "sigmoid'",         1, 0, true)/* R = sigmoid'(X) */__\
+    _(HARD_SIGMOID,     "hard_sigmoid",     1, 0, true)/* R = hard_sigmoid(X) */__\
+    _(SILU,             "SiLU",             1, 0, true)/* R = silu(X) */__\
+    _(SILU_DV,          "SiLU'",            1, 0, true)/* R = silu'(X) */__\
+    _(TANH,             "tanh",             1, 0, true)/* R = tanh(X) */__\
+    _(TANH_DV,          "tanh'",            1, 0, true)/* R = tanh'(X) */__\
+    _(RELU,             "ReLU",             1, 0, true)/* R = relu(X) */__\
+    _(RELU_DV,          "ReLU'",            1, 0, true)/* R = relu'(X) */__\
+    _(GELU,             "GeLU",             1, 0, true)/* R = gelu(X) */__\
+    _(GELU_DV,          "GeLU'",            1, 0, true)/* R = gelu'(X) */__\
+    _(ADD,              "+",                2, 0, true) /* R = X+Y */__\
+    _(SUB,              "-",                2, 0, true) /* R = X-Y */__\
+    _(MUL,              "*",                2, 0, true) /* R = X*Y (Hadamard product) */__\
+    _(DIV,              "/",                2, 0, true) /* R = X/Y */__\
+    _(ADDS,             "+ξ",               1, 1, true) /* R = X+ξ */__\
+    _(SUBS,             "-ξ",               1, 1, true) /* R = X-ξ */__\
+    _(MULS,             "*ξ",               1, 1, true) /* R = X*ξ (Hadamard product) */__\
+    _(DIVS,             "/ξ",               1, 1, true) /* R = X/ξ */__\
+    _(MATMUL,           "@",                2, 0, true)/* R = A@B */__
 
-#define _(enumerator, mnemonic, argcount, inplace) WL_OP_##enumerator
+#define _(enumerator, mnemonic, argcount, paramcount, inplace) WL_OP_##enumerator
 typedef enum wl_op_t {
     wl_op_def(_, WL_SEP)
     WL_OP__COUNT
@@ -175,6 +175,7 @@ wl_static_assert(WL_OP__COUNT <= 0xff);
 extern WL_EXPORT const char* wl_op_get_name(wl_op_t op);
 extern WL_EXPORT const char* wl_op_get_mnemonic(wl_op_t op);
 extern WL_EXPORT uint8_t wl_op_get_argcount(wl_op_t op);
+extern WL_EXPORT uint8_t wl_op_get_paramcount(wl_op_t op);
 extern WL_EXPORT bool wl_op_supports_inplace(wl_op_t op);
 #define wl_op_is_unary(op) (wl_op_get_argcount(op) == 1)
 #define wl_op_is_binary(op) (wl_op_get_argcount(op) == 2)

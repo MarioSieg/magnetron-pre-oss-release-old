@@ -8,12 +8,12 @@ import wavelet.core as wl
 
 def mse(y: wl.Tensor, y_hat: wl.Tensor) -> float:
     """Mean Squared Error"""
-    return (y - y_hat).sqr().mean().scalar()
+    return (y - y_hat).sqr_().mean().scalar()
 
 
 def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
     """Cross Entropy Loss"""
-    return -(y * y_hat.log()).sum().scalar()
+    return -(y * y_hat.log_()).sum().scalar()
 
 
 class DenseLayer:
