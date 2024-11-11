@@ -31,7 +31,7 @@ auto main() -> int {
         wl_tensor_fill(A, 1.0f);
 
         wl_tensor_t* inputs[2] = {A, B};
-        wl_tensor_t* C = wl_tensor_operator(ctx, WL_OP_ADD, inputs, 2, nullptr);
+        wl_tensor_t* C = wl_tensor_operator(ctx, WL_OP_ADD, false, inputs, 2, nullptr);
         return C;
     });
 }
