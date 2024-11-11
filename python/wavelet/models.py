@@ -2,21 +2,46 @@
 # Implements high level model classes for neural networks based on the wavelet.core module.
 
 import time
+from abc import ABC
 
 import wavelet.core as wl
 
 
-def mse(y: wl.Tensor, y_hat: wl.Tensor) -> float:
-    """Mean Squared Error"""
-    return (y - y_hat).sqr_().mean().scalar()
+class Layer(ABC):
+    def forward(self, inputs: wl.Tensor, activation: wl.Operator | None = None) -> wl.Tensor:
+        pass
+
+    def backward(self, is_in: bool, cache: wl.Tensor, delta: wl.Tensor, rate: float) -> wl.Tensor:
+        pass
 
 
-def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
-    """Cross Entropy Loss"""
-    return -(y * y_hat.log_()).sum().scalar()
+class Model(ABC):
+    def forward(self, inputs: wl.Tensor, activation: wl.Operator | None = None) -> wl.Tensor:
+        pass
+
+    def backward(self, outputs: wl.Tensor, targets: wl.Tensor, rate: float):
+        pass
+
+    def train(self, inputs: list[wl.Tensor], targets: list[wl.Tensor], epochs: int, learning_rate: float):
+        pass
+
+    def summary(self):
+        pass
 
 
-class DenseLayer:
+class Optim:
+    @staticmethod
+    def mse(y: wl.Tensor, y_hat: wl.Tensor) -> float:
+        """Mean Squared Error"""
+        return (y - y_hat).sqr_().mean().scalar()
+
+    @staticmethod
+    def cross_entropy(y: wl.Tensor, y_hat: wl.Tensor) -> float:
+        """Cross Entropy Loss"""
+        return -(y * y_hat.log_()).sum().scalar()
+
+
+class DenseLayer(Layer):
     def __init__(self, in_features: int, out_features: int, activation: wl.Operator = wl.Operator.SIGMOID):
         self.weight = wl.Tensor.rand(shape=(out_features, in_features))
         self.bias = wl.Tensor.rand(shape=(out_features, 1))
@@ -25,7 +50,7 @@ class DenseLayer:
 
     def forward(self, prev: wl.Tensor, activation: wl.Operator | None = None) -> wl.Tensor:
         prev = (self.weight @ prev + self.bias)
-        return wl.Tensor.operator(activation if activation is not None else self.activation, True,  None, prev)
+        return wl.Tensor.operator(activation if activation is not None else self.activation, True, None, prev)
 
     def backward(self, is_in: bool, cache: wl.Tensor, delta: wl.Tensor, rate: float) -> wl.Tensor:
         self.weight -= (delta @ cache.transpose().clone()) * rate
@@ -36,8 +61,9 @@ class DenseLayer:
             return delta
 
 
-class SequentialModel:
+class SequentialModel(Model):
     def __init__(self, layers: list[DenseLayer]):
+        super().__init__()
         assert len(layers) > 0
         self.layers = layers
         self.cache = []
@@ -67,7 +93,7 @@ class SequentialModel:
             for i in range(0, len(inputs)):
                 pred: wl.Tensor = self.forward(inputs[i])
                 self.backward(pred, targets[i], learning_rate)
-                total_loss += mse(pred, targets[i])
+                total_loss += Optim.mse(pred, targets[i])
             mean_loss = total_loss / len(inputs)
             losses.append(mean_loss)
             if epoch % self.loss_epoch_step == 0:
