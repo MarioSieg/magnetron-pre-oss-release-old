@@ -15,6 +15,13 @@
 #include <type_traits>
 
 namespace wavelet {
+    extern "C" [[noreturn]] auto wl__panic(const char* msg, ...) -> void;
+    #define wl_cpp_assert(expr, msg, ...) \
+        if (!(expr)) [[unlikely]] { \
+            ::wavelet::wl__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
+        }
+    #define wl_cpp_assert2(expr) wl_cpp_assert(expr, "")
+
     constexpr std::size_t default_chunk_size {WL_DEFAULT_CHUNK_SIZE};
     constexpr std::size_t default_chunk_cap {WL_DEFAULT_CHUNK_CAP};
     constexpr std::size_t max_dims {WL_MAX_DIMS};
@@ -66,11 +73,8 @@ namespace wavelet {
             std::is_trivially_destructible_v<T> && std::is_constructible_v<T, Args...>
         [[nodiscard]] auto pool_alloc_obj(Args&&... args) noexcept(std::is_nothrow_constructible_v<T>) -> T* {
             T* obj;
-            if constexpr (alignof(T) <= alignof(std::max_align_t) && !(alignof(T) & (alignof(T)-1))) {
-                obj = static_cast<T*>(pool_alloc(sizeof(T)));
-            } else {
-                obj = static_cast<T*>(pool_alloc(sizeof(T), alignof(T)));
-            }
+            if constexpr (alignof(T) <= alignof(std::max_align_t) && !(alignof(T) & alignof(T)-1)) obj = static_cast<T*>(pool_alloc(sizeof(T)));
+            else obj = static_cast<T*>(pool_alloc(sizeof(T), alignof(T)));
             return std::launder<T>(new(obj) T {std::forward<Args>(args)...});
         }
 
@@ -148,27 +152,63 @@ namespace wavelet {
         wl_op_param_t m_param {};
     };
     static_assert(sizeof(op_param) == sizeof(wl_op_param_t));
+    static_assert(alignof(op_param) == alignof(wl_op_param_t));
 
     enum class graph_eval_order : std::underlying_type_t<wl_graph_eval_order_t> {
         forward = WL_GRAPH_EVAL_ORDER_FORWARD,
         reverse = WL_GRAPH_EVAL_ORDER_REVERSE
     };
 
+    namespace detail {
+        template <typename>
+        struct dtype_mapper {};
+
+        template <> struct dtype_mapper<float> { static constexpr auto type = dtype::f32; };
+    }
+
     class tensor final {
     public:
-        inline explicit tensor(ctx& ctx, dtype type, std::span<const std::int64_t> shape) {
+        constexpr explicit tensor(wl_tensor_t* t) noexcept : m_t{t} {}
+
+        [[nodiscard]] static auto create(ctx& ctx, dtype type, std::span<const std::int64_t> shape) -> tensor {
             switch (shape.size()) {
-                case 0: default: throw std::runtime_error{"Invalid tensor shape"};
-                case 1: m_t = wl_tensor_create_1d(*ctx, static_cast<wl_dtype_t>(type), shape[0]); return;
-                case 2: m_t = wl_tensor_create_2d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1]); return;
-                case 3: m_t = wl_tensor_create_3d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2]); return;
-                case 4: m_t = wl_tensor_create_4d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3]); return;
-                case 5: m_t = wl_tensor_create_5d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3], shape[4]); return;
-                case 6: m_t = wl_tensor_create_6d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3], shape[4], shape[5]); return;
+                default: wl_cpp_assert2("Invalid tensor shape");
+                case 1: return tensor{wl_tensor_create_1d(*ctx, static_cast<wl_dtype_t>(type), shape[0])};
+                case 2: return tensor{wl_tensor_create_2d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1])};
+                case 3: return tensor{wl_tensor_create_3d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2])};
+                case 4: return tensor{wl_tensor_create_4d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3])};
+                case 5: return tensor{wl_tensor_create_5d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3], shape[4])};
+                case 6: return tensor{wl_tensor_create_6d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3], shape[4], shape[5])};
             }
         }
+
+        [[nodiscard]] static auto operation(ctx& ctx, op op, bool inplace, std::span<tensor*> inputs, std::span<const op_param, max_op_params> params) -> tensor { // operator is a reserved keyword in C++
+            wl_op_param_t vparams[max_op_params];
+            std::copy(params.begin(), params.end(), reinterpret_cast<op_param*>(vparams));
+            return tensor{wl_tensor_operator(
+                *ctx,
+                static_cast<wl_op_t>(op.opc),
+                inplace,
+                reinterpret_cast<wl_tensor_t**>(inputs.data()),
+                static_cast<std::uint32_t>(inputs.size()),
+                &vparams
+            )};
+        }
+
+        auto dtype() const noexcept -> dtype { return static_cast<enum dtype>(wl_tensor_dtype(m_t)); }
+
+        template <typename T>
+        auto copy_buffer_from(std::span<const T> buffer) noexcept -> void {
+            wl_cpp_assert(detail::dtype_mapper<T>::type == dtype(), "Invalid buffer type");
+            wl_tensor_copy_buffer_from(m_t, buffer.data(), buffer.size()*sizeof(T));
+        }
+        auto fill(const float x) noexcept -> void { wl_tensor_fill(m_t, x); }
+        auto fill_random(float min, float max) noexcept -> void { wl_tensor_fill_random(m_t, min, max); }
+
 
     private:
         wl_tensor_t* m_t {};
     };
+    static_assert(sizeof(wl_tensor_t*) == sizeof(tensor));
+    static_assert(alignof(wl_tensor_t*) == alignof(tensor));
 }

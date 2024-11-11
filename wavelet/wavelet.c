@@ -157,7 +157,7 @@ static __forceinline uint32_t wl__fls64(const uint64_t x) {
 #define wl__log_warn(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__)
 #define wl__log_error(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__)
 
-static WL__NORET WL__COLDPROC void wl__panic(const char* msg, ...) {
+WL__NORET WL__COLDPROC WL_EXPORT void wl__panic(const char* msg, ...) {
     fprintf(stderr, "%s", WL__CC_RED);
     va_list args;
     va_start(args, msg);
