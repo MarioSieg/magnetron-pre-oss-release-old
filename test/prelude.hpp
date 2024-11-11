@@ -1,8 +1,10 @@
 #pragma once
 
-#include <array>
-#include <gtest/gtest.h>
 #include <wavelet.hpp>
+#include <gtest/gtest.h>
+
+#include <array>
+#include <cstring>
 
 // Helper to compile DAG and execute
 inline auto wl_tensor_evaluate_static_graph(wl_tensor_t* root, wl_graph_eval_order_t order = WL_GRAPH_EVAL_ORDER_FORWARD) -> wl_tensor_t* {

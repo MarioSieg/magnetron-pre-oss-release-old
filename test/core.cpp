@@ -2,6 +2,7 @@
 
 #include "prelude.hpp"
 
+#include <numbers>
 #include <filesystem>
 
 TEST(core, op_param_int) {
@@ -11,9 +12,9 @@ TEST(core, op_param_int) {
 }
 
 TEST(core, op_param_float) {
-    wl_op_param_t p = wl_op_param_float(M_PI);
+    wl_op_param_t p = wl_op_param_float(std::numbers::pi_v<float>);
     ASSERT_TRUE(wl_op_param_is_float(p));
-    ASSERT_FLOAT_EQ(wl_op_param_unpack_float(p), M_PI);
+    ASSERT_FLOAT_EQ(wl_op_param_unpack_float(p), std::numbers::pi_v<float>);
 }
 
 TEST(core, profiler_small_dims) {

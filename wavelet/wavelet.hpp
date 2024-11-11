@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <span>
 #include <type_traits>
 
 namespace wavelet {
