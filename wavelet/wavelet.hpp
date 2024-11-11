@@ -86,6 +86,10 @@ namespace wavelet {
         [[nodiscard]] auto physical_mem_total() const noexcept -> std::size_t { return wl_ctx_get_physical_memory_total(m_ctx); }
         [[nodiscard]] auto physical_mem_free() const noexcept -> std::size_t { return wl_ctx_get_physical_memory_free(m_ctx); }
         [[nodiscard]] auto is_numa_system() const noexcept -> bool { return wl_ctx_is_numa_system(m_ctx); }
+        [[nodiscard]] auto total_tensors_created() const noexcept -> std::size_t { return wl_ctx_get_total_tensors_created(m_ctx); }
+        [[nodiscard]] auto total_tensors_allocated() const noexcept -> std::size_t { return wl_ctx_get_total_tensors_allocated(m_ctx); }
+        auto start_profiling() const -> void { wl_ctx_profile_start_recording(m_ctx); };
+        auto stop_profiling(const std::string& export_csv_file = "") const -> void { wl_ctx_profile_stop_recording(m_ctx, export_csv_file.empty() ? nullptr : export_csv_file.c_str()); };
 
     private:
         wl_ctx_t* m_ctx {};
@@ -106,33 +110,38 @@ namespace wavelet {
     };
 
     struct op final {
-        #define _(enumerator, mnemonic, argcount) enumerator
+        #define _(enumerator, mnemonic, argcount, paramcount, inplace) enumerator
             enum $ : std::underlying_type_t<wl_op_t> {
                 wl_op_def(_, WL_SEP)
                 count_ = WL_OP__COUNT
             };
         #undef _
-        $ value;
-        constexpr op($ value) noexcept : value{value} {}
-        constexpr operator $() const noexcept { return value; }
-        [[nodiscard]] inline auto name() const noexcept -> std::string_view { return wl_op_get_name(static_cast<wl_op_t>(value)); }
-        [[nodiscard]] inline auto mnemonic() const noexcept -> std::string_view { return wl_op_get_mnemonic(static_cast<wl_op_t>(value)); }
-        [[nodiscard]] inline auto argcount() const noexcept -> std::uint8_t { return wl_op_get_argcount(static_cast<wl_op_t>(value)); }
+        $ opc;
+        constexpr op($ opc) noexcept : opc{opc} {}
+        constexpr operator $() const noexcept { return opc; }
+        [[nodiscard]] inline auto name() const noexcept -> std::string_view { return wl_op_get_name(static_cast<wl_op_t>(opc)); }
+        [[nodiscard]] inline auto mnemonic() const noexcept -> std::string_view { return wl_op_get_mnemonic(static_cast<wl_op_t>(opc)); }
+        [[nodiscard]] inline auto paramcount() const noexcept -> std::uint8_t { return wl_op_get_paramcount(static_cast<wl_op_t>(opc)); }
+        [[nodiscard]] inline auto argcount() const noexcept -> std::uint8_t { return wl_op_get_argcount(static_cast<wl_op_t>(opc)); }
+        [[nodiscard]] inline auto supports_inplace() const noexcept -> bool { return wl_op_get_argcount(static_cast<wl_op_t>(opc)); }
         [[nodiscard]] inline auto is_unary() const noexcept -> bool { return 1 == argcount(); }
         [[nodiscard]] inline auto is_binary() const noexcept -> bool { return 2 == argcount(); }
     };
 
     enum class param_type : std::underlying_type_t<wl_op_param_type_t> {
-        float_param = WL_OP_PARAM_FLOAT,
         int_param = WL_OP_PARAM_INT,
+        float_param = WL_OP_PARAM_FLOAT
     };
 
     struct op_param final {
     public:
         constexpr op_param() noexcept = default;
-        constexpr op_param(std::uint64_t x) noexcept : m_param{wl_op_param_int(x)} {}
+        explicit op_param(std::uint64_t x) noexcept : m_param{wl_op_param_int(x)} {}
+        explicit op_param(float x) noexcept : m_param{wl_op_param_float(x)} {}
         [[nodiscard]] auto is_int() const noexcept -> bool { return wl_op_param_is_int(m_param); }
         [[nodiscard]] auto unpack_int() const noexcept -> std::uint64_t { return wl_op_param_unpack_int(m_param); }
+        [[nodiscard]] auto is_float() const noexcept -> bool { return wl_op_param_is_float(m_param); }
+        [[nodiscard]] auto unpack_float() const noexcept -> float{ return wl_op_param_unpack_float(m_param); }
 
     private:
         wl_op_param_t m_param {};
@@ -142,5 +151,23 @@ namespace wavelet {
     enum class graph_eval_order : std::underlying_type_t<wl_graph_eval_order_t> {
         forward = WL_GRAPH_EVAL_ORDER_FORWARD,
         reverse = WL_GRAPH_EVAL_ORDER_REVERSE
+    };
+
+    class tensor final {
+    public:
+        inline explicit tensor(ctx& ctx, dtype type, std::span<const std::int64_t> shape) {
+            switch (shape.size()) {
+                case 0: default: throw std::runtime_error{"Invalid tensor shape"};
+                case 1: m_t = wl_tensor_create_1d(*ctx, static_cast<wl_dtype_t>(type), shape[0]); return;
+                case 2: m_t = wl_tensor_create_2d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1]); return;
+                case 3: m_t = wl_tensor_create_3d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2]); return;
+                case 4: m_t = wl_tensor_create_4d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3]); return;
+                case 5: m_t = wl_tensor_create_5d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3], shape[4]); return;
+                case 6: m_t = wl_tensor_create_6d(*ctx, static_cast<wl_dtype_t>(type), shape[0], shape[1], shape[2], shape[3], shape[4], shape[5]); return;
+            }
+        }
+
+    private:
+        wl_tensor_t* m_t {};
     };
 }
