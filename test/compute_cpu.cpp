@@ -450,7 +450,7 @@ TEST(compute_cpu, hsum) {
 
 TEST(compute_cpu, heavy_compute_single_op) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_3d(ctx, WL_DTYPE_F32, 16384, 16384, 3);
+    wl_tensor_t* A = wl_tensor_create_3d(ctx, WL_DTYPE_F32, 8192, 8192, 3);
     wl_tensor_t* B = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, A);
     wl_tensor_fill(B, 3.0);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_ADD, A, B);

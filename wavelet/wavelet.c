@@ -136,7 +136,7 @@ static __forceinline uint32_t wl__fls64(const uint64_t x) {
 #define __alignof__ __alignof
 #endif
 
-#define wl__swap(T, a, b) do { T tmp = a; a = b; b = tmp; } while (0)
+#define wl__swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
 #define wl__max(x, y) (((x) > (y)) ? (x) : (y))
 #define wl__min(x, y) (((x) < (y)) ? (x) : (y))
 #define WL__CC_RED "\x1b[31m"
@@ -158,14 +158,13 @@ static __forceinline uint32_t wl__fls64(const uint64_t x) {
 #define wl__log_error(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__)
 
 WL__NORET WL__COLDPROC WL_EXPORT void wl__panic(const char* msg, ...) {
-    fprintf(stderr, "%s", WL__CC_RED);
+    fprintf(stdout, "%s", WL__CC_RED);
     va_list args;
     va_start(args, msg);
-    vfprintf(stderr, msg, args);
+    vfprintf(stdout, msg, args);
     va_end(args);
-    fprintf(stderr, "%s", WL__CC_RESET);
-    fputc('\n', stderr);
-    fflush(stderr);
+    fprintf(stdout, "%s", WL__CC_RESET);
+    fputc('\n', stdout);
     fflush(stdout);
     abort();
 }
