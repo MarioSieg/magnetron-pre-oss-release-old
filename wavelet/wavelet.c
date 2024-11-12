@@ -633,7 +633,7 @@ static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
     return pp;
 }
 
-#ifdef __aarch64__
+#if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
 static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
     register uint64x2_t r;
     __asm__ __volatile__(
@@ -652,7 +652,7 @@ static uint64x2_t WL__AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x
     );
     return r;
 }
-#elif defined(__x86_64__) || defined(_M_X64)
+#elif WL_INTRIN && defined(__x86_64__) || defined(_M_X64)
 static uint32_t wl__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
     uint64_t stack = ~(uint64_t)1;
     uint32_t acc, low;
@@ -678,7 +678,7 @@ static __m128i WL__AINLINE wl__crc_shift(uint32_t crc, size_t sz) {
 static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 checksum with CRC32c polynomial. */
     if (wl__unlikely(!buffer || !size)) return 0;
     const uint8_t* buf = (const uint8_t*)buffer;
-    #if WL_INTRIN && defined(__aarch64__)
+    #if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
         uint32_t crc = ~0;
         for (; size && ((uintptr_t)buf & 7); --size) crc = __crc32cb(crc, *buf++);
         if (((uintptr_t)buf & 8) && size >= 8) {
@@ -1131,7 +1131,15 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     /* Query and print host system information. */
     wl__system_host_info_query(ctx);
     wl__log_info("OS/Kernel: %s", ctx->sys.os_name);
-    wl__log_info("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
+    const char* cpu_arch = "?";
+    #if defined(__x86_64__) || defined(_M_X64)
+        cpu_arch = "x86-64";
+    #elif defined(__aarch64__)
+        cpu_arch = "aarch64";
+    #else
+    #error "Unknwon CPU arch"
+    #endif
+    wl__log_info("CPU (%s): %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", cpu_arch, ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
     #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
         printf("CPU Features:");
             for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
@@ -4666,7 +4674,7 @@ static void wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* G
             snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", (const char*)tmp);
     #else
         char cpu_name[128];
-        if (wl__likely(wl__cpuinfo_parse_value("model name", &cpu_name) && *cpu_name))
+        if (wl__likely((wl__cpuinfo_parse_value("model name", &cpu_name) && *cpu_name) || (wl__cpuinfo_parse_value("Model", &cpu_name) && *cpu_name)))
             snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", cpu_name);
     #endif
 }
@@ -4703,7 +4711,6 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
             *out_sockets = wl__sysctl_unpack_int(&tmp, len);
     #else
         long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
-        *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
         FILE* cpuinfo = wl__fopen("/proc/cpuinfo", "r");
         if (wl__unlikely(!cpuinfo)) return;
         uint32_t physical_ids[WL__MAX_CPUS];
@@ -4754,8 +4761,11 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
             }
         }
         fclose(cpuinfo);
-        *out_physical = cpu_count;
-        *out_sockets = package_count;
+        *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
+        if (!cpu_count && *out_virtual) cpu_count = *out_virtual;
+        *out_physical = wl__max(1, cpu_count);
+        *out_virtual = nprocs > 0 ? (uint32_t)nprocs : *out_physical;
+        *out_sockets = wl__max(1, package_count);
     #endif
 }
 
