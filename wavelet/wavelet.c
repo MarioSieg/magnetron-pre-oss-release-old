@@ -136,6 +136,11 @@ static __forceinline uint32_t wl__fls64(const uint64_t x) {
 #define __alignof__ __alignof
 #endif
 
+static bool wl__log_enabled = false; /* Read from multiple threads, allowed to be written from main thread once at start. */
+void wl_set_set_log_mode(bool enabled) {
+    wl__log_enabled = enabled;
+}
+
 #define wl__swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
 #define wl__max(x, y) (((x) > (y)) ? (x) : (y))
 #define wl__min(x, y) (((x) < (y)) ? (x) : (y))
@@ -153,9 +158,9 @@ static __forceinline uint32_t wl__fls64(const uint64_t x) {
 #else
 #   define WL__SRC_NAME __FILE__ ":" WL__STRINGIZE(__LINE__)
 #endif
-#define wl__log_info(msg, ...) fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__)
-#define wl__log_warn(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__)
-#define wl__log_error(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__)
+#define wl__log_info(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__); } while (0)
+#define wl__log_warn(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__); } while (0)
+#define wl__log_error(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__); } while (0)
 
 WL__NORET WL__COLDPROC WL_EXPORT void wl__panic(const char* msg, ...) {
     fprintf(stdout, "%s", WL__CC_RED);
@@ -1126,6 +1131,10 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     ctx->pool.chunk_size = ctx_info.pool_chunk_size ? wl__max(ctx_info.pool_chunk_size, 8) : WL_DEFAULT_CHUNK_SIZE;
     ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? wl__max(ctx_info.pool_chunks_cap, 1) : WL_DEFAULT_CHUNK_CAP;
     ctx->pool.warmup_chunks = ctx_info.warmup_chunks;
+    double chunk_size_mem;
+    const char* chunk_size_unit;
+    wl__humanize_memory_size(ctx->pool.chunk_size, &chunk_size_mem, &chunk_size_unit);
+    wl__log_info("Pool Chunk Size: %.03f %s, Warmup Chunks: %s", chunk_size_mem, chunk_size_unit, ctx->pool.warmup_chunks ? "Y" : "N");
 
     /* Query and print host system information. */
     wl__system_host_info_query(ctx);

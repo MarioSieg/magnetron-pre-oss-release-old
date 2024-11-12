@@ -8,6 +8,7 @@
 import random
 import faulthandler
 import weakref
+from os import getenv
 
 from os.path import isfile
 from wavelet._lib_loader import load_native_wl_lib
@@ -23,6 +24,18 @@ MAX_DIMS: int = 6
 MAX_ARG_TENSORS: int = 2
 WL_MAX_OP_PARAMS: int = 6
 DIM_MAX: int = ((1 << 64) - 1) >> 1
+
+
+def set_log_mode(enable_log: bool) -> None:
+    C.wl_set_set_log_mode(enable_log)
+
+
+if getenv('WAVELET_LOG', '0') == '1':
+    # Enable logging if the environment variable WAVELET_LOG is set to 1.
+    # To enable logging:
+    # os.environ['WAVELET_LOG'] = '1'
+    # before importing wavelet.
+    set_log_mode(True)
 
 
 def pack_color(r: int, g: int, b: int) -> int:

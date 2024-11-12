@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-11 12:29:20.315484, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-12 20:02:40.869397, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -18,6 +18,7 @@ typedef int wl_graph_eval_order_t;
 
 extern   void* (*wl_get_alloc_fn(void))(void* blk, size_t size);
 extern   void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size));
+extern   void wl_set_set_log_mode(bool enabled);
 extern   wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info);
 extern   wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size);
 extern   void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size);

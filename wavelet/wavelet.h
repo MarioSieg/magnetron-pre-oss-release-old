@@ -72,6 +72,7 @@ typedef enum wl_color_channels_t {
 
 extern WL_EXPORT void* (*wl_get_alloc_fn(void))(void* blk, size_t size); /* Get global allocator. */
 extern WL_EXPORT void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size)); /* Set global allocator. */
+extern WL_EXPORT void wl_set_set_log_mode(bool enabled); /* Enable/disable logging. */
 
 typedef struct wl_ctx_info_t {
     size_t pool_chunk_size; /* Size of each memory pool chunk */
