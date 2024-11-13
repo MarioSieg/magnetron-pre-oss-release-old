@@ -42,7 +42,8 @@ if (${WAVELET_BUILD_BENCHMARKS})
     add_subdirectory(benchmark)
 endif()
 
-add_library(wavelet SHARED wavelet/wavelet.h wavelet/wavelet.c)
+file(GLOB_RECURSE WAVELET_SOURCES wavelet/*.h wavelet/*.c wavelet/*.m)
+add_library(wavelet SHARED ${WAVELET_SOURCES})
 target_include_directories(wavelet PRIVATE wavelet/optional)
 if(WIN32) # Windows specific config
     target_compile_options(wavelet PRIVATE /W3 /Oi)
