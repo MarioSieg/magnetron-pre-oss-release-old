@@ -8,6 +8,7 @@
 import random
 import faulthandler
 import weakref
+from os import getenv
 
 from os.path import isfile
 from wavelet._lib_loader import load_native_wl_lib
@@ -23,6 +24,18 @@ MAX_DIMS: int = 6
 MAX_ARG_TENSORS: int = 2
 WL_MAX_OP_PARAMS: int = 6
 DIM_MAX: int = ((1 << 64) - 1) >> 1
+
+
+def set_log_mode(enable_log: bool) -> None:
+    C.wl_set_set_log_mode(enable_log)
+
+
+if getenv('WAVELET_LOG', '0') == '1':
+    # Enable logging if the environment variable WAVELET_LOG is set to 1.
+    # To enable logging:
+    # os.environ['WAVELET_LOG'] = '1'
+    # before importing wavelet.
+    set_log_mode(True)
 
 
 def pack_color(r: int, g: int, b: int) -> int:
@@ -48,8 +61,8 @@ class ColorChannels(Enum):
     RGBA = auto()  # R32G32B32A32
 
 
-class Op(Enum):
-    """All supported tensor operations."""
+class Operator(Enum):
+    """All supported tensor operators."""
     NOP = 0
     CLONE = auto()  # R = clone(X)
     VIEW = auto()  # R = X[:]
@@ -82,7 +95,11 @@ class Op(Enum):
     SUB = auto()  # R = X-Y
     MUL = auto()  # R = X*Y (Hadamard product)
     DIV = auto()  # R = X/Y
-    MATMUL = auto()  # A@B
+    ADDS = auto()  # R = X+=Y
+    SUBS = auto()  # R = X-=Y
+    MULS = auto()  # R = X*=Y
+    DIVS = auto()  # R = X/=Y
+    MATMUL = auto()  # R = A@B
 
     _COUNT = auto()
 
@@ -102,6 +119,10 @@ class Op(Enum):
         return C.wl_op_get_argcount(self.value)
 
     @property
+    def supports_inplace(self) -> bool:
+        return C.wl_op_supports_inplace(self.value)
+
+    @property
     def is_unary(self) -> bool:
         return self.argument_count == 1
 
@@ -117,9 +138,14 @@ class OpParam:
         self.value = value
 
     @staticmethod
-    def int(x: int) -> 'OpParam':
+    def new_int(x: int) -> 'OpParam':
         """Creates an integer operation parameter."""
         return OpParam(C.wl_op_param_int(x))
+
+    @staticmethod
+    def new_float(x: float) -> 'OpParam':
+        """Creates a float operation parameter."""
+        return OpParam(C.wl_op_param_float(x))
 
     @property
     def is_int(self) -> bool:
@@ -127,10 +153,21 @@ class OpParam:
         return C.wl_op_param_is_int(self.value)
 
     @property
+    def is_float(self) -> bool:
+        """Returns if the operation parameter is a float."""
+        return C.wl_op_param_is_float(self.value)
+
+    @property
     def unpack_int(self) -> int:
         """Returns the integer value of the operation parameter."""
         assert self.is_int
         return C.wl_op_param_unpack_int(self.value)
+
+    @property
+    def unpack_float(self) -> float:
+        """Returns the integer value of the operation parameter."""
+        assert self.is_float
+        return C.wl_op_param_unpack_float(self.value)
 
 
 class GraphEvalOrder(Enum):
@@ -225,6 +262,16 @@ class Context:
         """Returns the total memory allocated in the context in bytes."""
         return C.wl_ctx_total_allocated_pool_memory(self.ctx)
 
+    @property
+    def total_tensors_created(self) -> int:
+        """Returns total count of tensors created, including views and permutations."""
+        return C.wl_ctx_get_total_tensors_created(self.ctx)
+
+    @property
+    def total_tensors_allocated(self) -> int:
+        """Returns total count of tensors allocated, not including views and permutations."""
+        return C.wl_ctx_get_total_tensors_allocated(self.ctx)
+
     def start_profiler(self) -> None:
         """Start recording profiling information of operations. Slightly decreases performance. Recording must be stopped to generate report."""
         C.wl_ctx_profile_start_recording(self.ctx)
@@ -273,20 +320,20 @@ class Tensor:
         self.name = f'Tensor {self.shape}' if name is None else name
 
     @staticmethod
-    def operator(op: Op, params: list[OpParam] | None = None, *args) -> 'Tensor':
+    def operator(op: Operator, inplace: bool = False, params: list[OpParam] | None = None, *args) -> 'Tensor':
         """Applies an operation to one or more tensors"""
         c_para: ffi.CData
         c_para_ptr: ffi.CData = ffi.NULL
         if params is not None:
             assert 0 < len(params) <= WL_MAX_OP_PARAMS, f'Invalid number of operation parameters: {len(params)}'
-            param_vals = [param.value & ((1 << 64) - 1) for param in params] + [OpParam.int(0)] * (
+            param_vals = [param.value & ((1 << 64) - 1) for param in params] + [0] * (
                     WL_MAX_OP_PARAMS - len(params))
             c_para = ffi.new(f'wl_op_param_t[{WL_MAX_OP_PARAMS}]', param_vals)
             c_para_ptr = ffi.new(f'wl_op_param_t(*)[{WL_MAX_OP_PARAMS}]', c_para)
-        assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count}'
+        assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count} for {op}'
         tensors: ffi.CData = ffi.new(f'wl_tensor_t*[{len(args)}]', [arg.tensor for arg in args])
         ctx: ffi.CData = C.wl_tensor_get_ctx(args[0].tensor)
-        instance: ffi.CData = C.wl_tensor_operator(ctx, op.value, tensors, len(args), c_para_ptr)
+        instance: ffi.CData = C.wl_tensor_operator(ctx, op.value, inplace, tensors, len(args), c_para_ptr)
         assert instance != ffi.NULL, 'Operation invalid'
         return Tensor(instance)
 
@@ -507,9 +554,12 @@ class Tensor:
             print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
         return is_eq, percent_eq[0]
 
-    def image_draw_box(self, p1: (int, int), p2: (int, int), width: int = 2, rgb: int = pack_color(0xff, 0xff, 0xff)):
+    def image_draw_box(self, p1: (int, int), p2: (int, int), width: int = 2, rgb: int = 0xffffff):
         assert p2[0] > p1[0] and p2[1] > p1[1] and width > 0
         C.wl_tensor_img_draw_box(self.tensor, p1[0], p1[1], p2[0], p2[1], width, rgb & 0xffffff)
+
+    def image_draw_text(self, p: (int, int), size: int, txt: str, rgb: int = 0xffffff):
+        C.wl_tensor_img_draw_text(self.tensor, p[0], p[1], size, rgb & 0xffffff, bytes(txt, 'utf-8'))
 
     def save(self, file_path: str) -> None:
         """Saves to tensor to a binary WAVELET file"""
@@ -525,15 +575,15 @@ class Tensor:
 
     def clone(self) -> 'Tensor':
         """Create new tensor with same shape and data as input. (deep clone)"""
-        return self.operator(Op.CLONE, None, self)
+        return self.operator(Operator.CLONE, False, None, self)
 
     def view(self) -> 'Tensor':
         """Create new tensor with same shape as input, and with data referencing into the input tensor's data. (shallow copy)"""
-        return self.operator(Op.VIEW, None, self)
+        return self.operator(Operator.VIEW, False, None, self)
 
     def transpose(self) -> 'Tensor':
         """Xᵀ"""
-        return self.operator(Op.TRANSPOSE, None, self)
+        return self.operator(Operator.TRANSPOSE, False, None, self)
 
     def permute(self, axes: tuple[int, ...]) -> 'Tensor':
         """Permutes the tensor according to the given axes."""
@@ -542,23 +592,31 @@ class Tensor:
             assert 0 <= axes[i] < MAX_DIMS, f'Invalid axis: {axes[i]}'
             for j in range(i + 1, MAX_DIMS):  # All axes must be unique
                 assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
-        return self.operator(Op.PERMUTE, [OpParam.int(axis) for axis in axes], self)
+        return self.operator(Operator.PERMUTE, False, [OpParam.new_int(axis) for axis in axes], self)
 
     def mean(self) -> 'Tensor':
         """ΣX/n"""
-        return self.operator(Op.MEAN, None, self)
+        return self.operator(Operator.MEAN, False, None, self)
 
     def sum(self) -> 'Tensor':
         """ΣX"""
-        return self.operator(Op.SUM, None, self)
+        return self.operator(Operator.SUM, False, None, self)
 
     def abs(self) -> 'Tensor':
         """|X|"""
-        return self.operator(Op.ABS, None, self)
+        return self.operator(Operator.ABS, False, None, self)
+
+    def abs_(self) -> 'Tensor':
+        """|X|"""
+        return self.operator(Operator.ABS, True, None, self)
 
     def neg(self) -> 'Tensor':
         """-X"""
-        return self.operator(Op.NEG, None, self)
+        return self.operator(Operator.NEG, False, None, self)
+
+    def neg_(self) -> 'Tensor':
+        """-X"""
+        return self.operator(Operator.NEG, True, None, self)
 
     def __neg__(self) -> 'Tensor':
         """-X"""
@@ -566,75 +624,171 @@ class Tensor:
 
     def log(self) -> 'Tensor':
         """log X"""
-        return self.operator(Op.LOG, None, self)
+        return self.operator(Operator.LOG, False, None, self)
+
+    def log_(self) -> 'Tensor':
+        """log X"""
+        return self.operator(Operator.LOG, True, None, self)
 
     def sqr(self) -> 'Tensor':
         """X²"""
-        return self.operator(Op.SQR, None, self)
+        return self.operator(Operator.SQR, False, None, self)
+
+    def sqr_(self) -> 'Tensor':
+        """X²"""
+        return self.operator(Operator.SQR, True, None, self)
 
     def sqrt(self) -> 'Tensor':
         """√X"""
-        return self.operator(Op.SQRT, None, self)
+        return self.operator(Operator.SQRT, False, None, self)
+
+    def sqrt_(self) -> 'Tensor':
+        """√X"""
+        return self.operator(Operator.SQRT, True, None, self)
 
     def sin(self) -> 'Tensor':
         """sin X"""
-        return self.operator(Op.SIN, None, self)
+        return self.operator(Operator.SIN, False, None, self)
+
+    def sin_(self) -> 'Tensor':
+        """sin X"""
+        return self.operator(Operator.SIN, True, None, self)
 
     def cos(self) -> 'Tensor':
         """cos X"""
-        return self.operator(Op.COS, None, self)
+        return self.operator(Operator.COS, False, None, self)
+
+    def cos_(self) -> 'Tensor':
+        """cos X"""
+        return self.operator(Operator.COS, True, None, self)
 
     def step(self) -> 'Tensor':
         """step(X)"""
-        return self.operator(Op.STEP, None, self)
+        return self.operator(Operator.STEP, False, None, self)
+
+    def step_(self) -> 'Tensor':
+        """step(X)"""
+        return self.operator(Operator.STEP, True, None, self)
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """Applies the softmax function to the tensor."""
-        return self.operator(Op.SOFTMAX_DV if derivative else Op.SOFTMAX, None, self)
+        return self.operator(Operator.SOFTMAX_DV if derivative else Operator.SOFTMAX, False, None, self)
+
+    def softmax_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the softmax function to the tensor."""
+        return self.operator(Operator.SOFTMAX_DV if derivative else Operator.SOFTMAX, True, None, self)
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """Applies the sigmoid function to the tensor."""
-        return self.operator(Op.SIGMOID_DV if derivative else Op.SIGMOID, None, self)
+        return self.operator(Operator.SIGMOID_DV if derivative else Operator.SIGMOID, False, None, self)
+
+    def sigmoid_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the sigmoid function to the tensor."""
+        return self.operator(Operator.SIGMOID_DV if derivative else Operator.SIGMOID, True, None, self)
 
     def hard_sigmoid(self) -> 'Tensor':
         """Applies the hard sigmoid function to the tensor."""
-        return self.operator(Op.HARD_SIGMOID, None, self)
+        return self.operator(Operator.HARD_SIGMOID, False, None, self)
+
+    def hard_sigmoid_(self) -> 'Tensor':
+        """Applies the hard sigmoid function to the tensor."""
+        return self.operator(Operator.HARD_SIGMOID, True, None, self)
 
     def silu(self, derivative: bool = False) -> 'Tensor':
         """Applies the SiLU function to the tensor."""
-        return self.operator(Op.SILU_DV if derivative else Op.SILU, None, self)
+        return self.operator(Operator.SILU_DV if derivative else Operator.SILU, False, None, self)
+
+    def silu_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the SiLU function to the tensor."""
+        return self.operator(Operator.SILU_DV if derivative else Operator.SILU, True, None, self)
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """Applies the hyperbolic tangent function to the tensor."""
-        return self.operator(Op.TANH_DV if derivative else Op.TANH, None, self)
+        return self.operator(Operator.TANH_DV if derivative else Operator.TANH, False, None, self)
+
+    def tanh_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the hyperbolic tangent function to the tensor."""
+        return self.operator(Operator.TANH_DV if derivative else Operator.TANH, True, None, self)
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """Applies the ReLU function to the tensor."""
-        return self.operator(Op.RELU_DV if derivative else Op.RELU, None, self)
+        return self.operator(Operator.RELU_DV if derivative else Operator.RELU, False, None, self)
+
+    def relu_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the ReLU function to the tensor."""
+        return self.operator(Operator.RELU_DV if derivative else Operator.RELU, True, None, self)
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """Applies the GELU function to the tensor."""
-        return self.operator(Op.GELU_DV if derivative else Op.GELU, None, self)
+        return self.operator(Operator.GELU_DV if derivative else Operator.GELU, False, None, self)
 
-    def __add__(self, other: 'Tensor') -> 'Tensor':
+    def gelu_(self, derivative: bool = False) -> 'Tensor':
+        """Applies the GELU function to the tensor."""
+        return self.operator(Operator.GELU_DV if derivative else Operator.GELU, True, None, self)
+
+    def __add__(self, other: object | int | float) -> 'Tensor':
         """X + Y"""
-        return self.operator(Op.ADD, None, self, other)
+        if isinstance(other, Tensor):
+            return self.operator(Operator.ADD, False, None, self, other)
+        else:
+            return self.operator(Operator.ADDS, False, [OpParam.new_float(float(other))], self)
 
-    def __sub__(self, other: 'Tensor') -> 'Tensor':
-        """ X - Y"""
-        return self.operator(Op.SUB, None, self, other)
+    def __iadd__(self, other: object | int | float) -> 'Tensor':
+        """X += Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.ADD, True, None, self, other)
+        else:
+            return self.operator(Operator.ADDS, True, [OpParam.new_float(float(other))], self)
 
-    def __mul__(self, other: 'Tensor') -> 'Tensor':
-        """X * Y (Hadamard product)"""
-        return self.operator(Op.MUL, None, self, other)
+    def __sub__(self, other: object | int | float) -> 'Tensor':
+        """X - Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.SUB, False, None, self, other)
+        else:
+            return self.operator(Operator.SUBS, False, [OpParam.new_float(float(other))], self)
 
-    def __truediv__(self, other: 'Tensor') -> 'Tensor':
+    def __isub__(self, other: object | int | float) -> 'Tensor':
+        """X -= Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.SUB, True, None, self, other)
+        else:
+            return self.operator(Operator.SUBS, True, [OpParam.new_float(float(other))], self)
+
+    def __mul__(self, other: object | int | float) -> 'Tensor':
+        """X * Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.MUL, False, None, self, other)
+        else:
+            return self.operator(Operator.MULS, False, [OpParam.new_float(float(other))], self)
+
+    def __imul__(self, other: object | int | float) -> 'Tensor':
+        """X *= Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.MUL, True, None, self, other)
+        else:
+            return self.operator(Operator.MULS, True, [OpParam.new_float(float(other))], self)
+
+    def __truediv__(self, other: object | int | float) -> 'Tensor':
         """X / Y"""
-        return self.operator(Op.DIV, None, self, other)
+        if isinstance(other, Tensor):
+            return self.operator(Operator.DIV, False, None, self, other)
+        else:
+            return self.operator(Operator.DIVS, False, [OpParam.new_float(float(other))], self)
+
+    def __itruediv__(self, other: object | int | float) -> 'Tensor':
+        """X /= Y"""
+        if isinstance(other, Tensor):
+            return self.operator(Operator.DIV, True, None, self, other)
+        else:
+            return self.operator(Operator.DIVS, True, [OpParam.new_float(float(other))], self)
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """A @ B"""
-        return self.operator(Op.MATMUL, None, self, other)
+        return self.operator(Operator.MATMUL, False, None, self, other)
+
+    def __imatmul__(self, other: 'Tensor') -> 'Tensor':
+        """A @= B"""
+        return self.operator(Operator.MATMUL, True, None, self, other)
 
     def __eq__(self, other: 'Tensor') -> bool:
         """Checks if two tensors are equal."""

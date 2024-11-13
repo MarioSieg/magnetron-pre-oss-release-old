@@ -1,5 +1,8 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
+// For some tests, we use a larger absolute error than machine epsilon,
+// because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar high-precision lambdas.
+
 #include "prelude.hpp"
 #include <cmath>
 
@@ -24,13 +27,41 @@ static constexpr std::int64_t k_lim_broadcast = 3;
             const auto* b_x = wl_tensor_data_as_f32(x); \
             const auto* b_r = wl_tensor_data_as_f32(r); \
             ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r)); \
+            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
-                ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); /* We use a larger absolute error than machine epsilon, because the BLAS uses SIMD for certain functions which have higher accuracy than the scalar lambdas. */ \
+                ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
             } \
         } \
         \
         wl_ctx_destroy(ctx); \
     } \
+    TEST(compute_cpu, name##_same_shape_inplace) { \
+            wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+            \
+            for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
+            for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
+            for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
+            for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
+            for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
+            for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
+                wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+                wl_tensor_fill_random(x, 0.0f, 1.0f); \
+                std::vector<float> x_origin {}; \
+                wl_tensor_buf_f32_to_vec(x, x_origin); \
+                \
+                wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x); \
+                \
+                const auto* b_x = x_origin.data(); \
+                const auto* b_r = wl_tensor_data_as_f32(r); \
+                ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r)); \
+                ASSERT_EQ(wl_tensor_data(x), wl_tensor_data(r)); \
+                for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+                    ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
+                } \
+            } \
+            \
+            wl_ctx_destroy(ctx); \
+        }
 
 impl_test_unary_op(abs, 1e-6, ABS, [](float x) -> float {
     return std::abs(x);
@@ -152,6 +183,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             const auto* b_x = wl_tensor_data_as_f32(x); \
             const auto* b_y = wl_tensor_data_as_f32(y); \
             const auto* b_r = wl_tensor_data_as_f32(r); \
+            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
             ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
             ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(y)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
@@ -182,8 +214,101 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             const auto* b_r = wl_tensor_data_as_f32(r); \
             ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(x)); \
             ASSERT_NE(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
+            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
+            } \
+        } \
+        \
+        wl_ctx_destroy(ctx); \
+    } \
+    TEST(compute_cpu, name##_same_shape_inplace) { \
+        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
+        for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
+        for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
+        for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
+        for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
+        for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
+            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            wl_tensor_t* y = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, x); \
+            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            wl_tensor_fill_random(y, -5.0f, 5.0f); \
+            std::vector<float> x_origin {}; \
+            wl_tensor_buf_f32_to_vec(x, x_origin); \
+            \
+            wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x, y); \
+                                                 \
+            \
+            const auto* b_x = x_origin.data(); \
+            const auto* b_xx = wl_tensor_data_as_f32(x); \
+            const auto* b_y = wl_tensor_data_as_f32(y); \
+            const auto* b_r = wl_tensor_data_as_f32(r); \
+            ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
+            ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(y)); \
+            ASSERT_EQ(wl_tensor_data(r), wl_tensor_data(x)); \
+            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+                ASSERT_FLOAT_EQ(b_r[i], b_xx[i]); \
+                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
+            } \
+        } \
+        \
+        wl_ctx_destroy(ctx); \
+    } \
+     \
+    TEST(compute_cpu, name##_scalar_broadcast_inplace) { \
+        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        for (std::int64_t factor=2; factor <= 4; ++factor) \
+        for (std::int64_t i0=1; i0 <= k_lim_broadcast; ++i0) \
+        for (std::int64_t i1=1; i1 <= k_lim_broadcast; ++i1) \
+        for (std::int64_t i2=1; i2 <= k_lim_broadcast; ++i2) \
+        for (std::int64_t i3=1; i3 <= k_lim_broadcast; ++i3) \
+        for (std::int64_t i4=1; i4 <= k_lim_broadcast; ++i4) \
+        for (std::int64_t i5=1; i5 <= k_lim_broadcast; ++i5) { \
+            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
+            wl_tensor_t* y = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            wl_tensor_fill(y, 2.2f); \
+            \
+            std::vector<float> x_origin {}; \
+            wl_tensor_buf_f32_to_vec(x, x_origin); \
+            \
+            wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x, y); \
+            \
+            const auto* b_x = x_origin.data(); \
+            const auto* b_xx = wl_tensor_data_as_f32(x); \
+            const auto* b_r = wl_tensor_data_as_f32(r); \
+            ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(x)); \
+            ASSERT_NE(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
+            ASSERT_EQ(wl_tensor_data(r), wl_tensor_data(x)); \
+            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+                ASSERT_FLOAT_EQ(b_r[i], b_xx[i]);  \
+                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
+            } \
+        } \
+        \
+        wl_ctx_destroy(ctx); \
+    } \
+    TEST(compute_cpu, name##_scalar) { \
+        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
+        for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
+        for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
+        for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
+        for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
+        for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
+            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            \
+            wl_op_param_t xi = wl_op_param_float(static_cast<float>(i0+i1+i2+i3+i4+i5)*0.221f); \
+            wl_tensor_t* r = wl_tensor_emit_op_va_op_params<false>(ctx, WL_OP_##op##S, xi, x); \
+             \
+            \
+            const auto* b_x = wl_tensor_data_as_f32(x); \
+            const auto* b_r = wl_tensor_data_as_f32(r); \
+            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
+            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op wl_op_param_unpack_float(xi)); \
             } \
         } \
         \
@@ -250,8 +375,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     wl_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
 
     // Create result tensor R for matrix multiplication
-    wl_tensor_t* params[2] = {A, B};
-    wl_tensor_t* R = wl_tensor_operator(ctx, WL_OP_MATMUL, params, 2, nullptr);
+    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MATMUL, A, B);
     wl_tensor_print(R, true, true);
     auto* buf = wl_tensor_data_as_f32(R);
 
@@ -285,8 +409,7 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     wl_tensor_copy_buffer_from(B, BV, sizeof(BV));
 
     // Create result tensor R for matrix multiplication
-    wl_tensor_t* params[2] = {A, B};
-    wl_tensor_t* R = wl_tensor_operator(ctx, WL_OP_MATMUL, params, 2, nullptr);
+    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MATMUL, A, B);
     //ASSERT_EQ(wl_tensor_rank(R), 1);
     ASSERT_EQ(wl_tensor_shape(R)[0], 3);
     const auto* C = wl_tensor_data_as_f32(R);
@@ -327,7 +450,7 @@ TEST(compute_cpu, hsum) {
 
 TEST(compute_cpu, heavy_compute_single_op) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_3d(ctx, WL_DTYPE_F32, 16384, 16384, 3);
+    wl_tensor_t* A = wl_tensor_create_3d(ctx, WL_DTYPE_F32, 8192, 8192, 3);
     wl_tensor_t* B = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, A);
     wl_tensor_fill(B, 3.0);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_ADD, A, B);

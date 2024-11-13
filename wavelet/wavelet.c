@@ -13,6 +13,19 @@
 ** 7. Add the BLAS computation routine to the 'dispatch_lut' table in 'wl__blas_compute_dispatch_table_default', at the op index.
 */
 
+/*
+** Here ⊕ denotes a binary or unary operator.
+** Note that an operators can or cannot support any of those forms. This must be specified in wl_op_def.
+**
+** Operators can have two forms:
+**
+** 1. R = A ⊕ B
+**  Result is a new tensor of shape of A and contains element-wise result of A ⊕ B, where A and B are tensors.
+**
+** 2. R = A ⊕= B
+**  Result is a view tensor of shape of A and contains element-wise result of A ⊕= B, where A and B are tensors. (Safes 1 allocation)
+*/
+
 #define WL_EXPORT_DLL
 #include "wavelet.h"
 
@@ -60,22 +73,6 @@ wl_static_assert(sizeof(0ull) == 8);
 #define WL__MAX_CPUS 8192
 #define WL__MAX_NUMA_NODES 64
 #define WL__STORAGE_EXT ".wavelet"
-
-#ifdef WL_ENABLE_IMAGE_SUPPORT
-/*
-    #define STBI_MALLOC(sz) (*wl__alloc)(NULL, (sz))
-    #define STBI_FREE(ptr) (*wl__alloc)((ptr), 0)
-    #define STBI_REALLOC(ptr, sz) (*wl__alloc)((ptr), (sz))
-    #define STBIW_MALLOC(sz) (*wl__alloc)(NULL, (sz))
-    #define STBIW_FREE(ptr) (*wl__alloc)((ptr), 0)
-    #define STBIW_REALLOC(ptr, sz) (*wl__alloc)((ptr), (sz))
-*/
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
-#endif
-
 #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
 #define WL__NORET __attribute__((noreturn))
 #define WL__ALIGN(x) __attribute__((aligned(x)))
@@ -123,7 +120,12 @@ static __forceinline uint32_t wl__fls64(const uint64_t x) {
 #define __alignof__ __alignof
 #endif
 
-#define wl__swap(T, a, b) do { T tmp = a; a = b; b = tmp; } while (0)
+static bool wl__log_enabled = false; /* Read from multiple threads, allowed to be written from main thread once at start. */
+void wl_set_set_log_mode(bool enabled) {
+    wl__log_enabled = enabled;
+}
+
+#define wl__swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
 #define wl__max(x, y) (((x) > (y)) ? (x) : (y))
 #define wl__min(x, y) (((x) < (y)) ? (x) : (y))
 #define WL__CC_RED "\x1b[31m"
@@ -140,19 +142,18 @@ static __forceinline uint32_t wl__fls64(const uint64_t x) {
 #else
 #   define WL__SRC_NAME __FILE__ ":" WL__STRINGIZE(__LINE__)
 #endif
-#define wl__log_info(msg, ...) fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__)
-#define wl__log_warn(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__)
-#define wl__log_error(msg, ...) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__)
+#define wl__log_info(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__); } while (0)
+#define wl__log_warn(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__); } while (0)
+#define wl__log_error(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__); } while (0)
 
-static WL__NORET WL__COLDPROC void wl__panic(const char* msg, ...) {
-    fprintf(stderr, "%s", WL__CC_RED);
+WL__NORET WL__COLDPROC WL_EXPORT void wl__panic(const char* msg, ...) {
+    fprintf(stdout, "%s", WL__CC_RED);
     va_list args;
     va_start(args, msg);
-    vfprintf(stderr, msg, args);
+    vfprintf(stdout, msg, args);
     va_end(args);
-    fprintf(stderr, "%s", WL__CC_RESET);
-    fputc('\n', stderr);
-    fflush(stderr);
+    fprintf(stdout, "%s", WL__CC_RESET);
+    fputc('\n', stdout);
     fflush(stdout);
     abort();
 }
@@ -162,6 +163,44 @@ static WL__NORET WL__COLDPROC void wl__panic(const char* msg, ...) {
         wl__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
     }
 #define wl__assert2(expr) wl__assert(expr, "")
+
+static void* wl__default_allocator_impl(void* blk, size_t size) {
+    if (!size) {
+        free(blk);
+        return NULL;
+    } else if(!blk) {
+        blk = malloc(size);
+        wl__assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
+        return blk;
+    } else {
+        void* block = realloc(blk, size);
+        wl__assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
+        return block;
+    }
+}
+
+static void* (*wl__alloc)(void* blk, size_t size) = &wl__default_allocator_impl;
+
+#ifdef WL_ENABLE_IMAGE_SUPPORT
+#define STBI_STATIC
+#define STBI_MALLOC(sz) ((*wl__alloc)(NULL, (sz)))
+#define STBI_FREE(ptr) ((*wl__alloc)((ptr), 0))
+#define STBI_REALLOC(ptr, sz) ((*wl__alloc)((ptr), (sz)))
+#define STBIW_MALLOC(sz) ((*wl__alloc)(NULL, (sz)))
+#define STBIW_FREE(ptr) ((*wl__alloc)((ptr), 0))
+#define STBIW_REALLOC(ptr, sz) ((*wl__alloc)((ptr), (sz)))
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+#endif
+#ifdef WL_ENABLE_FONT_RENDERER
+#define STB_TRUETYPE_IMPLEMENTATION
+#define STBTT_STATIC
+#define STBTT_malloc(sz, ud) ((*wl__alloc)(NULL, (sz)))
+#define STBTT_free(x,u) ((*wl__alloc)((x), 0))
+#include <stb_truetype.h>
+#endif
 
 #if defined(__x86_64__) || defined(_M_X64)
 #define WL__X86_64_CPUID_0H 0
@@ -257,24 +296,6 @@ static const uint32_t msml__x86_64_feature_masks[WL__X86_64_FEATURE__COUNT] = {
 #undef wl_x86_64_feature_def
 #endif
 
-
-static void* wl_default_allocator_impl(void* blk, size_t size) {
-    if (!size) {
-        free(blk);
-        return NULL;
-    } else if(!blk) {
-        blk = malloc(size);
-        wl__assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
-        return blk;
-    } else {
-        void* block = realloc(blk, size);
-        wl__assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
-        return block;
-    }
-}
-
-static void* (*wl__alloc)(void* blk, size_t size) = &wl_default_allocator_impl;
-
 void* (*wl_get_alloc_fn(void))(void* blk, size_t size) {
     return wl__alloc;
 }
@@ -294,6 +315,10 @@ typedef struct wl__op_perf_info_t {
     uint64_t elapsed_ns_acc;
     uint64_t n_execs;
 } wl__op_perf_info_t;
+
+#define WL__GRA_FWD WL_GRAPH_EVAL_ORDER_FORWARD
+#define WL__GRA_BWD WL_GRAPH_EVAL_ORDER_REVERSE
+#define WL__GRA_LEN 2
 
 /*
 ** Context contains all isolated state and data.
@@ -324,9 +349,8 @@ struct wl_ctx_t {
         size_t alloc_total;                         /* Total memory allocated from memory pool. */
         bool warmup_chunks;                         /* If true, fresh pool chunks are zeroed to allocate kernel pages, can improve or decrease performance depending on scenario. */
     } pool;
-    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
-    void (*image_load_free_fn)(uint8_t*);
-    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
+    size_t tensors_created;
+    size_t tensors_alloced;
     wl_exec_mode_t exec_mode;
     bool profiler_enabled;
     wl__op_perf_info_t op_perf_mons_total[WL_OP__COUNT];
@@ -343,19 +367,38 @@ struct wl_ctx_t {
     } prng_state;
     wl_prng_algorithm_t prng_algorithm;
     uintptr_t host_thread_id;
-    void (*blas_dispatch[WL_OP__COUNT])(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**); /* BLAS dispatch table. Specialized for host CPU architecture. */
+    void (**sh_hooks)(wl_ctx_t*); /* Shutdown hooks are invoked when context is destroyed. */
+    size_t sh_len;
+    size_t sh_cap;
+    void (*blas_dispatch[WL__GRA_LEN][WL_OP__COUNT])(
+        const wl__blas_compute_info_t*,
+        wl_tensor_t*,
+        const wl_tensor_t**
+    ); /* BLAS dispatch table with forward + backward kernels. Specialized for host CPU architecture. */
+    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
+    void (*image_load_free_fn)(uint8_t*);
+    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
+    void* (*font_load_ttf_fn)(const void*, size_t);
+    void (*font_free_ttf_fn)(void*);
+    float (*font_scale_fn)(void*, float);
+    void (*font_v_metrics_fn)(void*, int32_t*, int32_t*, int32_t*);
+    void (*font_h_metrics_fn)(void*, wl_char32_t, int32_t*, int32_t*);
+    void (*font_box_fn)(void*, wl_char32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*);
+    void (*font_glyph_fn)(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t);
+    int32_t (*font_kern_advance_fn)(void*, wl_char32_t, wl_char32_t);
     void* ud; /* User data. */
 };
 
 typedef enum wl__tensor_flags_t {
     WL__TFLAG_NONE = 0,
-    WL__TFLAG_VIEW = 1<<0,         /* Tensor is a view. */
-    WL__TFLAG_OP_INPUT = 1<<1,     /* Tensor is an operation input. */
-    WL__TFLAG_OP_OUTPUT = 1<<2,    /* Tensor is an operation output. */
-    WL__TFLAG_EXEC_EAGER = 1<<3,   /* Tensor is executed eagerly. */
-    WL__TFLAG_IMAGE = 1<<4,        /* Tensor was loaded from an image. */
-    WL__TFLAG_FROM_FS = 1<<5,      /* Tensor was loaded from the file system. Also true for WL__TFLAG_IMAGE. */
-    WL__TFLAG_RECORD_PERF = 1<<6,  /* Record performance data. */
+    WL__TFLAG_VIEW = 1<<0,          /* Tensor is a view. */
+    WL__TFLAG_OP_INPUT = 1<<1,      /* Tensor is an operation input. */
+    WL__TFLAG_OP_OUTPUT = 1<<2,     /* Tensor is an operation output. */
+    WL__TFLAG_EXEC_EAGER = 1<<3,    /* Tensor is executed eagerly. */
+    WL__TFLAG_IMAGE = 1<<4,         /* Tensor was loaded from an image. */
+    WL__TFLAG_FROM_FS = 1<<5,       /* Tensor was loaded from the file system. Also true for WL__TFLAG_IMAGE. */
+    WL__TFLAG_RECORD_PERF = 1<<6,   /* Record performance data. */
+    WL__FLAG_GRA = 1<<7,            /* Tensor is a gradient. */
 } wl__tensor_flags_t;
 wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
 
@@ -375,6 +418,7 @@ struct wl_tensor_t {
     wl_tensor_t* op_inputs[WL_MAX_INPUT_TENSORS];   /* Input tensors for operators. */
     wl_op_param_t op_params[WL_MAX_OP_PARAMS];      /* Operator parameters. */
     wl_tensor_t* view;                              /* View tensor. */
+    wl_tensor_t* grad;                              /* ∇f - Gradient tensor. */
     size_t view_offs;                               /* Offset in view tensor. */
     wl__perf_mon_t pmon;                            /* Performance monitor. */
     char name[WL_MAX_TENSOR_NAME_LEN];              /* Tensor debug name. */
@@ -608,7 +652,7 @@ static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
     return pp;
 }
 
-#ifdef __aarch64__
+#if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
 static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
     register uint64x2_t r;
     __asm__ __volatile__(
@@ -627,7 +671,7 @@ static uint64x2_t WL__AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x
     );
     return r;
 }
-#elif defined(__x86_64__) || defined(_M_X64)
+#elif WL_INTRIN && defined(__x86_64__) || defined(_M_X64)
 static uint32_t wl__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
     uint64_t stack = ~(uint64_t)1;
     uint32_t acc, low;
@@ -653,7 +697,7 @@ static __m128i WL__AINLINE wl__crc_shift(uint32_t crc, size_t sz) {
 static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 checksum with CRC32c polynomial. */
     if (wl__unlikely(!buffer || !size)) return 0;
     const uint8_t* buf = (const uint8_t*)buffer;
-    #if WL_INTRIN && defined(__aarch64__)
+    #if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
         uint32_t crc = ~0;
         for (; size && ((uintptr_t)buf & 7); --size) crc = __crc32cb(crc, *buf++);
         if (((uintptr_t)buf & 8) && size >= 8) {
@@ -1052,9 +1096,20 @@ static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_featu
 #endif
 
 #if WL_ENABLE_IMAGE_SUPPORT
-    static uint8_t* wl_default_image_load_impl(const char* file, uint32_t(*whc)[3], wl_color_channels_t channels);
-    static void wl_default_image_load_free_fn_impl(uint8_t*);
-    static bool wl_default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]);
+static uint8_t* wl__default_image_load_impl(const char*, uint32_t(*)[3], wl_color_channels_t);
+static void wl__default_image_load_free_fn_impl(uint8_t*);
+static bool wl__default_image_save_impl(const char*, const uint8_t*, const uint32_t(*)[3]);
+#endif
+
+#if WL_ENABLE_FONT_RENDERER
+static void* wl__default_font_load_ttf_fn(const void*, size_t);
+static void wl__default_font_free_ttf_fn(void*);
+static float wl__default_font_scale_fn(void*, float);
+static void wl__default_font_v_metrics_fn(void*, int32_t*, int32_t*, int32_t*);
+static void wl__default_font_h_metrics_fn(void*, wl_char32_t, int32_t*, int32_t*);
+static void wl__default_font_box_fn(void*, wl_char32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*);
+static void wl__default_font_glyph_fn(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t);
+static int32_t wl__default_font_kern_advance_fn(void*, wl_char32_t, wl_char32_t);
 #endif
 
 wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
@@ -1102,11 +1157,23 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     ctx->pool.chunk_size = ctx_info.pool_chunk_size ? wl__max(ctx_info.pool_chunk_size, 8) : WL_DEFAULT_CHUNK_SIZE;
     ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? wl__max(ctx_info.pool_chunks_cap, 1) : WL_DEFAULT_CHUNK_CAP;
     ctx->pool.warmup_chunks = ctx_info.warmup_chunks;
+    double chunk_size_mem;
+    const char* chunk_size_unit;
+    wl__humanize_memory_size(ctx->pool.chunk_size, &chunk_size_mem, &chunk_size_unit);
+    wl__log_info("Pool Chunk Size: %.03f %s, Warmup Chunks: %s", chunk_size_mem, chunk_size_unit, ctx->pool.warmup_chunks ? "Y" : "N");
 
     /* Query and print host system information. */
     wl__system_host_info_query(ctx);
     wl__log_info("OS/Kernel: %s", ctx->sys.os_name);
-    wl__log_info("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
+    const char* cpu_arch = "?";
+    #if defined(__x86_64__) || defined(_M_X64)
+        cpu_arch = "x86-64";
+    #elif defined(__aarch64__)
+        cpu_arch = "aarch64";
+    #else
+    #error "Unknwon CPU arch"
+    #endif
+    wl__log_info("CPU (%s): %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", cpu_arch, ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
     #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
         printf("CPU Features:");
             for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
@@ -1129,13 +1196,35 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     ctx->pool.chunks = (uint8_t**)(*wl__alloc)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
     wl__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
+    /* Configure configureable media processors */
+
     #if WL_ENABLE_IMAGE_SUPPORT
-        ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &wl_default_image_load_impl;
-        ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &wl_default_image_load_free_fn_impl;
-        ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &wl_default_image_save_impl;
+        ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &wl__default_image_load_impl;
+        ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &wl__default_image_load_free_fn_impl;
+        ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &wl__default_image_save_impl;
     #else
         ctx->image_load_fn = ctx_info.image_load_fn;
         ctx->image_save_fn = ctx_info.image_save_fn;
+    #endif
+
+    #if WL_ENABLE_FONT_RENDERER
+        ctx->font_load_ttf_fn = ctx_info.font_load_ttf_fn ? ctx_info.font_load_ttf_fn : &wl__default_font_load_ttf_fn;
+        ctx->font_free_ttf_fn = ctx_info.font_free_ttf_fn ? ctx_info.font_free_ttf_fn : &wl__default_font_free_ttf_fn;
+        ctx->font_scale_fn = ctx_info.font_scale_fn ? ctx_info.font_scale_fn : &wl__default_font_scale_fn;
+        ctx->font_v_metrics_fn = ctx_info.font_v_metrics_fn ? ctx_info.font_v_metrics_fn : &wl__default_font_v_metrics_fn;
+        ctx->font_h_metrics_fn = ctx_info.font_h_metrics_fn ? ctx_info.font_h_metrics_fn : &wl__default_font_h_metrics_fn;
+        ctx->font_box_fn = ctx_info.font_box_fn ? ctx_info.font_box_fn : &wl__default_font_box_fn;
+        ctx->font_glyph_fn = ctx_info.font_glyph_fn ? ctx_info.font_glyph_fn : &wl__default_font_glyph_fn;
+        ctx->font_kern_advance_fn = ctx_info.font_kern_advance_fn ? ctx_info.font_kern_advance_fn : &wl__default_font_kern_advance_fn;
+    #else
+        ctx->font_load_ttf_fn = ctx_info.font_load_ttf_fn;
+        ctx->font_free_ttf_fn = ctx_info.font_free_ttf_fn;
+        ctx->font_scale_fn = ctx_info.font_scale_fn ;
+        ctx->font_v_metrics_fn = ctx_info.font_v_metrics_fn;
+        ctx->font_h_metrics_fn = ctx_info.font_h_metrics_fn;
+        ctx->font_box_fn = ctx_info.font_box_fn;
+        ctx->font_glyph_fn = ctx_info.font_glyph_fn;
+        ctx->font_kern_advance_fn = ctx_info.font_kern_advance_fn;
     #endif
 
     /* Initialize PRNG state. */
@@ -1157,6 +1246,16 @@ wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size) {
     wl_ctx_info_t info = {0};
     info.pool_chunk_size = pool_chunk_size;
     return wl_ctx_create(&info);
+}
+
+static void wl_ctx_register_shutdown_hook(wl_ctx_t* ctx, void(*fn)(wl_ctx_t*)) {
+    for (size_t i=0; i < ctx->sh_len; ++i) /* Linear search to check if the hook is already registered. */
+        if (ctx->sh_hooks[i] == fn) return;
+    if (ctx->sh_len == ctx->sh_cap) { /* Resize */
+        ctx->sh_cap = ctx->sh_cap ? ctx->sh_cap<<1 : 4;
+        ctx->sh_hooks = (*wl__alloc)(ctx->sh_hooks, ctx->sh_cap*sizeof(*ctx->sh_hooks));
+    }
+    ctx->sh_hooks[ctx->sh_len++] = fn;
 }
 
 void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size) {
@@ -1210,6 +1309,8 @@ uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx) { return ctx->sys.cpu_socke
 uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_total; }
 uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 bool wl_ctx_is_numa_system(const wl_ctx_t* ctx) { return false; /* TODO */ }
+size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx) { return ctx->tensors_created; }
+size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx) { return ctx->tensors_alloced; }
 
 void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     if (ctx->profiler_enabled) return;
@@ -1306,49 +1407,55 @@ void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file) {
 }
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {
+    if (ctx->sh_hooks) {
+        for (size_t i=0; i < ctx->sh_len; ++i)
+            if (ctx->sh_hooks[i]) (*ctx->sh_hooks[i])(ctx);
+        (*wl__alloc)(ctx->sh_hooks, 0);
+    }
     size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
     size_t mem_mapped = ctx->pool.mapped_total;
+    size_t tensors_created = ctx->tensors_created;
+    size_t tensors_alloced = ctx->tensors_alloced;
     for (size_t i=0; i < ctx->pool.chunk_len; ++i) /* Free individual chunks */
         (*wl__alloc)(ctx->pool.chunks[i], 0);
     (*wl__alloc)(ctx->pool.chunks, 0);
-    memset(ctx, (uintptr_t)ctx & 0xff, sizeof(*ctx));
+    memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
     (*wl__alloc)(ctx, 0);
     ctx = NULL;
     double alloc_total, mapped_total;
     const char* alloc_unit, *mapped_unit;
     wl__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
     wl__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
-    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s", alloc_total, alloc_unit, mapped_total, mapped_unit);
+    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s, Tensors Created: %zu, Tensors Allocated: %zu", alloc_total, alloc_unit, mapped_total, mapped_unit, tensors_created, tensors_alloced);
     wl__log_info("WAVELET context destroyed.");
 }
 
 #define wl__op_param_pack_u64(tag, x) ((wl_op_param_t)(((x)&((1ull<<(64-2))-1))|(((uint64_t)(tag)&3)<<(64-2))))
-#define wl__op_param_is_tag(param, tag) ((((param)>>(64-2))&3) == (tag))
-#define wl__op_param_unpack_u64(param) ((uint64_t)(param)&((1ull<<(64-2))-1))
-
-wl_op_param_t wl_op_param_int(uint64_t x) {
-    return wl__op_param_pack_u64(WL_OP_PARAM_INT, x);
+#define wl__op_param_tag(p) ((((p)>>(64-2))&3))
+#define wl__op_param_unpack_u64(p) ((uint64_t)(p)&((1ull<<(64-2))-1))
+wl_op_param_t wl_op_param_int(uint32_t x) { return wl__op_param_pack_u64(WL_OP_PARAM_INT, (uint64_t)x); }
+bool wl_op_param_is_int(wl_op_param_t param) { return wl__op_param_tag(param) == WL_OP_PARAM_INT; }
+uint32_t wl_op_param_unpack_int(wl_op_param_t param) { wl__assert2(wl_op_param_is_int(param)); return (uint32_t)wl__op_param_unpack_u64(param); }
+wl_op_param_t wl_op_param_float(float x) {
+    uint32_t b;
+    memcpy(&b, &x, sizeof(b));
+    return wl__op_param_pack_u64(WL_OP_PARAM_FLOAT, (uint64_t)b);
 }
-
-bool wl_op_param_is_int(wl_op_param_t param) {
-    return wl__op_param_is_tag(param, WL_OP_PARAM_INT);
+bool wl_op_param_is_float(wl_op_param_t param) { return wl__op_param_tag(param) == WL_OP_PARAM_FLOAT; }
+float wl_op_param_unpack_float(wl_op_param_t param) {
+    wl__assert2(wl_op_param_is_float(param));
+    uint32_t b = (uint32_t)wl__op_param_unpack_u64(param);
+    float f;
+    memcpy(&f, &b, sizeof(f));
+    return f;
 }
-
-uint64_t wl_op_param_unpack_int(wl_op_param_t param) {
-    wl__assert2(wl_op_param_is_int(param));
-    return wl__op_param_unpack_u64(param);
-}
-
 #undef wl__op_param_unpack_u64
 #undef wl__op_param_is_tag
 #undef wl__op_param_pack_u64
 
-uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b) {
-    return ((uint32_t)b<<16)|((uint32_t)g<<8)|(uint32_t)r;
-}
-
+uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b) { return ((uint32_t)r<<16)|((uint32_t)g<<8)|(uint32_t)b; }
 uint32_t wl_pack_color_f32(float r, float g, float b) {
-    return (((uint32_t)(b*255.0f)&255)<<16)|(((uint32_t)(g*255.0f)&255)<<8)|((uint32_t)(r*255.0f)&255);
+    return (((uint32_t)(r*255.0f)&255)<<16)|(((uint32_t)(g*255.0f)&255)<<8)|((uint32_t)(b*255.0f)&255);
 }
 
 #define wl__load_local_storage_group_arr(arr, prefix) \
@@ -1378,7 +1485,7 @@ const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type) {
 }
 
 const char* wl_op_get_name(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount) #enumerator
+    #define _(enumerator, mnemonic, argcount, paramcount, inplace) #enumerator
     static const char* const names[WL_OP__COUNT] = {
         wl_op_def(_, WL_SEP)
     };
@@ -1387,7 +1494,7 @@ const char* wl_op_get_name(wl_op_t op) {
 }
 
 const char* wl_op_get_mnemonic(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount) mnemonic
+    #define _(enumerator, mnemonic, argcount, paramcount, inplace) mnemonic
     static const char* const mnemonics[WL_OP__COUNT] = {
         wl_op_def(_, WL_SEP)
     };
@@ -1395,14 +1502,15 @@ const char* wl_op_get_mnemonic(wl_op_t op) {
     return mnemonics[op];
 }
 
-uint8_t wl_op_get_argcount(wl_op_t op) {
-    #define _(enumerator, mnemonic, argcount) ((argcount)&0xff)
-    static const uint8_t arg_counts[WL_OP__COUNT] = {
-        wl_op_def(_, WL_SEP)
-    };
-    #undef _
-    return arg_counts[op];
-}
+#define _(enumerator, mnemonic, args, params, inplace) ((((args)&3)<<6)|(((params)&3)<<3)|((inplace)&1))
+static const uint8_t wl__packed_op_info[WL_OP__COUNT] = {
+    wl_op_def(_, WL_SEP)
+};
+#undef _
+
+uint8_t wl_op_get_argcount(wl_op_t op) { return (wl__packed_op_info[op]>>6)&3; }
+uint8_t wl_op_get_paramcount(wl_op_t op) { return (wl__packed_op_info[op]>>3)&3; }
+bool wl_op_supports_inplace(wl_op_t op) { return wl__packed_op_info[op]&1; }
 
 /*
 **  validation error print template
@@ -1577,43 +1685,86 @@ static bool wl__validate_op_matmul(wl_op_t op, wl_tensor_t* result, wl_tensor_t*
     return true;
 }
 
-static bool (*wl__op_get_validator_routine(wl_op_t op))(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
-    static bool (*const routines[WL_OP__COUNT])(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {
-        [WL_OP_NOP] = &wl__validate_op_nop,
-        [WL_OP_CLONE] = &wl__validate_op_unary,
-        [WL_OP_VIEW] = &wl__validate_op_unary,
-        [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
-        [WL_OP_PERMUTE] = &wl__validate_op_transpose,
-        [WL_OP_MEAN] = &wl__validate_op_scalar,
-        [WL_OP_SUM] = &wl__validate_op_scalar,
-        [WL_OP_ABS] = &wl__validate_op_unary,
-        [WL_OP_NEG] = &wl__validate_op_unary,
-        [WL_OP_LOG] = &wl__validate_op_unary,
-        [WL_OP_SQR] = &wl__validate_op_unary,
-        [WL_OP_SQRT] = &wl__validate_op_unary,
-        [WL_OP_SIN] = &wl__validate_op_unary,
-        [WL_OP_COS] = &wl__validate_op_unary,
-        [WL_OP_STEP] = &wl__validate_op_unary,
-        [WL_OP_SOFTMAX] = &wl__validate_op_unary,
-        [WL_OP_SOFTMAX_DV] = &wl__validate_op_unary,
-        [WL_OP_SIGMOID] = &wl__validate_op_unary,
-        [WL_OP_SIGMOID_DV] = &wl__validate_op_unary,
-        [WL_OP_HARD_SIGMOID] = &wl__validate_op_unary,
-        [WL_OP_SILU] = &wl__validate_op_unary,
-        [WL_OP_SILU_DV] = &wl__validate_op_unary,
-        [WL_OP_TANH] = &wl__validate_op_unary,
-        [WL_OP_TANH_DV] = &wl__validate_op_unary,
-        [WL_OP_RELU] = &wl__validate_op_unary,
-        [WL_OP_RELU_DV] = &wl__validate_op_unary,
-        [WL_OP_GELU] = &wl__validate_op_unary,
-        [WL_OP_GELU_DV] = &wl__validate_op_unary,
-        [WL_OP_ADD] = &wl__validate_op_binary,
-        [WL_OP_SUB] = &wl__validate_op_binary,
-        [WL_OP_MUL] = &wl__validate_op_binary,
-        [WL_OP_DIV] = &wl__validate_op_binary,
-        [WL_OP_MATMUL] = &wl__validate_op_matmul,
+static bool (*wl__op_get_validator_routine(wl_op_t op, wl_graph_eval_order_t ord))(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
+    static bool (*const routines[WL__GRA_LEN][WL_OP__COUNT])(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {{ /* Forward pass */
+            [WL_OP_NOP] = &wl__validate_op_nop,
+            [WL_OP_CLONE] = &wl__validate_op_unary,
+            [WL_OP_VIEW] = &wl__validate_op_unary,
+            [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
+            [WL_OP_PERMUTE] = &wl__validate_op_transpose,
+            [WL_OP_MEAN] = &wl__validate_op_scalar,
+            [WL_OP_SUM] = &wl__validate_op_scalar,
+            [WL_OP_ABS] = &wl__validate_op_unary,
+            [WL_OP_NEG] = &wl__validate_op_unary,
+            [WL_OP_LOG] = &wl__validate_op_unary,
+            [WL_OP_SQR] = &wl__validate_op_unary,
+            [WL_OP_SQRT] = &wl__validate_op_unary,
+            [WL_OP_SIN] = &wl__validate_op_unary,
+            [WL_OP_COS] = &wl__validate_op_unary,
+            [WL_OP_STEP] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX_DV] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID_DV] = &wl__validate_op_unary,
+            [WL_OP_HARD_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SILU] = &wl__validate_op_unary,
+            [WL_OP_SILU_DV] = &wl__validate_op_unary,
+            [WL_OP_TANH] = &wl__validate_op_unary,
+            [WL_OP_TANH_DV] = &wl__validate_op_unary,
+            [WL_OP_RELU] = &wl__validate_op_unary,
+            [WL_OP_RELU_DV] = &wl__validate_op_unary,
+            [WL_OP_GELU] = &wl__validate_op_unary,
+            [WL_OP_GELU_DV] = &wl__validate_op_unary,
+            [WL_OP_ADD] = &wl__validate_op_binary,
+            [WL_OP_SUB] = &wl__validate_op_binary,
+            [WL_OP_MUL] = &wl__validate_op_binary,
+            [WL_OP_DIV] = &wl__validate_op_binary,
+            [WL_OP_ADDS] = &wl__validate_op_unary,
+            [WL_OP_SUBS] = &wl__validate_op_unary,
+            [WL_OP_MULS] = &wl__validate_op_unary,
+            [WL_OP_DIVS] = &wl__validate_op_unary,
+            [WL_OP_MATMUL] = &wl__validate_op_matmul,
+        }, { /* Backward pass. */
+            [WL_OP_NOP] = &wl__validate_op_nop,
+            [WL_OP_CLONE] = &wl__validate_op_unary,
+            [WL_OP_VIEW] = &wl__validate_op_unary,
+            [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
+            [WL_OP_PERMUTE] = &wl__validate_op_transpose,
+            [WL_OP_MEAN] = &wl__validate_op_scalar,
+            [WL_OP_SUM] = &wl__validate_op_scalar,
+            [WL_OP_ABS] = &wl__validate_op_unary,
+            [WL_OP_NEG] = &wl__validate_op_unary,
+            [WL_OP_LOG] = &wl__validate_op_unary,
+            [WL_OP_SQR] = &wl__validate_op_unary,
+            [WL_OP_SQRT] = &wl__validate_op_unary,
+            [WL_OP_SIN] = &wl__validate_op_unary,
+            [WL_OP_COS] = &wl__validate_op_unary,
+            [WL_OP_STEP] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX] = &wl__validate_op_unary,
+            [WL_OP_SOFTMAX_DV] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SIGMOID_DV] = &wl__validate_op_unary,
+            [WL_OP_HARD_SIGMOID] = &wl__validate_op_unary,
+            [WL_OP_SILU] = &wl__validate_op_unary,
+            [WL_OP_SILU_DV] = &wl__validate_op_unary,
+            [WL_OP_TANH] = &wl__validate_op_unary,
+            [WL_OP_TANH_DV] = &wl__validate_op_unary,
+            [WL_OP_RELU] = &wl__validate_op_unary,
+            [WL_OP_RELU_DV] = &wl__validate_op_unary,
+            [WL_OP_GELU] = &wl__validate_op_unary,
+            [WL_OP_GELU_DV] = &wl__validate_op_unary,
+            [WL_OP_ADD] = &wl__validate_op_binary,
+            [WL_OP_SUB] = &wl__validate_op_binary,
+            [WL_OP_MUL] = &wl__validate_op_binary,
+            [WL_OP_DIV] = &wl__validate_op_binary,
+            [WL_OP_ADDS] = &wl__validate_op_unary,
+            [WL_OP_SUBS] = &wl__validate_op_unary,
+            [WL_OP_MULS] = &wl__validate_op_unary,
+            [WL_OP_DIVS] = &wl__validate_op_unary,
+            [WL_OP_MATMUL] = &wl__validate_op_matmul,
+        }
     };
-    return routines[op];
+    return routines[ord][op];
 }
 
 static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int64_t* dims, int64_t rank, wl_tensor_t* view, size_t view_offs);
@@ -1659,7 +1810,7 @@ static wl_tensor_t* wl__result_constructor_routine_permuted(wl_tensor_t** inputs
     wl_tensor_t* permuted = wl__result_constructor_routine_view(inputs, params);
     uint32_t axes[WL_MAX_DIMS];
     for (uint32_t i = 0; i < WL_MAX_DIMS; ++i) /* Unpack axes */
-        axes[i] = wl_op_param_unpack_int((*params)[i]);
+        axes[i] = (uint32_t)wl_op_param_unpack_int((*params)[i]);
     for (uint32_t i = 0; i < WL_MAX_DIMS; ++i) { /* Check that all axes are unique */
         for (uint32_t j = i+1; j < WL_MAX_DIMS; ++j)
             wl__assert(axes[i] != axes[j], "Axes must be unique: %zu != %zu", axes[i], axes[j]);
@@ -1680,44 +1831,86 @@ static wl_tensor_t* wl__result_constructor_routine_matmul(wl_tensor_t** inputs, 
     return wl__tensor_create(inputs[0]->ctx, WL_DTYPE_F32, shape, 2, NULL, 0);
 }
 
-static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op))(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
-    static wl_tensor_t* (*const routines[])(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {
-        [WL_OP_NOP] = &wl__result_constructor_routine_nop,
-        [WL_OP_CLONE] = &wl__result_constructor_routine_isomorph_same_shape,
-        [WL_OP_VIEW] = &wl__result_constructor_routine_view,
-        [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
-        [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
-        [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
-        [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
-        [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_LOG] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SQR] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SQRT] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SIN] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_COS] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_STEP] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SOFTMAX] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SOFTMAX_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SIGMOID] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SIGMOID_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_HARD_SIGMOID] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SILU] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SILU_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_TANH] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_TANH_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_RELU] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_RELU_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_GELU] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_GELU_DV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_ADD] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
-        [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
-    };
-    wl_static_assert(WL_OP__COUNT == sizeof(routines)/sizeof(*routines));
-    return routines[op];
+static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op, wl_graph_eval_order_t gra_ord))(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
+    static wl_tensor_t* (*const routines[WL__GRA_LEN][WL_OP__COUNT])(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {{ /* Forward pass */
+            [WL_OP_NOP] = &wl__result_constructor_routine_nop,
+            [WL_OP_CLONE] = &wl__result_constructor_routine_isomorph_same_shape,
+            [WL_OP_VIEW] = &wl__result_constructor_routine_view,
+            [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
+            [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
+            [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
+            [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_LOG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQR] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQRT] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIN] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_COS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_STEP] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_HARD_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADD] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADDS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUBS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MULS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIVS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
+        }, { /* Backward pass */
+            [WL_OP_NOP] = &wl__result_constructor_routine_nop,
+            [WL_OP_CLONE] = &wl__result_constructor_routine_isomorph_same_shape,
+            [WL_OP_VIEW] = &wl__result_constructor_routine_view,
+            [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
+            [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
+            [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
+            [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_LOG] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQR] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SQRT] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIN] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_COS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_STEP] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SOFTMAX_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SIGMOID_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_HARD_SIGMOID] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SILU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_TANH_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_RELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_GELU_DV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADD] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUB] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MUL] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIV] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_ADDS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_SUBS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MULS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_DIVS] = &wl__result_constructor_routine_isomorph,
+            [WL_OP_MATMUL] = &wl__result_constructor_routine_matmul,
+    }};
+    wl_static_assert(WL_OP__COUNT*WL__GRA_LEN*sizeof(void*) == sizeof(routines));
+    return routines[gra_ord][op];
 }
 
 #undef wl__validate_inputs
@@ -1768,6 +1961,8 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     for (uint32_t i=1; i < WL_MAX_DIMS; ++i)  /* Calculate strides and check for overflow. */
         wl__assert2(!wl__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
     t->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(t + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
+    ++ctx->tensors_created;
+    if (!view) ++ctx->tensors_alloced;
     return t;
 }
 
@@ -1817,39 +2012,51 @@ static void wl__blas_compute_info_parallel(wl_ctx_t* ctx, wl__blas_compute_info_
     };
 }
 
-static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci) {
+static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, const wl_tensor_t** inputs, const wl__blas_compute_info_t* bci, wl_graph_eval_order_t ord) {
     wl__perf_mon_t* pmon = &R->pmon;
     wl__op_perf_info_t (*pmon_ops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
     wl__op_perf_info_t* pmon_op = (*pmon_ops)+R->op;
     uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_ns();    /* Profiling monitoring */
-    void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch; /* Dispatch table */
+    void (**dispatch_lut)(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**) = bci->ctx->blas_dispatch[ord]; /* Dispatch table */
     (*(*(dispatch_lut+R->op)))(bci, R, inputs);                /* Dispatch to operation. */
     if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
     pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
     pmon->elapsed_ns_acc += pmon->elapsed_ns;
-    ++pmon->n_execs;
     pmon_op->elapsed_ns_acc += pmon->elapsed_ns;
+    ++pmon->n_execs;
     ++pmon_op->n_execs;
 }
 
-wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
+wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
+    wl_graph_eval_order_t gra = WL__GRA_FWD; /* TODO */
     wl__assert2(op != WL_OP_NOP && n_inputs <= WL_MAX_INPUT_TENSORS);
-    wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_result_constructor_routine(op);
-    bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = wl__op_get_validator_routine(op);
-    wl_tensor_t* R = (*construct_result)(inputs, params);                               /* Construct result tensor. */
-    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;    /* Validation failed. */
+    wl_tensor_t* (*construct_result)(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS])
+        = wl__op_get_result_constructor_routine(op, gra);
+    bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS])
+        = wl__op_get_validator_routine(op, gra);
+    wl_tensor_t* R = (inplace && n_inputs && wl_op_supports_inplace(op))                        /* Inplace requested? */
+        ? wl__tensor_create(ctx, (*inputs)->dtype, (*inputs)->shape, (*inputs)->rank, *inputs, 0)   /* View R <- X for inplace aliasing op. */
+        : (*construct_result)(inputs, params);                                                  /* Construct new result tensor. */
+    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;            /* Validation failed. */
+    wl_tensor_t* grad = NULL;                                                                   /* ∇ᵦL = ∂L/∂B - Upper gradient tensor. */  /* TODO */
+    if (gra == WL__GRA_BWD && grad) {
+        R->grad = R->grad                                                                       /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
+            ? wl_tensor_operator(R->ctx, WL_OP_ADD, false, (wl_tensor_t*[]) {R->grad, grad}, 2, NULL)
+            : wl_tensor_operator(R->ctx, WL_OP_CLONE, false, &grad, 1, NULL);                   /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
+        R->grad->flags |= WL__TFLAG_OP_OUTPUT;
+    }
     R->flags |= WL__TFLAG_OP_OUTPUT;
     wl__assert2(R->op == WL_OP_NOP);
-    R->op = op;                                 /* Set operation for deferred execution mode. */
-    for (uint32_t i=0; i < n_inputs; ++i) {     /* Set input tensors and flags. */
-        inputs[i]->flags |= WL__TFLAG_OP_INPUT;
+    R->op = op;                                     /* Set operation for deferred execution mode. */
+    for (uint32_t i=0; i < n_inputs; ++i) {         /* Set input tensors and flags. */
+        inputs[i]->flags |= WL__TFLAG_OP_INPUT;     /* Mark and copy inputs. */
         R->op_inputs[i] = inputs[i];
     }
-    if (params) memcpy(R->op_params, *params, sizeof(*params));     /* Copy operation parameters */
-    if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                     /* In eager execution mode, we execute immediately. */
+    if (params) memcpy(R->op_params, *params, sizeof(*params));                 /* Copy operation parameters */
+    if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                                 /* In eager execution mode, we execute immediately. */
         wl__blas_compute_info_t bci;
-        wl__blas_compute_info_sequential(ctx, &bci);                /* Sequential eager execution. */
-        wl__op_exec(R, (const wl_tensor_t**)inputs, &bci);          /* Execute the operation immediately. */
+        wl__blas_compute_info_sequential(ctx, &bci);                            /* Sequential eager execution. */
+        wl__op_exec(R, (const wl_tensor_t**)inputs, &bci, gra);                 /* Execute the operation immediately. */
     }
     return R;
 }
@@ -2163,44 +2370,132 @@ bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, d
     return n_eq == n;
 }
 
-void wl_tensor_img_draw_box(wl_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t wi, uint32_t rgb) {
+void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t wi, uint32_t rgb) {
     wl__assert(t->rank == 3, "Tensor must be 3D image tensor");
-    wl__assert2(x2 > x1 && y2 > y1);
+    wl__assert2(x2 > x1 && y2 > y1 && x1 > 0 && y1 > 0 && x2 > 0 && y2 > 0);
     float* buf = wl_tensor_data_as_f32(t);
-    uint32_t w = (uint32_t)wl_tensor_image_width(t);
-    uint32_t h = (uint32_t)wl_tensor_image_height(t);
-    uint32_t c = (uint32_t)wl_tensor_image_channels(t);
-    wl__assert2(w && h && c);
-    float r = (float)(rgb&255) / 255.0f;
-    float g = (float)((rgb>>8)&255) / 255.0f;
-    float b = (float)((rgb>>16)&255) / 255.0f;
+    int32_t w = (int32_t)wl_tensor_image_width(t);
+    int32_t h = (int32_t)wl_tensor_image_height(t);
+    int32_t c = (int32_t)wl_tensor_image_channels(t);
+    wl__assert2(w && h && c == 3);
+    float r = (float)((rgb>>16)&0xff) / 255.0f;
+    float g = (float)((rgb>>8)&0xff) / 255.0f;
+    float b = (float)(rgb&0xff) / 255.0f;
     wi = wl__max(1, wi);
-    for (uint32_t i = 0; i < wi; ++i) {
-        uint32_t xx1 = x1+i;
-        uint32_t yy1 = y1+i;
-        uint32_t xx2 = x2-i;
-        uint32_t yy2 = y2-i;
-        if (xx1 >= w) xx1 = w-1;
-        if (xx2 >= w) xx2 = w-1;
-        if (yy1 >= h) yy1 = h-1;
-        if (yy2 >= h) yy2 = h-1;
-        for (uint32_t j = xx1; j <= xx2; ++j) {
-            buf[j + yy1*w + 0*w*h] = r;
-            buf[j + yy2*w + 0*w*h] = r;
-            buf[j + yy1*w + 1*w*h] = g;
-            buf[j + yy2*w + 1*w*h] = g;
-            buf[j + yy1*w + 2*w*h] = b;
-            buf[j + yy2*w + 2*w*h] = b;
+    for (int32_t i=0; i < wi; ++i) {
+        int32_t xx1 = x1+i;
+        int32_t yy1 = y1+i;
+        int32_t xx2 = x2-i;
+        int32_t yy2 = y2-i;
+        if (wl__unlikely(xx1 >= w)) xx1 = w-1;
+        if (wl__unlikely(xx2 >= w)) xx2 = w-1;
+        if (wl__unlikely(yy1 >= h)) yy1 = h-1;
+        if (wl__unlikely(yy2 >= h)) yy2 = h-1;
+        for (int32_t j=xx1; j <= xx2; ++j) {
+            float* r1 = buf + j + yy1*w + 0*w*h;
+            float* r2 = buf + j + yy2*w + 0*w*h;
+            float* g1 = buf + j + yy1*w + 1*w*h;
+            float* g2 = buf + j + yy2*w + 1*w*h;
+            float* b1 = buf + j + yy1*w + 2*w*h;
+            float* b2 = buf + j + yy2*w + 2*w*h;
+            wl__bnd_chk(r1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(r2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b2, buf, wl__tensor_data_size(t));
+            *r1 = *r2 = r;
+            *g1 = *g2 = g;
+            *b1 = *b2 = b;
         }
-        for (uint32_t j = yy1; j <= yy2; ++j) {
-            buf[xx1 + j*w + 0*w*h] = r;
-            buf[xx2 + j*w + 0*w*h] = r;
-            buf[xx1 + j*w + 1*w*h] = g;
-            buf[xx2 + j*w + 1*w*h] = g;
-            buf[xx1 + j*w + 2*w*h] = b;
-            buf[xx2 + j*w + 2*w*h] = b;
+        for (int32_t j = yy1; j <= yy2; ++j) {
+            float* r1 = buf + xx1 + j*w + 0*w*h;
+            float* r2 = buf + xx2 + j*w + 0*w*h;
+            float* g1 = buf + xx1 + j*w + 1*w*h;
+            float* g2 = buf + xx2 + j*w + 1*w*h;
+            float* b1 = buf + xx1 + j*w + 2*w*h;
+            float* b2 = buf + xx2 + j*w + 2*w*h;
+            wl__bnd_chk(r1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(r2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b2, buf, wl__tensor_data_size(t));
+            *r1 = *r2 = r;
+            *g1 = *g2 = g;
+            *b1 = *b2 = b;
         }
     }
+}
+
+extern const uint8_t wl__font_data[66428]; /* Embedded font data. See wavelet/fonts/ for font info and license. */
+
+void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt) {
+    wl__assert(t->rank == 3, "Tensor must be a 3D image tensor");
+    wl__assert2(x > 0 && y > 0 && size > 0 && txt && *txt);
+    wl_ctx_t* ctx = t->ctx;
+    void* (*font_load_ttf_fn)(const void*, size_t) = ctx->font_load_ttf_fn;
+    void (*font_free_ttf_fn)(void*) = ctx->font_free_ttf_fn;
+    float (*font_scale_fn)(void*, float) = ctx->font_scale_fn;
+    void (*font_v_metrics_fn)(void*, int32_t*, int32_t*, int32_t*) = ctx->font_v_metrics_fn;
+    void (*font_h_metrics_fn)(void*, wl_char32_t, int32_t*, int32_t*) = ctx->font_h_metrics_fn;
+    void (*font_box_fn)(void*, wl_char32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*) = ctx->font_box_fn;
+    void (*font_glyph_fn)(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t) = ctx->font_glyph_fn;
+    int32_t (*font_kern_advance_fn)(void*, wl_char32_t, wl_char32_t) = ctx->font_kern_advance_fn;
+    wl__assert(font_load_ttf_fn && font_free_ttf_fn && font_scale_fn && font_v_metrics_fn && font_h_metrics_fn && font_box_fn && font_glyph_fn && font_kern_advance_fn, "Font renderer not set");
+    void* font = (*font_load_ttf_fn)(wl__font_data, sizeof(wl__font_data));
+    wl__assert2(font);
+    float* buf = (float*)wl_tensor_data(t);
+    int32_t w = (int32_t)wl_tensor_image_width(t);
+    int32_t h = (int32_t)wl_tensor_image_height(t);
+    int32_t c = (int32_t)wl_tensor_image_channels(t);
+    wl__assert2(w && h && c == 3);
+    float r = (float)((rgb>>16)&0xff) / 255.0f;
+    float g = (float)((rgb>>8)&0xff) / 255.0f;
+    float b = (float)(rgb&0xff) / 255.0f;
+    float scale = (*font_scale_fn)(font, (float)size);
+    int32_t ascent = 0;
+    (*font_v_metrics_fn)(font, &ascent, NULL, NULL);
+    int32_t baseline = (int32_t)((float)ascent*scale);
+    int32_t x_cursor = x;
+    uint8_t* bitmap = NULL;
+    size_t bitmap_sz = 0;
+    for (; *txt; ++txt) {
+        char cp = isprint(*txt) ? *txt : '?';
+        int32_t advance, lsb, x0, y0, x1, y1;
+        (*font_h_metrics_fn)(font, cp, &advance, &lsb);
+        (*font_box_fn)(font, cp, scale, scale, &x0, &y0, &x1, &y1);
+        int32_t bw = x1-x0;
+        int32_t bh = y1-y0;
+        int32_t nb = bw*bh;
+        if (wl__unlikely(!nb)) continue;
+        if (bitmap_sz != nb) {
+            bitmap = (*wl__alloc)(bitmap, nb);
+            bitmap_sz = nb;
+        }
+        (*font_glyph_fn)(font, bitmap, bw, bh, bw, scale, scale, cp);
+        for (int32_t j = 0; j < bh; ++j) {
+            int32_t y_img = y + baseline + y0 + j;
+            if (wl__unlikely(y_img < 0 || y_img >= h)) continue;
+            for (int32_t i = 0; i < bw; ++i) {
+                int32_t x_img = x_cursor + x0 + i;
+                if (wl__unlikely(x_img < 0 || x_img >= w)) continue;
+                float a = (float)bitmap[j*bw + i] / 255.0f;
+                float* br = buf + 0*w*h + y_img*w + x_img;
+                float* bg = buf + 1*w*h + y_img*w + x_img;
+                float* bb = buf + 2*w*h + y_img*w + x_img;
+                wl__bnd_chk(br, buf, wl__tensor_data_size(t));
+                wl__bnd_chk(bg, buf, wl__tensor_data_size(t));
+                wl__bnd_chk(bb, buf, wl__tensor_data_size(t));
+                *br = *br*(1.0f-a) + a*r;
+                *bg = *bg*(1.0f-a) + a*g;
+                *bb = *bb*(1.0f-a) + a*b;
+            }
+        }
+        x_cursor += (int32_t)((float)advance * scale);
+        if (txt[1] && isprint(txt[1])) x_cursor += (int32_t)(scale * (float)(*font_kern_advance_fn)(font, cp, txt[1]));
+    }
+    (*wl__alloc)(bitmap, 0);
 }
 
 wl_ctx_t* wl_tensor_get_ctx(const wl_tensor_t* t) { return t->ctx; }
@@ -2414,6 +2709,46 @@ static void WL__HOTPROC wl__vdiv_f32(
         for (int64_t i=0; i < n; ++i)
             o[i] = x[i] / y[i];
     #endif
+}
+
+static void WL__HOTPROC wl__vadds_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] + y;
+}
+
+static void WL__HOTPROC wl__vsubs_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] - y;
+}
+
+static void WL__HOTPROC wl__vmuls_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] * y;
+}
+
+static void WL__HOTPROC wl__vdivs_f32(
+    const int64_t n,
+    float* const o,
+    const float* const x,
+    const float y
+) {
+    for (int64_t i=0; i < n; ++i)
+        o[i] = x[i] / y;
 }
 
 static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
@@ -3875,6 +4210,98 @@ static void WL__HOTPROC wl__blas_div_f32(
     }
 }
 
+static void WL__HOTPROC wl__blas_adds_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vadds_f32(cc, p_r, p_x, xi);
+    }
+}
+
+static void WL__HOTPROC wl__blas_subs_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vsubs_f32(cc, p_r, p_x, xi);
+    }
+}
+
+static void WL__HOTPROC wl__blas_muls_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vmuls_f32(cc, p_r, p_x, xi);
+    }
+}
+
+static void WL__HOTPROC wl__blas_divs_f32(
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    const float xi = wl_op_param_unpack_float(r->op_params[0]);
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_s, strides);
+    const int64_t rc = wl__tensor_num_rows(x);
+    const int64_t cc = wl__tensor_num_cols(x);
+    for (int64_t ri=0; ri < rc; ++ri) {
+        float* const p_r = b_r + ri*r_s1;
+        const float* const p_x = b_x + ri*x_s1;
+        wl__bnd_chk(p_r, b_r, wl__tensor_data_size(r));
+        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+        wl__vdivs_f32(cc, p_r, p_x, xi);
+    }
+}
+
 #if 0 /* Naive matrix multiplication, but no broadcasting support. */
 static void WL__HOTPROC wl__blas_matmul_f32(
     const wl__blas_compute_info_t* const bci,
@@ -3995,40 +4422,83 @@ static void WL__HOTPROC wl__blas_matmul_f32(
 }
 
 /* Dispatch table for default CPU-implementation. */
-static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[WL_OP__COUNT])(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**)) {
-    (*dispatch_lut)[WL_OP_NOP] = &wl__blas_nop; /* No operation */
-    (*dispatch_lut)[WL_OP_CLONE] = &wl__blas_clone;
-    (*dispatch_lut)[WL_OP_VIEW] = &wl__blas_nop; /* View is a no-op */
-    (*dispatch_lut)[WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
-    (*dispatch_lut)[WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
-    (*dispatch_lut)[WL_OP_MEAN] = &wl__blas_mean_f32;
-    (*dispatch_lut)[WL_OP_SUM] = &wl__blas_sum_f32;
-    (*dispatch_lut)[WL_OP_ABS] = &wl__blas_abs_f32;
-    (*dispatch_lut)[WL_OP_NEG] = &wl__blas_neg_f32;
-    (*dispatch_lut)[WL_OP_LOG] = &wl__blas_log_f32;
-    (*dispatch_lut)[WL_OP_SQR] = &wl__blas_sqr_f32;
-    (*dispatch_lut)[WL_OP_SQRT] = &wl__blas_sqrt_f32;
-    (*dispatch_lut)[WL_OP_SIN] = &wl__blas_sin_f32;
-    (*dispatch_lut)[WL_OP_COS] = &wl__blas_cos_f32;
-    (*dispatch_lut)[WL_OP_STEP] = &wl__blas_step_f32;
-    (*dispatch_lut)[WL_OP_SOFTMAX] = &wl__blas_softmax_f32;
-    (*dispatch_lut)[WL_OP_SOFTMAX_DV] = &wl__blas_softmax_dv_f32;
-    (*dispatch_lut)[WL_OP_SIGMOID] = &wl__blas_sigmoid_f32;
-    (*dispatch_lut)[WL_OP_SIGMOID_DV] = &wl__blas_sigmoid_dv_f32;
-    (*dispatch_lut)[WL_OP_HARD_SIGMOID] = &wl__blas_hard_sigmoid_f32;
-    (*dispatch_lut)[WL_OP_SILU] = &wl__blas_silu_f32;
-    (*dispatch_lut)[WL_OP_SILU_DV] = &wl__blas_silu_dv_f32;
-    (*dispatch_lut)[WL_OP_TANH] = &wl__blas_tanh_f32;
-    (*dispatch_lut)[WL_OP_TANH_DV] = &wl__blas_tanh_dv_f32;
-    (*dispatch_lut)[WL_OP_RELU] = &wl__blas_relu_f32;
-    (*dispatch_lut)[WL_OP_RELU_DV] = &wl__blas_relu_dv_f32;
-    (*dispatch_lut)[WL_OP_GELU] = &wl__blas_gelu_f32;
-    (*dispatch_lut)[WL_OP_GELU_DV] = &wl__blas_gelu_dv_f32;
-    (*dispatch_lut)[WL_OP_ADD] = &wl__blas_add_f32;
-    (*dispatch_lut)[WL_OP_SUB] = &wl__blas_sub_f32;
-    (*dispatch_lut)[WL_OP_MUL] = &wl__blas_mul_f32;
-    (*dispatch_lut)[WL_OP_DIV] = &wl__blas_div_f32;
-    (*dispatch_lut)[WL_OP_MATMUL] = &wl__blas_matmul_f32;
+static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)[WL__GRA_LEN][WL_OP__COUNT])(const wl__blas_compute_info_t*, wl_tensor_t*, const wl_tensor_t**)) {
+    /* Forward pass */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_NOP] = &wl__blas_nop; /* No operation */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_CLONE] = &wl__blas_clone;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_VIEW] = &wl__blas_nop; /* View is a no-op */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MEAN] = &wl__blas_mean_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUM] = &wl__blas_sum_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_ABS] = &wl__blas_abs_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_NEG] = &wl__blas_neg_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_LOG] = &wl__blas_log_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SQR] = &wl__blas_sqr_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SQRT] = &wl__blas_sqrt_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SIN] = &wl__blas_sin_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_COS] = &wl__blas_cos_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_STEP] = &wl__blas_step_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SOFTMAX] = &wl__blas_softmax_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SOFTMAX_DV] = &wl__blas_softmax_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SIGMOID] = &wl__blas_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SIGMOID_DV] = &wl__blas_sigmoid_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_HARD_SIGMOID] = &wl__blas_hard_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SILU] = &wl__blas_silu_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SILU_DV] = &wl__blas_silu_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_TANH] = &wl__blas_tanh_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_TANH_DV] = &wl__blas_tanh_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_RELU] = &wl__blas_relu_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_RELU_DV] = &wl__blas_relu_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_GELU] = &wl__blas_gelu_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_GELU_DV] = &wl__blas_gelu_dv_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_ADD] = &wl__blas_add_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUB] = &wl__blas_sub_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MUL] = &wl__blas_mul_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_DIV] = &wl__blas_div_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_ADDS] = &wl__blas_adds_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUBS] = &wl__blas_subs_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MULS] = &wl__blas_muls_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_DIVS] = &wl__blas_divs_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MATMUL] = &wl__blas_matmul_f32;
+    /* Backward pass */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_NOP] = &wl__blas_nop; /* No operation */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_CLONE] = &wl__blas_clone;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_VIEW] = &wl__blas_nop; /* View is a no-op */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MEAN] = &wl__blas_mean_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUM] = &wl__blas_sum_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_ABS] = &wl__blas_abs_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_NEG] = &wl__blas_neg_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_LOG] = &wl__blas_log_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SQR] = &wl__blas_sqr_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SQRT] = &wl__blas_sqrt_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SIN] = &wl__blas_sin_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_COS] = &wl__blas_cos_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_STEP] = &wl__blas_step_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SOFTMAX] = &wl__blas_softmax_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SOFTMAX_DV] = &wl__blas_softmax_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SIGMOID] = &wl__blas_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SIGMOID_DV] = &wl__blas_sigmoid_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_HARD_SIGMOID] = &wl__blas_hard_sigmoid_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SILU] = &wl__blas_silu_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SILU_DV] = &wl__blas_silu_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_TANH] = &wl__blas_tanh_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_TANH_DV] = &wl__blas_tanh_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_RELU] = &wl__blas_relu_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_RELU_DV] = &wl__blas_relu_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_GELU] = &wl__blas_gelu_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_GELU_DV] = &wl__blas_gelu_dv_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_ADD] = &wl__blas_add_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUB] = &wl__blas_sub_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MUL] = &wl__blas_mul_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_DIV] = &wl__blas_div_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_ADDS] = &wl__blas_adds_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUBS] = &wl__blas_subs_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MULS] = &wl__blas_muls_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_DIVS] = &wl__blas_divs_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MATMUL] = &wl__blas_matmul_f32;
 }
 
 static void wl__blas_compute_dispatch_table_install(wl_ctx_t* const ctx) {
@@ -4091,7 +4561,7 @@ static void WL__HOTPROC wl__compute_graph_coalescence_nodes_visitor(wl_tensor_t*
 wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, wl_graph_eval_order_t order, const char* name) {
     wl__assert(root->ctx == ctx && !(root->flags & WL__TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode, to be used with static graphs.");
     size_t total_nodes = 0;
-    wl__tensor_graph_visit_node(root, &wl__compute_graph_accumulate_visitor, order == WL_GRAPH_EVAL_ORDER_FORWARD, &total_nodes);
+    wl__tensor_graph_visit_node(root, &wl__compute_graph_accumulate_visitor, order == WL__GRA_FWD, &total_nodes);
     wl__assert2(total_nodes > 0);
     uintptr_t mem_req = 0; /* Memory required for compute graph. */
     wl__pincr((void**)&mem_req, sizeof(wl_compute_graph_t), __alignof__(wl_compute_graph_t)); /* Graph struct itself */
@@ -4109,7 +4579,7 @@ wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, w
     gra->visited_hs = wl__hashset_create_pooled(ctx, total_nodes);
     wl__hashset_reset(&gra->visited_hs);
     size_t n_nodes = gra->num_internal_nodes;
-    wl__tensor_graph_visit_node(root, &wl__compute_graph_coalescence_nodes_visitor, order == WL_GRAPH_EVAL_ORDER_FORWARD, gra);
+    wl__tensor_graph_visit_node(root, &wl__compute_graph_coalescence_nodes_visitor, order == WL__GRA_FWD, gra);
     size_t new_nodes = gra->num_internal_nodes - n_nodes;
     if (new_nodes > 0) /* Latest node must be starting point. */
         wl__assert2(gra->internal_nodes[gra->num_internal_nodes - 1] == root);
@@ -4128,7 +4598,7 @@ wl_tensor_t* WL__HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
     wl__blas_compute_info_sequential(gra->ctx, &bci);
     for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
         wl_tensor_t* R = nodes[i];
-        wl__op_exec(R, (const wl_tensor_t**)R->op_inputs, &bci);
+        wl__op_exec(R, (const wl_tensor_t**)R->op_inputs, &bci, gra->order);
     }
     return root;
 }
@@ -4363,7 +4833,7 @@ static void wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* G
             snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", (const char*)tmp);
     #else
         char cpu_name[128];
-        if (wl__likely(wl__cpuinfo_parse_value("model name", &cpu_name) && *cpu_name))
+        if (wl__likely((wl__cpuinfo_parse_value("model name", &cpu_name) && *cpu_name) || (wl__cpuinfo_parse_value("Model", &cpu_name) && *cpu_name)))
             snprintf(*out_cpu_name, sizeof(*out_cpu_name), "%s", cpu_name);
     #endif
 }
@@ -4400,7 +4870,6 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
             *out_sockets = wl__sysctl_unpack_int(&tmp, len);
     #else
         long nprocs = sysconf(_SC_NPROCESSORS_ONLN);
-        *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
         FILE* cpuinfo = wl__fopen("/proc/cpuinfo", "r");
         if (wl__unlikely(!cpuinfo)) return;
         uint32_t physical_ids[WL__MAX_CPUS];
@@ -4451,8 +4920,11 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
             }
         }
         fclose(cpuinfo);
-        *out_physical = cpu_count;
-        *out_sockets = package_count;
+        *out_virtual = nprocs > 0 ? (uint32_t)nprocs : 0;
+        if (!cpu_count && *out_virtual) cpu_count = *out_virtual;
+        *out_physical = wl__max(1, cpu_count);
+        *out_virtual = nprocs > 0 ? (uint32_t)nprocs : *out_physical;
+        *out_sockets = wl__max(1, package_count);
     #endif
 }
 
@@ -4726,6 +5198,8 @@ static bool wl__sto_read_tensor_header(
             wl__sto_sanitize(INT64_MAX/(*shape)[1] > (*shape)[0], false); /* Check for shape overflow */
             wl__sto_sanitize(INT64_MAX/(*shape)[2] > (*shape)[0]*(*shape)[1], false);
             wl__sto_sanitize(INT64_MAX/(*shape)[3] > (*shape)[0]*(*shape)[1]*(*shape)[2], false);
+            wl__sto_sanitize(INT64_MAX/(*shape)[4] > (*shape)[0]*(*shape)[1]*(*shape)[2]*(*shape)[3], false);
+            wl__sto_sanitize(INT64_MAX/(*shape)[5] > (*shape)[0]*(*shape)[1]*(*shape)[2]*(*shape)[3]*(*shape)[4], false);
         } break;
         default: return false;
     }
@@ -4860,7 +5334,7 @@ WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf,
 
 static bool wl__sto_has_wl_ext(const char* file) { /* Check if file path has WAVELET extension. */
     if (wl__unlikely(!file || strlen(file) < sizeof(WL__STORAGE_EXT))) return false;
-    char* dot = strrchr(file, '.');
+    const char* dot = strrchr(file, '.');
     return dot && !strcmp(dot, WL__STORAGE_EXT);
 }
 
@@ -5575,30 +6049,70 @@ static char* wl__fmt_f64(wl__format_flags sf, double n, char* p) {
 }
 
 #if WL_ENABLE_IMAGE_SUPPORT
-    static uint8_t* wl_default_image_load_impl(const char* file, uint32_t(*whc)[3], wl_color_channels_t channels) {
-        wl__assert2(file && *file && whc);
-        int w, h, c, dc;
-        switch (channels) {
-            default: dc = STBI_default; break;
-            case WL_COLOR_CHANNELS_GRAY: dc = STBI_grey; break;
-            case WL_COLOR_CHANNELS_GRAY_A: dc = STBI_grey_alpha; break;
-            case WL_COLOR_CHANNELS_RGB: dc = STBI_rgb; break;
-            case WL_COLOR_CHANNELS_RGBA: dc = STBI_rgb_alpha; break;
-        }
-        uint8_t* buf = stbi_load(file, &w, &h, &c, dc);
-        if (wl__unlikely(!buf || !w || !h || !c || (c != 1 && c != 3 && c != 4))) return NULL;
-        (*whc)[0] = (uint32_t)w;
-        (*whc)[1] = (uint32_t)h;
-        (*whc)[2] = (uint32_t)c;
-        return buf;
+static uint8_t* wl__default_image_load_impl(const char* file, uint32_t(*whc)[3], wl_color_channels_t channels) {
+    wl__assert2(file && *file && whc);
+    int w, h, c, dc;
+    switch (channels) {
+        default: dc = STBI_default; break;
+        case WL_COLOR_CHANNELS_GRAY: dc = STBI_grey; break;
+        case WL_COLOR_CHANNELS_GRAY_A: dc = STBI_grey_alpha; break;
+        case WL_COLOR_CHANNELS_RGB: dc = STBI_rgb; break;
+        case WL_COLOR_CHANNELS_RGBA: dc = STBI_rgb_alpha; break;
     }
+    uint8_t* buf = stbi_load(file, &w, &h, &c, dc);
+    if (wl__unlikely(!buf || !w || !h || !c || (c != 1 && c != 3 && c != 4))) return NULL;
+    (*whc)[0] = (uint32_t)w;
+    (*whc)[1] = (uint32_t)h;
+    (*whc)[2] = (uint32_t)c;
+    return buf;
+}
 
-    static void wl_default_image_load_free_fn_impl(uint8_t* p) {
-        stbi_image_free(p);
-    }
+static void wl__default_image_load_free_fn_impl(uint8_t* p) {
+    stbi_image_free(p);
+}
 
-    static bool wl_default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]) {
-        wl__assert2(file && *file && buf && whc);
-        return stbi_write_jpg(file, (int)(*whc)[0], (int)(*whc)[1], (int)(*whc)[2], buf, 100) != 0;
+static bool wl__default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]) {
+    wl__assert2(file && *file && buf && whc);
+    return stbi_write_jpg(file, (int)(*whc)[0], (int)(*whc)[1], (int)(*whc)[2], buf, 100) != 0;
+}
+#endif
+
+#if WL_ENABLE_FONT_RENDERER
+static void* wl__default_font_load_ttf_fn(const void* buf, size_t n) {
+    stbtt_fontinfo* info = (*wl__alloc)(NULL, sizeof(*info));
+    if (wl__unlikely(!stbtt_InitFont(info, buf, stbtt_GetFontOffsetForIndex(buf, 0)))) {
+        (*wl__alloc)(info, 0);
+        return NULL;
     }
+    return info;
+}
+
+static void wl__default_font_free_ttf_fn(void* font) {
+    (*wl__alloc)(font, 0);
+}
+
+static float wl__default_font_scale_fn(void* font, float size) {
+    return stbtt_ScaleForPixelHeight((stbtt_fontinfo*)font, wl__max(8.0f, size));
+}
+
+static void wl__default_font_v_metrics_fn(void* font, int32_t* ascent, int32_t* descent, int32_t* line_gap) {
+    stbtt_GetFontVMetrics((stbtt_fontinfo*)font, ascent, descent, line_gap);
+}
+
+static void wl__default_font_h_metrics_fn(void* font, wl_char32_t cp, int32_t* advance, int32_t* lsb) {
+    stbtt_GetCodepointHMetrics((stbtt_fontinfo*)font, cp, advance, lsb);
+}
+
+static void wl__default_font_box_fn(void* font, wl_char32_t cp, float scale_x, float scale_y, int32_t* x0, int32_t* y0, int32_t* x1, int32_t* y1) {
+    stbtt_GetCodepointBitmapBox((stbtt_fontinfo*)font, cp, scale_x, scale_y, x0, y0, x1, y1);
+}
+
+static void wl__default_font_glyph_fn(void* font, uint8_t* buf, int32_t w, int32_t h, int32_t stride, float scale_x, float scale_y, wl_char32_t cp) {
+    stbtt_MakeCodepointBitmap((stbtt_fontinfo*)font, buf, w, h, stride, scale_x, scale_y, cp);
+}
+
+static int32_t wl__default_font_kern_advance_fn(void* font, wl_char32_t cp1, wl_char32_t cp2) {
+    return stbtt_GetCodepointKernAdvance((stbtt_fontinfo*)font, cp1, cp2);
+}
+
 #endif

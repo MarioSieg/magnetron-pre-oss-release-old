@@ -5,4 +5,4 @@ import math
 
 import wavelet.core as wl
 
-approx.plot_approximation_error('tanh', math.tanh, wl.Op.TANH, domain=(-2, 2))
+approx.plot_approximation_error('tanh', math.tanh, wl.Operator.TANH, domain=(-2, 2))
