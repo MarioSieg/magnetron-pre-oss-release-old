@@ -4752,8 +4752,11 @@ static void wl_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get
     #elif defined(__APPLE__)
         size_t len;
         uint8_t tmp[256];
-        if (wl__likely(wl__sysctl_mib01(&tmp, &len, CTL_KERN, KERN_VERSION) && len && *tmp))
+        if (wl__likely(wl__sysctl_mib01(&tmp, &len, CTL_KERN, KERN_VERSION) && len && *tmp)) {
+            char* colon = strchr((const char*)tmp, ':');
+            if (colon) *colon = '\0';
             snprintf(*out_os_name, sizeof(*out_os_name), "%s", (const char*)tmp);
+        }
     #else
         // TODO: Linux
     #endif

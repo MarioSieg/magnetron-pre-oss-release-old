@@ -1,6 +1,7 @@
 const chatbox = document.getElementById('chatbox');
 const message = document.getElementById('message');
 const send = document.getElementById('send');
+const infoText = document.getElementById('info-text');
 
 function botSay(botMessage) {
     const botDiv = document.createElement('div');
@@ -28,11 +29,29 @@ send.addEventListener('click', function() {
             .catch(error => {
                 console.error('Error fetching response:', error);
             });
+
+        fetch(`/api/v1/system_info`)
+            .then(response => response.text())
+            .then(infoString => {
+                infoText.innerHTML = infoString;
+            })
+            .catch(error => {
+                console.error('Error fetching response:', error);
+            });
     }
 });
+
+fetch(`/api/v1/system_info`)
+    .then(response => response.text())
+    .then(infoString => {
+        infoText.innerHTML = infoString;
+    })
+    .catch(error => {
+        console.error('Error fetching response:', error);
+    });
 
 message.addEventListener('keypress', function(event) {
     if (event.key === 'Enter') send.click();
 });
 
-botSay('Hello! I\'m ready to solve the XOR problem for you!')
+botSay('Hello! I\'m an AI trained to solve the XOR function. Enter me two space separated numbers in {0, 1} and press enter. Like 1 0. Or 1 1.')

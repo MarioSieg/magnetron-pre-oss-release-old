@@ -1,3 +1,4 @@
+from math import ceil
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request
@@ -37,7 +38,6 @@ losses = mlp.train(inputs, targets, EPOCHS, LEARNING_RATE)
 print('Launching Flask server...')
 app = Flask(__name__)
 
-
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -50,11 +50,19 @@ def get_response():
         splits = message.split(' ')
         a: float = float(splits[0])
         b: float = float(splits[1])
-        result: float = mlp.forward(wl.Tensor.const([a, b])).scalar()
-        return f'{a} ^ {b} = {result}'
+        inp = wl.Tensor.const([a, b])
+        result: float = mlp.forward(inp).scalar()
+        result_rounded: float = mlp.forward(inp, activation=wl.Operator.HARD_SIGMOID).scalar()
+        return f'{a} ^ {b} = {result} ≈ {result_rounded} => {int(result_rounded) == 1}'
     except:
-        return 'Please enter a valid input'
+        return 'Please enter a valid input. Enter two numbers (between 0 and 1) seperated by spaces. For example: 1 1 or 1 0 or 0 0.'
+
+
+@app.route('/api/v1/system_info')
+def get_system_info():
+    ctx = wl.Context.active
+    return f'{ctx.os_name} | {ctx.cpu_name} ({ctx.cpu_virtual_cores}) | {ctx.physical_memory_total / (1 << 30)} GiB RAM | {(ctx.total_allocated_pool_memory / (1 << 20)):.2f} MiB POOL'
 
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', use_reloader=False) #  host='0.0.0.0'
+    app.run(debug=True, host='0.0.0.0', use_reloader=False)  #  host='0.0.0.0'
