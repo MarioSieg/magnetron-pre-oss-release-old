@@ -50,7 +50,7 @@ def get_response():
         splits = message.split(' ')
         a: float = float(splits[0])
         b: float = float(splits[1])
-        result: float = mlp.forward(wl.Tensor.const([a, b]), activation=wl.Operator.HARD_SIGMOID).scalar()
+        result: float = mlp.forward(wl.Tensor.const([a, b])).scalar()
         return f'{a} ^ {b} = {result}'
     except:
         return 'Please enter a valid input'
