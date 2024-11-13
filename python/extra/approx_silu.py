@@ -10,4 +10,4 @@ def silu(x: float) -> float:
     return x / (1.0 + math.exp(-x))
 
 
-approx.plot_approximation_error('silu', silu, wl.Op.SILU, domain=(-2, 2))
+approx.plot_approximation_error('silu', silu, wl.Operator.SILU, domain=(-2, 2))

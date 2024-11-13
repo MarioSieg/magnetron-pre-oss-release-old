@@ -3,6 +3,11 @@
 import wavelet.core as wl
 import numpy as np
 
+ricc = wl.Tensor.full(shape=(2, 2), fill_value=1.0)
+print(ricc)
+ricc += ricc
+print(ricc)
+
 data = [
     [3,4,2,4], [3,4,2,4]
 ]

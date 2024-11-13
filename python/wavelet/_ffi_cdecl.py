@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-06 13:50:21.897570, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-13 02:08:11.499796, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -18,6 +18,7 @@ typedef int wl_graph_eval_order_t;
 
 extern   void* (*wl_get_alloc_fn(void))(void* blk, size_t size);
 extern   void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size));
+extern   void wl_set_set_log_mode(bool enabled);
 extern   wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info);
 extern   wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size);
 extern   void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size);
@@ -35,6 +36,8 @@ extern   uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx);
 extern   uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx);
 extern   bool wl_ctx_is_numa_system(const wl_ctx_t* ctx);
+extern   size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx);
+extern   size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx);
 extern   void wl_ctx_profile_start_recording(wl_ctx_t* ctx);
 extern   void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file);
 extern   void wl_ctx_destroy(wl_ctx_t* ctx);
@@ -42,10 +45,15 @@ extern   const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 extern   const char* wl_op_get_name(wl_op_t op);
 extern   const char* wl_op_get_mnemonic(wl_op_t op);
 extern   uint8_t wl_op_get_argcount(wl_op_t op);
+extern   uint8_t wl_op_get_paramcount(wl_op_t op);
+extern   bool wl_op_supports_inplace(wl_op_t op);
 typedef uint64_t wl_op_param_t;
-extern   wl_op_param_t wl_op_param_int(uint64_t x);
+extern   wl_op_param_t wl_op_param_int(uint32_t x);
 extern   bool wl_op_param_is_int(wl_op_param_t param);
-extern   uint64_t wl_op_param_unpack_int(wl_op_param_t param);
+extern   uint32_t wl_op_param_unpack_int(wl_op_param_t param);
+extern   wl_op_param_t wl_op_param_float(float x);
+extern   bool wl_op_param_is_float(wl_op_param_t param);
+extern   float wl_op_param_unpack_float(wl_op_param_t param);
 extern   uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
 extern   uint32_t wl_pack_color_f32(float r, float g, float b);
 extern   wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1);
@@ -54,7 +62,7 @@ extern   wl_tensor_t* wl_tensor_create_3d(wl_ctx_t* ctx, wl_dtype_t type, int64_
 extern   wl_tensor_t* wl_tensor_create_4d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
 extern   wl_tensor_t* wl_tensor_create_5d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
 extern   wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6);
-extern   wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[6]);
+extern   wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[6]);
 extern   void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size);
 extern   void wl_tensor_fill(wl_tensor_t* t, float x);
 extern   void wl_tensor_fill_random(wl_tensor_t* t, float min, float max);
@@ -89,7 +97,8 @@ extern   float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t 
 extern   void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x);
 extern   bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b);
 extern   bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, double* percent_eq);
-extern   void wl_tensor_img_draw_box(wl_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t wi, uint32_t rgb);
+extern   void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t wi, uint32_t rgb);
+extern   void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt);
 extern   wl_ctx_t* wl_tensor_get_ctx(const wl_tensor_t* t);
 extern   void* wl_tensor_get_user_data(const wl_tensor_t* t);
 extern   void wl_tensor_set_user_data(wl_tensor_t* t, void* ud);

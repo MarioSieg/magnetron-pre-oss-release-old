@@ -72,6 +72,9 @@ typedef enum wl_color_channels_t {
 
 extern WL_EXPORT void* (*wl_get_alloc_fn(void))(void* blk, size_t size); /* Get global allocator. */
 extern WL_EXPORT void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size)); /* Set global allocator. */
+extern WL_EXPORT void wl_set_set_log_mode(bool enabled); /* Enable/disable logging. */
+
+typedef uint32_t wl_char32_t;
 
 typedef struct wl_ctx_info_t {
     size_t pool_chunk_size; /* Size of each memory pool chunk */
@@ -83,6 +86,14 @@ typedef struct wl_ctx_info_t {
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t); /* Image raw data loader. */
     void (*image_load_free_fn)(uint8_t*); /* Free function for buffer returned by image_load_fn(). */
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]); /* Image raw data saver. */
+    void* (*font_load_ttf_fn)(const void*, size_t);
+    void (*font_free_ttf_fn)(void*);
+    float (*font_scale_fn)(void*, float);
+    void (*font_v_metrics_fn)(void*, int32_t*, int32_t*, int32_t*);
+    void (*font_h_metrics_fn)(void*, uint32_t, int32_t*, int32_t*);
+    void (*font_box_fn)(void*, uint32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*);
+    void (*font_glyph_fn)(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t);
+    int32_t (*font_kern_advance_fn)(void*, uint32_t, uint32_t);
     void* user_data; /* User-defined data */
 } wl_ctx_info_t;
 
@@ -105,6 +116,8 @@ extern WL_EXPORT uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx); /* Get th
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx); /* Get the total physical memory in bytes */
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx); /* Get the free physical memory in bytes */
 extern WL_EXPORT bool wl_ctx_is_numa_system(const wl_ctx_t* ctx); /* Check if the system is NUMA */
+extern WL_EXPORT size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx); /* Get total tensors created. (Including views) */
+extern WL_EXPORT size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx); /* Get total tensors created. (Allocations only) */
 extern WL_EXPORT void wl_ctx_profile_start_recording(wl_ctx_t* ctx); /* Start profiling */
 extern WL_EXPORT void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file); /* Reset profiling data */
 extern WL_EXPORT void wl_ctx_destroy(wl_ctx_t* ctx); /* Destroy context and free memory */
@@ -122,42 +135,46 @@ typedef struct wl_dtype_info_t {
 extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
 
 #define WL_SEP ,
-#define wl_op_def(_, __) /* Enumerator | Mnemonic | Argcount */\
-    _(NOP,              "nop",              0)/* No Operation */__\
-    _(CLONE,            "clone",            1)/* R = clone(X) */__\
-    _(VIEW,             "view",             1)/* R = X[:] */__\
-    _(TRANSPOSE,        "transpose",        1)/* R = Xᵀ */__\
-    _(PERMUTE,          "permute",          1)/* R = permute(X, axes) */__\
-    _(MEAN,             "mean",             1)/* R = ΣX/n */__\
-    _(SUM,              "sum",              1)/* R = ΣX */__\
-    _(ABS,              "abs",              1)/* R = |X| */__\
-    _(NEG,              "neg",              1)/* R = -X */__\
-    _(LOG,              "log",              1)/* R = log X */__\
-    _(SQR,              "sqr",              1)/* R = X² */__\
-    _(SQRT,             "sqrt",             1)/* R = √X */__\
-    _(SIN,              "sin",              1)/* R = sin X */__\
-    _(COS,              "cos",              1)/* R = cos X */__\
-    _(STEP,             "step",             1)/* R = step(X) */__\
-    _(SOFTMAX,          "softmax'",         1)/* R = softmax(X) */__\
-    _(SOFTMAX_DV,       "softmax'",         1)/* R = softmax'(X) */__\
-    _(SIGMOID,          "sigmoid",          1)/* R = sigmoid(X) */__\
-    _(SIGMOID_DV,       "sigmoid'",         1)/* R = sigmoid'(X) */__\
-    _(HARD_SIGMOID,     "hard_sigmoid",     1)/* R = hard_sigmoid(X) */__\
-    _(SILU,             "SiLU",             1)/* R = silu(X) */__\
-    _(SILU_DV,          "SiLU'",            1)/* R = silu'(X) */__\
-    _(TANH,             "tanh",             1)/* R = tanh(X) */__\
-    _(TANH_DV,          "tanh'",            1)/* R = tanh'(X) */__\
-    _(RELU,             "ReLU",             1)/* R = relu(X) */__\
-    _(RELU_DV,          "ReLU'",            1)/* R = relu'(X) */__\
-    _(GELU,             "GeLU",             1)/* R = gelu(X) */__\
-    _(GELU_DV,          "GeLU'",            1)/* R = gelu'(X) */__\
-    _(ADD,              "+",                2)/* R = X+Y */__\
-    _(SUB,              "-",                2)/* R = X-Y */__\
-    _(MUL,              "*",                2)/* R = X*Y (Hadamard product) */__\
-    _(DIV,              "/",                2)/* R = X/Y */__\
-    _(MATMUL,           "@",                2)/* R = A@B */__
+#define wl_op_def(_, __) /* Enumerator | Mnemonic | Argcount | Paramcount, Inplace Support */\
+    _(NOP,              "nop",              0, 0, false)/* No Operation */__\
+    _(CLONE,            "clone",            1, 0, false)/* R = clone(X) */__\
+    _(VIEW,             "view",             1, 0, false)/* R = X[:] */__\
+    _(TRANSPOSE,        "transpose",        1, 0, false)/* R = Xᵀ */__\
+    _(PERMUTE,          "permute",          1, 6, false)/* R = permute(X, axes) */__\
+    _(MEAN,             "mean",             1, 0, false)/* R = ΣX/n */__\
+    _(SUM,              "sum",              1, 0, false)/* R = ΣX */__\
+    _(ABS,              "abs",              1, 0, true)/* R = |X| */__\
+    _(NEG,              "neg",              1, 0, true)/* R = -X */__\
+    _(LOG,              "log",              1, 0, true)/* R = log X */__\
+    _(SQR,              "sqr",              1, 0, true)/* R = X² */__\
+    _(SQRT,             "sqrt",             1, 0, true)/* R = √X */__\
+    _(SIN,              "sin",              1, 0, true)/* R = sin X */__\
+    _(COS,              "cos",              1, 0, true)/* R = cos X */__\
+    _(STEP,             "step",             1, 0, true)/* R = step(X) */__\
+    _(SOFTMAX,          "softmax'",         1, 0, true)/* R = softmax(X) */__\
+    _(SOFTMAX_DV,       "softmax'",         1, 0, true)/* R = softmax'(X) */__\
+    _(SIGMOID,          "sigmoid",          1, 0, true)/* R = sigmoid(X) */__\
+    _(SIGMOID_DV,       "sigmoid'",         1, 0, true)/* R = sigmoid'(X) */__\
+    _(HARD_SIGMOID,     "hard_sigmoid",     1, 0, true)/* R = hard_sigmoid(X) */__\
+    _(SILU,             "SiLU",             1, 0, true)/* R = silu(X) */__\
+    _(SILU_DV,          "SiLU'",            1, 0, true)/* R = silu'(X) */__\
+    _(TANH,             "tanh",             1, 0, true)/* R = tanh(X) */__\
+    _(TANH_DV,          "tanh'",            1, 0, true)/* R = tanh'(X) */__\
+    _(RELU,             "ReLU",             1, 0, true)/* R = relu(X) */__\
+    _(RELU_DV,          "ReLU'",            1, 0, true)/* R = relu'(X) */__\
+    _(GELU,             "GeLU",             1, 0, true)/* R = gelu(X) */__\
+    _(GELU_DV,          "GeLU'",            1, 0, true)/* R = gelu'(X) */__\
+    _(ADD,              "+",                2, 0, true) /* R = X+Y */__\
+    _(SUB,              "-",                2, 0, true) /* R = X-Y */__\
+    _(MUL,              "*",                2, 0, true) /* R = X*Y (Hadamard product) */__\
+    _(DIV,              "/",                2, 0, true) /* R = X/Y */__\
+    _(ADDS,             "+ξ",               1, 1, true) /* R = X+ξ */__\
+    _(SUBS,             "-ξ",               1, 1, true) /* R = X-ξ */__\
+    _(MULS,             "*ξ",               1, 1, true) /* R = X*ξ (Hadamard product) */__\
+    _(DIVS,             "/ξ",               1, 1, true) /* R = X/ξ */__\
+    _(MATMUL,           "@",                2, 0, true)/* R = A@B */__
 
-#define _(enumerator, mnemonic, argcount) WL_OP_##enumerator
+#define _(enumerator, mnemonic, argcount, paramcount, inplace) WL_OP_##enumerator
 typedef enum wl_op_t {
     wl_op_def(_, WL_SEP)
     WL_OP__COUNT
@@ -169,6 +186,8 @@ wl_static_assert(WL_OP__COUNT <= 0xff);
 extern WL_EXPORT const char* wl_op_get_name(wl_op_t op);
 extern WL_EXPORT const char* wl_op_get_mnemonic(wl_op_t op);
 extern WL_EXPORT uint8_t wl_op_get_argcount(wl_op_t op);
+extern WL_EXPORT uint8_t wl_op_get_paramcount(wl_op_t op);
+extern WL_EXPORT bool wl_op_supports_inplace(wl_op_t op);
 #define wl_op_is_unary(op) (wl_op_get_argcount(op) == 1)
 #define wl_op_is_binary(op) (wl_op_get_argcount(op) == 2)
 
@@ -184,9 +203,12 @@ typedef enum wl_op_param_type_t {     /* 2-bit Parameter type tag for operation 
 */
 typedef uint64_t wl_op_param_t;
 wl_static_assert(sizeof(wl_op_param_t) == 8);
-extern WL_EXPORT wl_op_param_t wl_op_param_int(uint64_t x); /* Create an integer parameter */
+extern WL_EXPORT wl_op_param_t wl_op_param_int(uint32_t x); /* Create an integer parameter */
 extern WL_EXPORT bool wl_op_param_is_int(wl_op_param_t param); /* Check if parameter is integer */
-extern WL_EXPORT uint64_t wl_op_param_unpack_int(wl_op_param_t param); /* Get integer value from parameter */
+extern WL_EXPORT uint32_t wl_op_param_unpack_int(wl_op_param_t param); /* Get integer value from parameter */
+extern WL_EXPORT wl_op_param_t wl_op_param_float(float x); /* Create an integer parameter */
+extern WL_EXPORT bool wl_op_param_is_float(wl_op_param_t param); /* Check if parameter is integer */
+extern WL_EXPORT float wl_op_param_unpack_float(wl_op_param_t param); /* Get integer value from parameter */
 
 extern WL_EXPORT uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
 extern WL_EXPORT uint32_t wl_pack_color_f32(float r, float g, float b);
@@ -205,7 +227,7 @@ extern WL_EXPORT wl_tensor_t* wl_tensor_create_4d(wl_ctx_t* ctx, wl_dtype_t type
 extern WL_EXPORT wl_tensor_t* wl_tensor_create_5d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5); /* Create 5D tensor */
 extern WL_EXPORT wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6); /* Create 6D tensor */
 
-extern WL_EXPORT wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
+extern WL_EXPORT wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
 
 extern WL_EXPORT void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size); /* Copy data into tensor buffer */
 extern WL_EXPORT void wl_tensor_fill(wl_tensor_t* t, float x); /* Set all tensor elements to a specific value */
@@ -242,7 +264,8 @@ extern WL_EXPORT float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, 
 extern WL_EXPORT void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern WL_EXPORT bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern WL_EXPORT bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
-extern WL_EXPORT void wl_tensor_img_draw_box(wl_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t wi, uint32_t rgb);
+extern WL_EXPORT void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t wi, uint32_t rgb);
+extern WL_EXPORT void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt); /* Draw text on image tensor */
 extern WL_EXPORT wl_ctx_t* wl_tensor_get_ctx(const wl_tensor_t* t); /* Get the context of the tensor */
 extern WL_EXPORT void* wl_tensor_get_user_data(const wl_tensor_t* t); /* Get the user data of the tensor */
 extern WL_EXPORT void wl_tensor_set_user_data(wl_tensor_t* t, void* ud); /* Set the user data of the tensor */

@@ -19,8 +19,8 @@ def comment_replacer(match):
 
 macro_substitutions: dict[str, str] = {
     'WL_EXPORT': ' ',
-    'WL_MAX_DIMS': str(6), # SYNC with wavelet.h
-    'WL_MAX_OP_PARAMS': str(6) # SYNC with wavelet.h
+    'WL_MAX_DIMS': str(6),  # SYNC with wavelet.h
+    'WL_MAX_OP_PARAMS': str(6)  # SYNC with wavelet.h
 }
 
 enums_names: list[str] = []
