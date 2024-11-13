@@ -254,7 +254,8 @@ extern WL_EXPORT float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, 
 extern WL_EXPORT void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern WL_EXPORT bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern WL_EXPORT bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */
-extern WL_EXPORT void wl_tensor_img_draw_box(wl_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t wi, uint32_t rgb);
+extern WL_EXPORT void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t wi, uint32_t rgb);
+extern WL_EXPORT void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt); /* Draw text on image tensor */
 extern WL_EXPORT wl_ctx_t* wl_tensor_get_ctx(const wl_tensor_t* t); /* Get the context of the tensor */
 extern WL_EXPORT void* wl_tensor_get_user_data(const wl_tensor_t* t); /* Get the user data of the tensor */
 extern WL_EXPORT void wl_tensor_set_user_data(wl_tensor_t* t, void* ud); /* Set the user data of the tensor */

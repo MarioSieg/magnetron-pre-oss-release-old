@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-12 20:02:40.869397, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-13 02:08:11.499796, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -97,7 +97,8 @@ extern   float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t 
 extern   void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x);
 extern   bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b);
 extern   bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, double* percent_eq);
-extern   void wl_tensor_img_draw_box(wl_tensor_t* t, uint32_t x1, uint32_t y1, uint32_t x2, uint32_t y2, uint32_t wi, uint32_t rgb);
+extern   void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t wi, uint32_t rgb);
+extern   void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt);
 extern   wl_ctx_t* wl_tensor_get_ctx(const wl_tensor_t* t);
 extern   void* wl_tensor_get_user_data(const wl_tensor_t* t);
 extern   void wl_tensor_set_user_data(wl_tensor_t* t, void* ud);

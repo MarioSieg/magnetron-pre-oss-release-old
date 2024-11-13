@@ -554,9 +554,12 @@ class Tensor:
             print(f'Tensors are close: {is_eq}, Percent equal: {percent_eq[0]:.2f}%')
         return is_eq, percent_eq[0]
 
-    def image_draw_box(self, p1: (int, int), p2: (int, int), width: int = 2, rgb: int = pack_color(0xff, 0xff, 0xff)):
+    def image_draw_box(self, p1: (int, int), p2: (int, int), width: int = 2, rgb: int = 0xffffff):
         assert p2[0] > p1[0] and p2[1] > p1[1] and width > 0
         C.wl_tensor_img_draw_box(self.tensor, p1[0], p1[1], p2[0], p2[1], width, rgb & 0xffffff)
+
+    def image_draw_text(self, p: (int, int), size: int, txt: str, rgb: int = 0xffffff):
+        C.wl_tensor_img_draw_text(self.tensor, p[0], p[1], size, rgb & 0xffffff, bytes(txt, 'utf-8'))
 
     def save(self, file_path: str) -> None:
         """Saves to tensor to a binary WAVELET file"""
