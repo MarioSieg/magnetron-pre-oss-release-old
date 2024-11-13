@@ -1390,9 +1390,9 @@ float wl_op_param_unpack_float(wl_op_param_t param) {
 #undef wl__op_param_is_tag
 #undef wl__op_param_pack_u64
 
-uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b) { return ((uint32_t)b<<16)|((uint32_t)g<<8)|(uint32_t)r; }
+uint32_t wl_pack_color_u8(uint8_t r, uint8_t g, uint8_t b) { return ((uint32_t)r<<16)|((uint32_t)g<<8)|(uint32_t)b; }
 uint32_t wl_pack_color_f32(float r, float g, float b) {
-    return (((uint32_t)(b*255.0f)&255)<<16)|(((uint32_t)(g*255.0f)&255)<<8)|((uint32_t)(r*255.0f)&255);
+    return (((uint32_t)(r*255.0f)&255)<<16)|(((uint32_t)(g*255.0f)&255)<<8)|((uint32_t)(b*255.0f)&255);
 }
 
 #define wl__load_local_storage_group_arr(arr, prefix) \
@@ -2315,9 +2315,9 @@ void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, 
     int32_t h = (int32_t)wl_tensor_image_height(t);
     int32_t c = (int32_t)wl_tensor_image_channels(t);
     wl__assert2(w && h && c == 3);
-    float r = (float)(rgb&255) / 255.0f;
-    float g = (float)((rgb>>8)&255) / 255.0f;
-    float b = (float)((rgb>>16)&255) / 255.0f;
+    float r = (float)((rgb>>16)&0xff) / 255.0f;
+    float g = (float)((rgb>>8)&0xff) / 255.0f;
+    float b = (float)(rgb&0xff) / 255.0f;
     wi = wl__max(1, wi);
     for (int32_t i=0; i < wi; ++i) {
         int32_t xx1 = x1+i;
@@ -2350,7 +2350,7 @@ void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include "optional/stb_truetype.h"
 
-extern const uint8_t wl__font_data[182984]; /* Embedded font data. */
+extern const uint8_t wl__font_data[66428]; /* Embedded font data. See wavelet/fonts/ for font info and license. */
 
 void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt) {
     wl__assert(t->rank == 3, "Tensor must be a 3D image tensor");
@@ -2359,9 +2359,9 @@ void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size,
     int32_t h = (int32_t)wl_tensor_image_height(t);
     int32_t c = (int32_t)wl_tensor_image_channels(t);
     wl__assert2(w && h && c == 3);
-    float r = (float)(rgb&255) / 255.0f;
-    float g = (float)((rgb>>8)&255) / 255.0f;
-    float b = (float)((rgb>>16)&255) / 255.0f;
+    float r = (float)((rgb>>16)&0xff) / 255.0f;
+    float g = (float)((rgb>>8)&0xff) / 255.0f;
+    float b = (float)(rgb&0xff) / 255.0f;
     stbtt_fontinfo font;
     wl__assert2(stbtt_InitFont(&font, wl__font_data, stbtt_GetFontOffsetForIndex(wl__font_data, 0)));
     float scale = stbtt_ScaleForPixelHeight(&font, wl__max(8.0f, (float)size));
@@ -2396,9 +2396,9 @@ void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size,
                 float* br = buf + 0*w*h + y_img*w + x_img;
                 float* bg = buf + 1*w*h + y_img*w + x_img;
                 float* bb = buf + 2*w*h + y_img*w + x_img;
-                *br = *br*(1.0f-a) + a*b;
+                *br = *br*(1.0f-a) + a*r;
                 *bg = *bg*(1.0f-a) + a*g;
-                *bb = *bb*(1.0f-a) + a*r;
+                *bb = *bb*(1.0f-a) + a*b;
             }
         }
         x_cursor += advance * scale;
