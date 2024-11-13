@@ -86,14 +86,6 @@ typedef struct wl_ctx_info_t {
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t); /* Image raw data loader. */
     void (*image_load_free_fn)(uint8_t*); /* Free function for buffer returned by image_load_fn(). */
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]); /* Image raw data saver. */
-    void* (*font_load_ttf_fn)(const void*, size_t);
-    void (*font_free_ttf_fn)(void*);
-    float (*font_scale_fn)(void*, float);
-    void (*font_v_metrics_fn)(void*, int32_t*, int32_t*, int32_t*);
-    void (*font_h_metrics_fn)(void*, uint32_t, int32_t*, int32_t*);
-    void (*font_box_fn)(void*, uint32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*);
-    void (*font_glyph_fn)(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t);
-    int32_t (*font_kern_advance_fn)(void*, uint32_t, uint32_t);
     void* user_data; /* User-defined data */
 } wl_ctx_info_t;
 
@@ -271,8 +263,8 @@ extern WL_EXPORT void* wl_tensor_get_user_data(const wl_tensor_t* t); /* Get the
 extern WL_EXPORT void wl_tensor_set_user_data(wl_tensor_t* t, void* ud); /* Set the user data of the tensor */
 extern WL_EXPORT void wl_tensor_save(const wl_tensor_t* t, const char* file); /* Save tensor to WAVELET binary file. */
 extern WL_EXPORT wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file); /* Load tensor from WAVELET binary file. */
-extern WL_EXPORT wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t resize_w, uint32_t resize_h); /* Create a tensor from an image file. */
-extern WL_EXPORT void wl_tensor_save_image(const wl_tensor_t* t, const char* file); /* Save tensor data as an image */
+extern WL_EXPORT wl_tensor_t* wl_tensor_load_png(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t resize_w, uint32_t resize_h); /* Create a tensor from an image file. */
+extern WL_EXPORT void wl_tensor_save_png(const wl_tensor_t* t, const char* file); /* Save tensor data as an image */
 #define wl_tensor_image_width(tensor) (wl_tensor_shape(tensor)[2]) /* Get image width from tensor */
 #define wl_tensor_image_height(tensor) (wl_tensor_shape(tensor)[1]) /* Get image height from tensor */
 #define wl_tensor_image_channels(tensor) (wl_tensor_shape(tensor)[0]) /* Get image channels from tensor */
