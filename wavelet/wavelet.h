@@ -74,6 +74,8 @@ extern WL_EXPORT void* (*wl_get_alloc_fn(void))(void* blk, size_t size); /* Get 
 extern WL_EXPORT void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size)); /* Set global allocator. */
 extern WL_EXPORT void wl_set_set_log_mode(bool enabled); /* Enable/disable logging. */
 
+typedef uint32_t wl_char32_t;
+
 typedef struct wl_ctx_info_t {
     size_t pool_chunk_size; /* Size of each memory pool chunk */
     size_t pool_chunks_cap; /* Maximum chunks in the pool */
@@ -84,6 +86,14 @@ typedef struct wl_ctx_info_t {
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t); /* Image raw data loader. */
     void (*image_load_free_fn)(uint8_t*); /* Free function for buffer returned by image_load_fn(). */
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]); /* Image raw data saver. */
+    void* (*font_load_ttf_fn)(const void*, size_t);
+    void (*font_free_ttf_fn)(void*);
+    float (*font_scale_fn)(void*, float);
+    void (*font_v_metrics_fn)(void*, int32_t*, int32_t*, int32_t*);
+    void (*font_h_metrics_fn)(void*, uint32_t, int32_t*, int32_t*);
+    void (*font_box_fn)(void*, uint32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*);
+    void (*font_glyph_fn)(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t);
+    int32_t (*font_kern_advance_fn)(void*, uint32_t, uint32_t);
     void* user_data; /* User-defined data */
 } wl_ctx_info_t;
 

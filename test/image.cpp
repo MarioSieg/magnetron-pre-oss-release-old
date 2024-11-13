@@ -58,3 +58,14 @@ TEST(image, draw_box) {
 
     wl_ctx_destroy(ctx);
 }
+
+TEST(image, draw_text) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+
+    wl_tensor_t* img = wl_tensor_load_image(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 256, 256);
+    wl_tensor_img_draw_text(img, 100, 100, 50, 0xffffff, "Hallö!");
+    wl_tensor_print(img, true, false);
+    //wl_tensor_save_image(img, "test_data/car3.jpg");
+
+    wl_ctx_destroy(ctx);
+}

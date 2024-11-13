@@ -73,22 +73,6 @@ wl_static_assert(sizeof(0ull) == 8);
 #define WL__MAX_CPUS 8192
 #define WL__MAX_NUMA_NODES 64
 #define WL__STORAGE_EXT ".wavelet"
-
-#ifdef WL_ENABLE_IMAGE_SUPPORT
-/*
-    #define STBI_MALLOC(sz) (*wl__alloc)(NULL, (sz))
-    #define STBI_FREE(ptr) (*wl__alloc)((ptr), 0)
-    #define STBI_REALLOC(ptr, sz) (*wl__alloc)((ptr), (sz))
-    #define STBIW_MALLOC(sz) (*wl__alloc)(NULL, (sz))
-    #define STBIW_FREE(ptr) (*wl__alloc)((ptr), 0)
-    #define STBIW_REALLOC(ptr, sz) (*wl__alloc)((ptr), (sz))
-*/
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb_image.h>
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include <stb_image_write.h>
-#endif
-
 #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
 #define WL__NORET __attribute__((noreturn))
 #define WL__ALIGN(x) __attribute__((aligned(x)))
@@ -179,6 +163,44 @@ WL__NORET WL__COLDPROC WL_EXPORT void wl__panic(const char* msg, ...) {
         wl__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
     }
 #define wl__assert2(expr) wl__assert(expr, "")
+
+static void* wl__default_allocator_impl(void* blk, size_t size) {
+    if (!size) {
+        free(blk);
+        return NULL;
+    } else if(!blk) {
+        blk = malloc(size);
+        wl__assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
+        return blk;
+    } else {
+        void* block = realloc(blk, size);
+        wl__assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
+        return block;
+    }
+}
+
+static void* (*wl__alloc)(void* blk, size_t size) = &wl__default_allocator_impl;
+
+#ifdef WL_ENABLE_IMAGE_SUPPORT
+#define STBI_STATIC
+#define STBI_MALLOC(sz) ((*wl__alloc)(NULL, (sz)))
+#define STBI_FREE(ptr) ((*wl__alloc)((ptr), 0))
+#define STBI_REALLOC(ptr, sz) ((*wl__alloc)((ptr), (sz)))
+#define STBIW_MALLOC(sz) ((*wl__alloc)(NULL, (sz)))
+#define STBIW_FREE(ptr) ((*wl__alloc)((ptr), 0))
+#define STBIW_REALLOC(ptr, sz) ((*wl__alloc)((ptr), (sz)))
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
+#endif
+#ifdef WL_ENABLE_FONT_RENDERER
+#define STB_TRUETYPE_IMPLEMENTATION
+#define STBTT_STATIC
+#define STBTT_malloc(sz, ud) ((*wl__alloc)(NULL, (sz)))
+#define STBTT_free(x,u) ((*wl__alloc)((x), 0))
+#include <stb_truetype.h>
+#endif
 
 #if defined(__x86_64__) || defined(_M_X64)
 #define WL__X86_64_CPUID_0H 0
@@ -274,24 +296,6 @@ static const uint32_t msml__x86_64_feature_masks[WL__X86_64_FEATURE__COUNT] = {
 #undef wl_x86_64_feature_def
 #endif
 
-
-static void* wl_default_allocator_impl(void* blk, size_t size) {
-    if (!size) {
-        free(blk);
-        return NULL;
-    } else if(!blk) {
-        blk = malloc(size);
-        wl__assert(blk, "Failed to allocate %.03fKiB memory", (double)size/(double)(1<<10));
-        return blk;
-    } else {
-        void* block = realloc(blk, size);
-        wl__assert(blk, "Failed to reallocate %.03fKiB memory", (double)size/(double)(1<<10));
-        return block;
-    }
-}
-
-static void* (*wl__alloc)(void* blk, size_t size) = &wl_default_allocator_impl;
-
 void* (*wl_get_alloc_fn(void))(void* blk, size_t size) {
     return wl__alloc;
 }
@@ -347,9 +351,6 @@ struct wl_ctx_t {
     } pool;
     size_t tensors_created;
     size_t tensors_alloced;
-    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
-    void (*image_load_free_fn)(uint8_t*);
-    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
     wl_exec_mode_t exec_mode;
     bool profiler_enabled;
     wl__op_perf_info_t op_perf_mons_total[WL_OP__COUNT];
@@ -366,11 +367,25 @@ struct wl_ctx_t {
     } prng_state;
     wl_prng_algorithm_t prng_algorithm;
     uintptr_t host_thread_id;
+    void (**sh_hooks)(wl_ctx_t*); /* Shutdown hooks are invoked when context is destroyed. */
+    size_t sh_len;
+    size_t sh_cap;
     void (*blas_dispatch[WL__GRA_LEN][WL_OP__COUNT])(
         const wl__blas_compute_info_t*,
         wl_tensor_t*,
         const wl_tensor_t**
     ); /* BLAS dispatch table with forward + backward kernels. Specialized for host CPU architecture. */
+    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
+    void (*image_load_free_fn)(uint8_t*);
+    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
+    void* (*font_load_ttf_fn)(const void*, size_t);
+    void (*font_free_ttf_fn)(void*);
+    float (*font_scale_fn)(void*, float);
+    void (*font_v_metrics_fn)(void*, int32_t*, int32_t*, int32_t*);
+    void (*font_h_metrics_fn)(void*, wl_char32_t, int32_t*, int32_t*);
+    void (*font_box_fn)(void*, wl_char32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*);
+    void (*font_glyph_fn)(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t);
+    int32_t (*font_kern_advance_fn)(void*, wl_char32_t, wl_char32_t);
     void* ud; /* User data. */
 };
 
@@ -1081,9 +1096,20 @@ static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_featu
 #endif
 
 #if WL_ENABLE_IMAGE_SUPPORT
-    static uint8_t* wl_default_image_load_impl(const char* file, uint32_t(*whc)[3], wl_color_channels_t channels);
-    static void wl_default_image_load_free_fn_impl(uint8_t*);
-    static bool wl_default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]);
+static uint8_t* wl__default_image_load_impl(const char*, uint32_t(*)[3], wl_color_channels_t);
+static void wl__default_image_load_free_fn_impl(uint8_t*);
+static bool wl__default_image_save_impl(const char*, const uint8_t*, const uint32_t(*)[3]);
+#endif
+
+#if WL_ENABLE_FONT_RENDERER
+static void* wl__default_font_load_ttf_fn(const void*, size_t);
+static void wl__default_font_free_ttf_fn(void*);
+static float wl__default_font_scale_fn(void*, float);
+static void wl__default_font_v_metrics_fn(void*, int32_t*, int32_t*, int32_t*);
+static void wl__default_font_h_metrics_fn(void*, wl_char32_t, int32_t*, int32_t*);
+static void wl__default_font_box_fn(void*, wl_char32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*);
+static void wl__default_font_glyph_fn(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t);
+static int32_t wl__default_font_kern_advance_fn(void*, wl_char32_t, wl_char32_t);
 #endif
 
 wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
@@ -1170,13 +1196,35 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     ctx->pool.chunks = (uint8_t**)(*wl__alloc)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
     wl__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
+    /* Configure configureable media processors */
+
     #if WL_ENABLE_IMAGE_SUPPORT
-        ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &wl_default_image_load_impl;
-        ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &wl_default_image_load_free_fn_impl;
-        ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &wl_default_image_save_impl;
+        ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &wl__default_image_load_impl;
+        ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &wl__default_image_load_free_fn_impl;
+        ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &wl__default_image_save_impl;
     #else
         ctx->image_load_fn = ctx_info.image_load_fn;
         ctx->image_save_fn = ctx_info.image_save_fn;
+    #endif
+
+    #if WL_ENABLE_FONT_RENDERER
+        ctx->font_load_ttf_fn = ctx_info.font_load_ttf_fn ? ctx_info.font_load_ttf_fn : &wl__default_font_load_ttf_fn;
+        ctx->font_free_ttf_fn = ctx_info.font_free_ttf_fn ? ctx_info.font_free_ttf_fn : &wl__default_font_free_ttf_fn;
+        ctx->font_scale_fn = ctx_info.font_scale_fn ? ctx_info.font_scale_fn : &wl__default_font_scale_fn;
+        ctx->font_v_metrics_fn = ctx_info.font_v_metrics_fn ? ctx_info.font_v_metrics_fn : &wl__default_font_v_metrics_fn;
+        ctx->font_h_metrics_fn = ctx_info.font_h_metrics_fn ? ctx_info.font_h_metrics_fn : &wl__default_font_h_metrics_fn;
+        ctx->font_box_fn = ctx_info.font_box_fn ? ctx_info.font_box_fn : &wl__default_font_box_fn;
+        ctx->font_glyph_fn = ctx_info.font_glyph_fn ? ctx_info.font_glyph_fn : &wl__default_font_glyph_fn;
+        ctx->font_kern_advance_fn = ctx_info.font_kern_advance_fn ? ctx_info.font_kern_advance_fn : &wl__default_font_kern_advance_fn;
+    #else
+        ctx->font_load_ttf_fn = ctx_info.font_load_ttf_fn;
+        ctx->font_free_ttf_fn = ctx_info.font_free_ttf_fn;
+        ctx->font_scale_fn = ctx_info.font_scale_fn ;
+        ctx->font_v_metrics_fn = ctx_info.font_v_metrics_fn;
+        ctx->font_h_metrics_fn = ctx_info.font_h_metrics_fn;
+        ctx->font_box_fn = ctx_info.font_box_fn;
+        ctx->font_glyph_fn = ctx_info.font_glyph_fn;
+        ctx->font_kern_advance_fn = ctx_info.font_kern_advance_fn;
     #endif
 
     /* Initialize PRNG state. */
@@ -1198,6 +1246,16 @@ wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size) {
     wl_ctx_info_t info = {0};
     info.pool_chunk_size = pool_chunk_size;
     return wl_ctx_create(&info);
+}
+
+static void wl_ctx_register_shutdown_hook(wl_ctx_t* ctx, void(*fn)(wl_ctx_t*)) {
+    for (size_t i=0; i < ctx->sh_len; ++i) /* Linear search to check if the hook is already registered. */
+        if (ctx->sh_hooks[i] == fn) return;
+    if (ctx->sh_len == ctx->sh_cap) { /* Resize */
+        ctx->sh_cap = ctx->sh_cap ? ctx->sh_cap<<1 : 4;
+        ctx->sh_hooks = (*wl__alloc)(ctx->sh_hooks, ctx->sh_cap*sizeof(*ctx->sh_hooks));
+    }
+    ctx->sh_hooks[ctx->sh_len++] = fn;
 }
 
 void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size) {
@@ -1349,6 +1407,11 @@ void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file) {
 }
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {
+    if (ctx->sh_hooks) {
+        for (size_t i=0; i < ctx->sh_len; ++i)
+            if (ctx->sh_hooks[i]) (*ctx->sh_hooks[i])(ctx);
+        (*wl__alloc)(ctx->sh_hooks, 0);
+    }
     size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
     size_t mem_mapped = ctx->pool.mapped_total;
     size_t tensors_created = ctx->tensors_created;
@@ -2329,32 +2392,60 @@ void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, 
         if (wl__unlikely(yy1 >= h)) yy1 = h-1;
         if (wl__unlikely(yy2 >= h)) yy2 = h-1;
         for (int32_t j=xx1; j <= xx2; ++j) {
-            buf[j + yy1*w + 0*w*h] = r;
-            buf[j + yy2*w + 0*w*h] = r;
-            buf[j + yy1*w + 1*w*h] = g;
-            buf[j + yy2*w + 1*w*h] = g;
-            buf[j + yy1*w + 2*w*h] = b;
-            buf[j + yy2*w + 2*w*h] = b;
+            float* r1 = buf + j + yy1*w + 0*w*h;
+            float* r2 = buf + j + yy2*w + 0*w*h;
+            float* g1 = buf + j + yy1*w + 1*w*h;
+            float* g2 = buf + j + yy2*w + 1*w*h;
+            float* b1 = buf + j + yy1*w + 2*w*h;
+            float* b2 = buf + j + yy2*w + 2*w*h;
+            wl__bnd_chk(r1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(r2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b2, buf, wl__tensor_data_size(t));
+            *r1 = *r2 = r;
+            *g1 = *g2 = g;
+            *b1 = *b2 = b;
         }
         for (int32_t j = yy1; j <= yy2; ++j) {
-            buf[xx1 + j*w + 0*w*h] = r;
-            buf[xx2 + j*w + 0*w*h] = r;
-            buf[xx1 + j*w + 1*w*h] = g;
-            buf[xx2 + j*w + 1*w*h] = g;
-            buf[xx1 + j*w + 2*w*h] = b;
-            buf[xx2 + j*w + 2*w*h] = b;
+            float* r1 = buf + xx1 + j*w + 0*w*h;
+            float* r2 = buf + xx2 + j*w + 0*w*h;
+            float* g1 = buf + xx1 + j*w + 1*w*h;
+            float* g2 = buf + xx2 + j*w + 1*w*h;
+            float* b1 = buf + xx1 + j*w + 2*w*h;
+            float* b2 = buf + xx2 + j*w + 2*w*h;
+            wl__bnd_chk(r1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(r2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(g2, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b1, buf, wl__tensor_data_size(t));
+            wl__bnd_chk(b2, buf, wl__tensor_data_size(t));
+            *r1 = *r2 = r;
+            *g1 = *g2 = g;
+            *b1 = *b2 = b;
         }
     }
 }
-
-#define STB_TRUETYPE_IMPLEMENTATION
-#include "optional/stb_truetype.h"
 
 extern const uint8_t wl__font_data[66428]; /* Embedded font data. See wavelet/fonts/ for font info and license. */
 
 void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt) {
     wl__assert(t->rank == 3, "Tensor must be a 3D image tensor");
-    float* buf = (float*)wl_tensor_data(t);  // Changed to float*
+    wl__assert2(x > 0 && y > 0 && size > 0 && txt && *txt);
+    wl_ctx_t* ctx = t->ctx;
+    void* (*font_load_ttf_fn)(const void*, size_t) = ctx->font_load_ttf_fn;
+    void (*font_free_ttf_fn)(void*) = ctx->font_free_ttf_fn;
+    float (*font_scale_fn)(void*, float) = ctx->font_scale_fn;
+    void (*font_v_metrics_fn)(void*, int32_t*, int32_t*, int32_t*) = ctx->font_v_metrics_fn;
+    void (*font_h_metrics_fn)(void*, wl_char32_t, int32_t*, int32_t*) = ctx->font_h_metrics_fn;
+    void (*font_box_fn)(void*, wl_char32_t, float, float, int32_t*, int32_t*, int32_t*, int32_t*) = ctx->font_box_fn;
+    void (*font_glyph_fn)(void*, uint8_t*, int32_t, int32_t, int32_t, float, float, wl_char32_t) = ctx->font_glyph_fn;
+    int32_t (*font_kern_advance_fn)(void*, wl_char32_t, wl_char32_t) = ctx->font_kern_advance_fn;
+    wl__assert(font_load_ttf_fn && font_free_ttf_fn && font_scale_fn && font_v_metrics_fn && font_h_metrics_fn && font_box_fn && font_glyph_fn && font_kern_advance_fn, "Font renderer not set");
+    void* font = (*font_load_ttf_fn)(wl__font_data, sizeof(wl__font_data));
+    wl__assert2(font);
+    float* buf = (float*)wl_tensor_data(t);
     int32_t w = (int32_t)wl_tensor_image_width(t);
     int32_t h = (int32_t)wl_tensor_image_height(t);
     int32_t c = (int32_t)wl_tensor_image_channels(t);
@@ -2362,49 +2453,49 @@ void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size,
     float r = (float)((rgb>>16)&0xff) / 255.0f;
     float g = (float)((rgb>>8)&0xff) / 255.0f;
     float b = (float)(rgb&0xff) / 255.0f;
-    stbtt_fontinfo font;
-    wl__assert2(stbtt_InitFont(&font, wl__font_data, stbtt_GetFontOffsetForIndex(wl__font_data, 0)));
-    float scale = stbtt_ScaleForPixelHeight(&font, wl__max(8.0f, (float)size));
+    float scale = (*font_scale_fn)(font, (float)size);
     int32_t ascent = 0;
-    stbtt_GetFontVMetrics(&font, &ascent, 0, 0);
-    int32_t baseline = ascent*scale;
+    (*font_v_metrics_fn)(font, &ascent, NULL, NULL);
+    int32_t baseline = (int32_t)((float)ascent*scale);
     int32_t x_cursor = x;
+    uint8_t* bitmap = NULL;
+    size_t bitmap_sz = 0;
     for (; *txt; ++txt) {
+        char cp = isprint(*txt) ? *txt : '?';
         int32_t advance, lsb, x0, y0, x1, y1;
-        stbtt_GetCodepointHMetrics(&font, *txt, &advance, &lsb);
-        stbtt_GetCodepointBitmapBox(&font, *txt, scale, scale, &x0, &y0, &x1, &y1);
-        int32_t w_bitmap = x1 - x0;
-        int32_t h_bitmap = y1 - y0;
-        uint8_t* bitmap = (*wl__alloc)(NULL, w_bitmap * h_bitmap);
-        stbtt_MakeCodepointBitmap(
-            &font,
-            bitmap,
-            w_bitmap,
-            h_bitmap,
-            w_bitmap,
-            scale,
-            scale,
-            *txt
-        );
-        for (int32_t j = 0; j < h_bitmap; ++j) {
+        (*font_h_metrics_fn)(font, cp, &advance, &lsb);
+        (*font_box_fn)(font, cp, scale, scale, &x0, &y0, &x1, &y1);
+        int32_t bw = x1-x0;
+        int32_t bh = y1-y0;
+        int32_t nb = bw*bh;
+        if (wl__unlikely(!nb)) continue;
+        if (bitmap_sz != nb) {
+            bitmap = (*wl__alloc)(bitmap, nb);
+            bitmap_sz = nb;
+        }
+        (*font_glyph_fn)(font, bitmap, bw, bh, bw, scale, scale, cp);
+        for (int32_t j = 0; j < bh; ++j) {
             int32_t y_img = y + baseline + y0 + j;
             if (wl__unlikely(y_img < 0 || y_img >= h)) continue;
-            for (int32_t i = 0; i < w_bitmap; ++i) {
+            for (int32_t i = 0; i < bw; ++i) {
                 int32_t x_img = x_cursor + x0 + i;
                 if (wl__unlikely(x_img < 0 || x_img >= w)) continue;
-                float a = (float)bitmap[j*w_bitmap + i] / 255.0f;
+                float a = (float)bitmap[j*bw + i] / 255.0f;
                 float* br = buf + 0*w*h + y_img*w + x_img;
                 float* bg = buf + 1*w*h + y_img*w + x_img;
                 float* bb = buf + 2*w*h + y_img*w + x_img;
+                wl__bnd_chk(br, buf, wl__tensor_data_size(t));
+                wl__bnd_chk(bg, buf, wl__tensor_data_size(t));
+                wl__bnd_chk(bb, buf, wl__tensor_data_size(t));
                 *br = *br*(1.0f-a) + a*r;
                 *bg = *bg*(1.0f-a) + a*g;
                 *bb = *bb*(1.0f-a) + a*b;
             }
         }
-        x_cursor += advance * scale;
-        if (*(txt+1)) x_cursor += scale * stbtt_GetCodepointKernAdvance(&font, *txt, *(txt+1));
-        (*wl__alloc)(bitmap, 0);
+        x_cursor += (int32_t)((float)advance * scale);
+        if (txt[1] && isprint(txt[1])) x_cursor += (int32_t)(scale * (float)(*font_kern_advance_fn)(font, cp, txt[1]));
     }
+    (*wl__alloc)(bitmap, 0);
 }
 
 wl_ctx_t* wl_tensor_get_ctx(const wl_tensor_t* t) { return t->ctx; }
@@ -5958,30 +6049,70 @@ static char* wl__fmt_f64(wl__format_flags sf, double n, char* p) {
 }
 
 #if WL_ENABLE_IMAGE_SUPPORT
-    static uint8_t* wl_default_image_load_impl(const char* file, uint32_t(*whc)[3], wl_color_channels_t channels) {
-        wl__assert2(file && *file && whc);
-        int w, h, c, dc;
-        switch (channels) {
-            default: dc = STBI_default; break;
-            case WL_COLOR_CHANNELS_GRAY: dc = STBI_grey; break;
-            case WL_COLOR_CHANNELS_GRAY_A: dc = STBI_grey_alpha; break;
-            case WL_COLOR_CHANNELS_RGB: dc = STBI_rgb; break;
-            case WL_COLOR_CHANNELS_RGBA: dc = STBI_rgb_alpha; break;
-        }
-        uint8_t* buf = stbi_load(file, &w, &h, &c, dc);
-        if (wl__unlikely(!buf || !w || !h || !c || (c != 1 && c != 3 && c != 4))) return NULL;
-        (*whc)[0] = (uint32_t)w;
-        (*whc)[1] = (uint32_t)h;
-        (*whc)[2] = (uint32_t)c;
-        return buf;
+static uint8_t* wl__default_image_load_impl(const char* file, uint32_t(*whc)[3], wl_color_channels_t channels) {
+    wl__assert2(file && *file && whc);
+    int w, h, c, dc;
+    switch (channels) {
+        default: dc = STBI_default; break;
+        case WL_COLOR_CHANNELS_GRAY: dc = STBI_grey; break;
+        case WL_COLOR_CHANNELS_GRAY_A: dc = STBI_grey_alpha; break;
+        case WL_COLOR_CHANNELS_RGB: dc = STBI_rgb; break;
+        case WL_COLOR_CHANNELS_RGBA: dc = STBI_rgb_alpha; break;
     }
+    uint8_t* buf = stbi_load(file, &w, &h, &c, dc);
+    if (wl__unlikely(!buf || !w || !h || !c || (c != 1 && c != 3 && c != 4))) return NULL;
+    (*whc)[0] = (uint32_t)w;
+    (*whc)[1] = (uint32_t)h;
+    (*whc)[2] = (uint32_t)c;
+    return buf;
+}
 
-    static void wl_default_image_load_free_fn_impl(uint8_t* p) {
-        stbi_image_free(p);
-    }
+static void wl__default_image_load_free_fn_impl(uint8_t* p) {
+    stbi_image_free(p);
+}
 
-    static bool wl_default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]) {
-        wl__assert2(file && *file && buf && whc);
-        return stbi_write_jpg(file, (int)(*whc)[0], (int)(*whc)[1], (int)(*whc)[2], buf, 100) != 0;
+static bool wl__default_image_save_impl(const char* file, const uint8_t* buf, const uint32_t(*whc)[3]) {
+    wl__assert2(file && *file && buf && whc);
+    return stbi_write_jpg(file, (int)(*whc)[0], (int)(*whc)[1], (int)(*whc)[2], buf, 100) != 0;
+}
+#endif
+
+#if WL_ENABLE_FONT_RENDERER
+static void* wl__default_font_load_ttf_fn(const void* buf, size_t n) {
+    stbtt_fontinfo* info = (*wl__alloc)(NULL, sizeof(*info));
+    if (wl__unlikely(!stbtt_InitFont(info, buf, stbtt_GetFontOffsetForIndex(buf, 0)))) {
+        (*wl__alloc)(info, 0);
+        return NULL;
     }
+    return info;
+}
+
+static void wl__default_font_free_ttf_fn(void* font) {
+    (*wl__alloc)(font, 0);
+}
+
+static float wl__default_font_scale_fn(void* font, float size) {
+    return stbtt_ScaleForPixelHeight((stbtt_fontinfo*)font, wl__max(8.0f, size));
+}
+
+static void wl__default_font_v_metrics_fn(void* font, int32_t* ascent, int32_t* descent, int32_t* line_gap) {
+    stbtt_GetFontVMetrics((stbtt_fontinfo*)font, ascent, descent, line_gap);
+}
+
+static void wl__default_font_h_metrics_fn(void* font, wl_char32_t cp, int32_t* advance, int32_t* lsb) {
+    stbtt_GetCodepointHMetrics((stbtt_fontinfo*)font, cp, advance, lsb);
+}
+
+static void wl__default_font_box_fn(void* font, wl_char32_t cp, float scale_x, float scale_y, int32_t* x0, int32_t* y0, int32_t* x1, int32_t* y1) {
+    stbtt_GetCodepointBitmapBox((stbtt_fontinfo*)font, cp, scale_x, scale_y, x0, y0, x1, y1);
+}
+
+static void wl__default_font_glyph_fn(void* font, uint8_t* buf, int32_t w, int32_t h, int32_t stride, float scale_x, float scale_y, wl_char32_t cp) {
+    stbtt_MakeCodepointBitmap((stbtt_fontinfo*)font, buf, w, h, stride, scale_x, scale_y, cp);
+}
+
+static int32_t wl__default_font_kern_advance_fn(void* font, wl_char32_t cp1, wl_char32_t cp2) {
+    return stbtt_GetCodepointKernAdvance((stbtt_fontinfo*)font, cp1, cp2);
+}
+
 #endif
