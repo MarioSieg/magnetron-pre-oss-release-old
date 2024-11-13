@@ -410,12 +410,12 @@ class Tensor:
     def load_image(file_path: str, *,
                    name: str | None = None,
                    channels=ColorChannels.AUTO,
-                   resize_to_dims: (int, int) = (0, 0)) -> 'Tensor':
+                   resize_to: (int, int) = (0, 0)) -> 'Tensor':
         """Loads an image from a file and creates a tensor from it."""
         assert isfile(file_path), f'File not found: {file_path}'
         instance = C.wl_tensor_load_image(Context.active.ctx, bytes(file_path, 'utf-8'), channels.value,
-                                          resize_to_dims[0],
-                                          resize_to_dims[1])
+                                          resize_to[0],
+                                          resize_to[1])
         tensor = Tensor(internal_instance=instance)
         if name is not None:
             tensor.name = name

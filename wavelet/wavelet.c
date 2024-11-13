@@ -2408,7 +2408,7 @@ static bool wl__glyph(uint32_t c, uint32_t x, uint32_t y) {
              "24`@P01R30000000S9S10000000"[i/6]-'0')>>(i%6))&1;
 }
 
-void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt) {
+void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt) { /* TODO: Implement font scaling, size is ignored currently */
     wl__assert(t->rank == 3, "Tensor must be a 3D image tensor");
     wl__assert2(x >= 0 && y >= 0 && size >= 8 && txt && *txt);
     float* buf = (float*)wl_tensor_data(t);
@@ -5325,14 +5325,14 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     return target;
 }
 
-wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t rw, uint32_t rh) {
+wl_tensor_t* wl_tensor_load_png(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t resize_w, uint32_t resize_h) {
     uint8_t* (*loader)(const char*, uint32_t(*)[3], wl_color_channels_t) = ctx->image_load_fn;
     void (*load_free)(uint8_t*) = ctx->image_load_free_fn;
     wl__assert(loader && load_free, "Image loader not set");
     uint32_t whc[3] = {0};
     uint8_t* src = (*loader)(file, &whc, channels);
     wl__assert(src, "Failed to load tensor from image: '%s'", file);
-    if (rw && rh) { /* Resize requested. */
+    if (resize_w && resize_h) { /* Resize requested. */
         float* ori = (*wl__alloc)(NULL, whc[2]*whc[1]*whc[0]*sizeof(*ori));
         for (int64_t k=0; k < whc[2]; ++k) { /* Convert from interleaved to planar representation. */
             for (int64_t j=0; j < whc[1]; ++j) {
@@ -5341,16 +5341,16 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
                 }
             }
         }
-        wl_tensor_t* t = wl_tensor_create_3d(ctx, WL_DTYPE_F32, whc[2], rh, rw);
+        wl_tensor_t* t = wl_tensor_create_3d(ctx, WL_DTYPE_F32, whc[2], resize_h, resize_w);
         float* dst = wl_tensor_data_as_f32(t);
-        float* part = (*wl__alloc)(NULL, whc[2]*whc[1]*rw*sizeof(*part));
-        float ws = (float)(whc[0] - 1)/(float)(rw - 1);
-        float hs = (float)(whc[1] - 1)/(float)(rh - 1);
+        float* part = (*wl__alloc)(NULL, whc[2] * whc[1] * resize_w * sizeof(*part));
+        float ws = (float)(whc[0] - 1)/(float)(resize_w - 1);
+        float hs = (float)(whc[1] - 1)/(float)(resize_h - 1);
         for (uint32_t k = 0; k < whc[2]; ++k){
             for (uint32_t r = 0; r < whc[1]; ++r) {
-                for (uint32_t c = 0; c < rw; ++c) {
+                for (uint32_t c = 0; c < resize_w; ++c) {
                     float val = 0;
-                    if (c == rw-1 || whc[0] == 1) {
+                    if (c == resize_w - 1 || whc[0] == 1) {
                         val = ori[k*(whc[0])*(whc[1]) + r*(whc[0]) + (whc[0] - 1)];
                     } else {
                         float sx = (float)c*ws;
@@ -5358,31 +5358,31 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
                         float dx = sx - (float)ix;
                         val = (1-dx) * (ori[k*(whc[0])*(whc[1]) + r*(whc[0]) + ix]) + dx*(ori[k*(whc[0])*(whc[1]) + r*(whc[0]) + (ix + 1)]);
                     }
-                    part[k*rw*(whc[1]) + r*rw + c] = val;
+                    part[k * resize_w * (whc[1]) + r * resize_w + c] = val;
                 }
             }
         }
         for (uint32_t k = 0; k < whc[2]; ++k) {
-            for (uint32_t r = 0; r < rh; ++r) {
+            for (uint32_t r = 0; r < resize_h; ++r) {
                 float sy = (float)r*hs;
                 uint32_t iy = (uint32_t)sy;
                 float dy = sy - (float)iy;
-                for (uint32_t c = 0; c < rw; ++c) {
-                    float val = (1-dy)*(part[k*rw*whc[1] + iy*rw + c]);
-                    dst[k*rw*rh + r*rw + c] = val;
+                for (uint32_t c = 0; c < resize_w; ++c) {
+                    float val = (1-dy)*(part[k * resize_w * whc[1] + iy * resize_w + c]);
+                    dst[k * resize_w * resize_h + r * resize_w + c] = val;
                 }
-                if (r == rh-1 || whc[1] == 1) continue;
-                for (uint32_t c = 0; c < rw; ++c) {
-                    float val = dy*(part[k*rw*(whc[1]) + (iy + 1)*rw + c]);
-                    dst[k*rw*rh + r*rw + c] += val;
+                if (r == resize_h - 1 || whc[1] == 1) continue;
+                for (uint32_t c = 0; c < resize_w; ++c) {
+                    float val = dy*(part[k * resize_w * (whc[1]) + (iy + 1) * resize_w + c]);
+                    dst[k * resize_w * resize_h + r * resize_w + c] += val;
                 }
             }
         }
         (*wl__alloc)(ori, 0);
         (*wl__alloc)(part, 0);
-        wl__assert(rw*rh*whc[2] == wl__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", rw*rh*whc[2], (size_t)wl__tensor_num_elements(t));
+        wl__assert(resize_w * resize_h * whc[2] == wl__tensor_num_elements(t), "Buffer size mismatch: %zu != %zu", resize_w * resize_h * whc[2], (size_t)wl__tensor_num_elements(t));
         (*load_free)(src);
-        wl__log_info("Loaded and resized tensor from image: %s, %u x %u x %u", file, rw, rh, whc[2]);
+        wl__log_info("Loaded and resized tensor from image: %s, %u x %u x %u", file, resize_w, resize_h, whc[2]);
         return t;
     } else {
         wl_tensor_t* t = wl_tensor_create_3d(ctx, WL_DTYPE_F32, whc[2], whc[1], whc[0]);
@@ -5402,7 +5402,7 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
     }
 }
 
-void wl_tensor_save_image(const wl_tensor_t* t, const char* file) {
+void wl_tensor_save_png(const wl_tensor_t* t, const char* file) {
     bool (*saver)(const char*, const uint8_t*, const uint32_t(*)[3]) = t->ctx->image_save_fn;
     wl__assert(saver, "Image saver not set");
     int64_t rank = wl_tensor_rank(t);

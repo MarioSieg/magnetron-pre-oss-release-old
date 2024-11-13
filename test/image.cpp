@@ -5,7 +5,7 @@
 TEST(image, load) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
-    wl_tensor_t* img = wl_tensor_load_image(ctx, "test_data/test_img.png", WL_COLOR_CHANNELS_RGB, 0, 0);
+    wl_tensor_t* img = wl_tensor_load_png(ctx, "test_data/test_img.png", WL_COLOR_CHANNELS_RGB, 0, 0);
     wl_tensor_print(img, true, true);
     ASSERT_EQ(wl_tensor_image_channels(img), 3);
     ASSERT_EQ(wl_tensor_image_width(img), 2);
@@ -28,7 +28,7 @@ TEST(image, load) {
 TEST(image, load_resize) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
-    wl_tensor_t* img = wl_tensor_load_image(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 256, 211);
+    wl_tensor_t* img = wl_tensor_load_png(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 256, 211);
     ASSERT_EQ(wl_tensor_shape(img)[2], 256);
     ASSERT_EQ(wl_tensor_shape(img)[1], 211);
     ASSERT_EQ(wl_tensor_shape(img)[0], 3); // RGB
@@ -50,7 +50,7 @@ TEST(image, load_resize) {
 TEST(image, draw_box) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
-    wl_tensor_t* img = wl_tensor_load_image(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 256, 256);
+    wl_tensor_t* img = wl_tensor_load_png(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 256, 256);
     wl_tensor_img_draw_box(img, 40, 40, 80, 80, 1, wl_pack_color_f32(1.0f, 0.0f, 0.0f));
     wl_tensor_img_draw_box(img, 120, 150, 160, 200, 4, wl_pack_color_f32(1.0f, 1.0f, 1.0f));
     wl_tensor_print(img, true, false);
@@ -62,11 +62,11 @@ TEST(image, draw_box) {
 TEST(image, draw_text) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
-    wl_tensor_t* img = wl_tensor_load_image(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 256, 256);
+    wl_tensor_t* img = wl_tensor_load_png(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 256, 256);
     wl_tensor_img_draw_text(img, 100, 100, 10, 0xffffff, "Hallö!");
     wl_tensor_img_draw_text(img, 100, 200, 15, 0xffffff, "I want Pizza Salami! I want Pizza Salami! I want Pizza Salami! I want Pizza Salami!");
     wl_tensor_print(img, true, false);
-    wl_tensor_save_image(img, "test_data/car3.jpg");
+    //wl_tensor_save_image(img, "test_data/car3.jpg");
 
     wl_ctx_destroy(ctx);
 }
