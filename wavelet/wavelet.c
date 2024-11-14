@@ -4746,7 +4746,21 @@ size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return
     }
 #endif
 
-static void wl_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get OS name */
+#ifdef __linux__
+static void wl__trim_quotes(char* in) {
+    if (in == NULL || *in == '\0') return;
+    size_t len = strlen(in);
+    if (in[len - 1] == '"') {
+        in[len - 1] = '\0';
+        len--;
+    }
+    if (in[0] == '"') {
+        memmove(in, in + 1, len);
+    }
+}
+#endif
+
+static void WL__COLDPROC wl_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get OS name */
     #ifdef _WIN32
         
     #elif defined(__APPLE__)
@@ -4757,12 +4771,73 @@ static void wl_system_host_info_query_os_name(char (*out_os_name)[128]) { /* Get
             if (colon) *colon = '\0';
             snprintf(*out_os_name, sizeof(*out_os_name), "%s", (const char*)tmp);
         }
-    #else
-        // TODO: Linux
+    #elif defined (__linux__)
+        FILE* f = wl__fopen("/etc/os-release", "r");
+        if (!f) {
+            f = wl__fopen("/usr/lib/os-release", "r");
+            if (!f) {
+                f = wl__fopen("/etc/lsb-release", "r");
+                if (wl__unlikely(!f)) return;
+                char line[256];
+                while (fgets(line, sizeof(line), f) != NULL) {
+                    size_t len = strlen(line);
+                    if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
+                    if (strncmp(line, "DISTRIB_ID", sizeof("DISTRIB_ID")-1) == 0) {
+                        char* equals_sign = strchr(line, '=');
+                        if (equals_sign && *(equals_sign+1)) {
+                            strncpy(*out_os_name, equals_sign+1, sizeof(*out_os_name)-1);
+                            (*out_os_name)[sizeof(*out_os_name)-1] = '\0';
+                        }
+                    } else if (strncmp(line, "DISTRIB_DESCRIPTION", sizeof("DISTRIB_DESCRIPTION")-1) == 0) {
+                        char* equals_sign = strchr(line, '=');
+                        if (equals_sign && *(equals_sign+1)) {
+                            char* start_quote = strchr(equals_sign+1, '"');
+                            if (start_quote) {
+                                char* end_quote = strchr(start_quote+1, '"');
+                                if (end_quote) {
+                                    size_t desc_len = end_quote-start_quote-1;
+                                    if (desc_len >= sizeof(*out_os_name)) desc_len = sizeof(*out_os_name)-1;
+                                    strncpy(*out_os_name, start_quote+1, desc_len);
+                                    (*out_os_name)[desc_len] = '\0';
+                                } else {
+                                    strncpy(*out_os_name, start_quote+1, sizeof(*out_os_name)-1);
+                                    (*out_os_name)[sizeof(*out_os_name)-1] = '\0';
+                                }
+                            } else {
+                                strncpy(*out_os_name, equals_sign+1, sizeof(*out_os_name)-1);
+                                (*out_os_name)[sizeof(*out_os_name)-1] = '\0';
+                            }
+                        }
+                    }
+                }
+                fclose(f);
+                return;
+            }
+        }
+    char line[256];
+    while (fgets(line, sizeof(line), f) != NULL) {
+        size_t len = strlen(line);
+        if (len > 0 && line[len-1] == '\n') line[len-1] = '\0';
+        if (strncmp(line, "NAME", sizeof("NAME")-1) == 0) {
+            char* equals_sign = strchr(line, '=');
+            if (equals_sign && *(equals_sign+1)) {
+                strncpy(*out_os_name, equals_sign + 1, sizeof(*out_os_name)-1);
+                (*out_os_name)[sizeof(*out_os_name)-1] = '\0';
+            }
+        } else if (strncmp(line, "PRETTY_NAME", sizeof("PRETTY_NAME")-1) == 0) {
+            char* equals_sign = strchr(line, '=');
+            if (equals_sign && *(equals_sign+1)) {
+                strncpy(*out_os_name, equals_sign+1, sizeof(*out_os_name)-1);
+                (*out_os_name)[sizeof(*out_os_name)-1] = '\0';
+            }
+        }
+    }
+    fclose(f);
+    wl__trim_quotes(*out_os_name);
     #endif
 }
 
-static void wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* Get CPU name */
+static void WL__COLDPROC wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* Get CPU name */
     #ifdef _WIN32
         HKEY key;
         if (wl__unlikely(RegOpenKeyExA(HKEY_LOCAL_MACHINE, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", 0, KEY_READ, &key))) return;
@@ -4783,7 +4858,7 @@ static void wl_system_host_info_query_cpu_name(char (*out_cpu_name)[128]) { /* G
     #endif
 }
 
-static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t* out_physical, uint32_t* out_sockets) { /* Get CPU virtual (logical) cores. */
+static void WL__COLDPROC wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t* out_physical, uint32_t* out_sockets) { /* Get CPU virtual (logical) cores. */
     #ifdef _WIN32
         DWORD size = 0;
         GetLogicalProcessorInformation(NULL, &size);
@@ -4873,7 +4948,7 @@ static void wl_system_host_info_query_cpu_cores(uint32_t* out_virtual, uint32_t*
     #endif
 }
 
-static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint64_t* out_phys_mem_free) { /* Get physical memory */
+static void WL__COLDPROC wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint64_t* out_phys_mem_free) { /* Get physical memory */
     #ifdef _WIN32
         MEMORYSTATUSEX mem;
         mem.dwLength = sizeof(mem);
@@ -4932,7 +5007,7 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
         (*features)[WL__X86_64_CPUID_##id][WL__X86_64_CPUID_EBX] = ebx; \
         (*features)[WL__X86_64_CPUID_##id][WL__X86_64_CPUID_ECX] = ecx; \
         (*features)[WL__X86_64_CPUID_##id][WL__X86_64_CPUID_EDX] = edx
-    static void wl__system_info_query_x86_64_cpu_features(uint32_t (*features)[8][4]) {
+    static void WL__COLDPROC wl__system_info_query_x86_64_cpu_features(uint32_t (*features)[8][4]) {
         uint32_t eax=0, ebx=0, ecx=0, edx=0;
         uint32_t max_basic_leaf, max_extended_leaf;
         wl__cpuid(0, -1, &eax, &ebx, &ecx, &edx);
@@ -4994,7 +5069,7 @@ static void wl__system_host_info_query_memory(uint64_t* out_phys_mem_total, uint
     #undef wl__cpy_regs
 #endif
 
-static void wl__system_host_info_query(wl_ctx_t* ctx) {
+static void WL__COLDPROC wl__system_host_info_query(wl_ctx_t* ctx) {
     wl_system_host_info_query_os_name(&ctx->sys.os_name);
     wl_system_host_info_query_cpu_name(&ctx->sys.cpu_name);
     wl_system_host_info_query_cpu_cores(&ctx->sys.cpu_virtual_cores, &ctx->sys.cpu_physical_cores, &ctx->sys.cpu_sockets);
