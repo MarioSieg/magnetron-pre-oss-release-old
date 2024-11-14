@@ -1149,14 +1149,16 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     #endif
     wl__log_info("CPU (%s): %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", cpu_arch, ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
     #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
-        printf("CPU Features:");
-            for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
-                if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
-                    if (k++ % 8 == 0) printf("\n\t");
-                    printf("%s ", wl__x86_64_feature_names[i]);
-                }
-            }
-            putchar('\n');
+       if (wl__log_enabled) {
+           printf("CPU Features:");
+           for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
+               if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
+                   if (k++ % 8 == 0) printf("\n\t");
+                   printf("%s ", wl__x86_64_feature_names[i]);
+               }
+           }
+           putchar('\n');
+       }
     #endif
     double mem_total, mem_free, mem_used;
     const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
@@ -1294,14 +1296,14 @@ void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file) {
         printf("OS/Kernel: %s\n", ctx->sys.os_name);
         printf("CPU: %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u\n", ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
         #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
-            printf("CPU Features:");
-            for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
-                if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
-                    if (k++ % 8 == 0) printf("\n\t");
-                    printf("%s ", wl__x86_64_feature_names[i]);
-                }
+        printf("CPU Features:");
+        for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
+            if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
+                if (k++ % 8 == 0) printf("\n\t");
+                printf("%s ", wl__x86_64_feature_names[i]);
             }
-            putchar('\n');
+        }
+        putchar('\n');
         #endif
         double mem_total, mem_free, mem_used;
         const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
