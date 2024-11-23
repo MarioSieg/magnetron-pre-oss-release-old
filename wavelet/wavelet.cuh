@@ -4,62 +4,49 @@
 
 #include <array>
 #include <cstdint>
+#include <span>
 
-#include <cuda_runtime.h>
 #include <cuda.h>
-#include <cuda_fp16.h>
 
-namespace wl {
+namespace wl::cuda {
     constexpr std::size_t max_devices = 32;
     constexpr std::uint32_t warp_size = 32;
     constexpr std::uint32_t max_streams = 8;
 
     extern "C" [[noreturn]] auto wl__panic(const char* msg, ...) -> void;
-    #define wl_cu_chk(expr) \
+
+    /* Driver result check. */
+    #define wl_cu_chk_rdv(expr) \
          do { \
+            if (auto rrr {(expr)}; rrr != CUDA_SUCCESS) [[unlikely]] { \
+                const char* err_str = "?"; \
+                cuGetErrorString(rrr, &err_str); \
+                wl__panic(#expr, __func__, __FILE__, __LINE__, err_str); \
+            } \
+        } while (0)
+
+    /* Runtime result check. */
+    #define wl_cu_chk_rt(expr) \
+        do { \
             if (auto rrr {(expr)}; rrr != cudaSuccess) [[unlikely]] { \
                 wl__panic(#expr, __func__, __FILE__, __LINE__, cudaGetErrorString(rrr)); \
             } \
         } while (0)
 
-    [[nodiscard]] static __device__ __forceinline__ auto warp_hsum(float x) -> float {
-        #pragma unroll
-        for (int mask = 16; mask; mask >>= 1)
-            x += __shfl_xor_sync(0xffffffff, x, mask, 32);
-        return x;
-    }
-
-    [[nodiscard]] static __device__ __forceinline__ auto warp_hsum(float2 a) -> float2 {
-        #pragma unroll
-        for (int mask = 16; mask; mask >>= 1) {
-            a.x += __shfl_xor_sync(0xffffffff, a.x, mask, 32);
-            a.y += __shfl_xor_sync(0xffffffff, a.y, mask, 32);
-        }
-        return a;
-    }
-
-    [[nodiscard]] static __device__ __forceinline__ auto warp_hsum_max(float x) -> float {
-        #pragma unroll
-        for (int mask = 16; mask; mask >>= 1)
-            x = fmaxf(x, __shfl_xor_sync(0xffffffff, x, mask, 32));
-        return x;
-    }
-
     struct physical_device final {
-        int id {}; // Device ID
-        std::size_t vram_total {}; // Total video memory
-        std::uint32_t cl {}; // Compute capability
-        std::uint32_t nsm {}; // Number of SMs
-        std::uint32_t ntpb {}; // Number of threads per block
-        std::size_t smpb {}; // Shared memory per block
-        bool has_vmm {}; // Has virtual memory management
-        std::size_t vmm_granularity {}; // Virtual memory management granularity
+        std::int32_t id {};             /* Device ID */
+        std::array<char, 256> name {};  /* Device name */
+        std::size_t vram {};            /* Video memory in bytes */
+        std::uint32_t cl {};            /* Compute capability */
+        std::uint32_t nsm {};           /* Number of SMs */
+        std::uint32_t ntpb {};          /* Number of threads per block */
+        std::size_t smpb {};            /* Shared memory per block */
+        std::size_t smpb_opt {};        /* Shared memory per block opt-in */
+        bool has_vmm {};                /* Has virtual memory management */
+        std::size_t vmm_granularity {}; /* Virtual memory management granularity */
     };
 
-    struct physical_devices final {
-        std::array<physical_device, max_devices> devices {};
-        std::size_t num_devices {};
-    };
+    [[nodiscard]] extern auto cuda_init() -> std::span<const physical_device>;
 
     /* Memory pool interface. */
     class pool {
@@ -90,7 +77,7 @@ namespace wl {
 
     private:
         CUdeviceptr m_dvc_address {};
-        int m_dvc_id {};
+        std::int32_t m_dvc_id {};
         std::size_t m_needle {};
         std::size_t m_cap {};
         std::size_t m_granularity {};

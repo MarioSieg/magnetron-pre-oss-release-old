@@ -14,3 +14,8 @@ target_link_libraries(
     wavelet_test
     GTest::gtest_main
 )
+
+if (${WAVELET_ENABLE_CUDA})
+    target_link_libraries(wavelet_test wavelet_cuda)
+    target_compile_definitions(wavelet_test PRIVATE WL_ENABLE_CUDA)
+endif()
