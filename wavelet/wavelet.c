@@ -719,7 +719,7 @@ static uint32_t wl__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
     stack = ~stack;
     uint32_t acc = 0x80000000 >> (n & 31);
     for (n >>= 5; n; --n) acc = _mm_crc32_u32(acc, 0);
-    while ((low = stack & 1), stack >>= 1) {
+    while (low = stack & 1, stack >>= 1) {
         __m128i x = _mm_cvtsi32_si128(acc);
         uint64_t y = _mm_cvtsi128_si64(_mm_clmulepi64_si128(x, x, 0));
         acc = _mm_crc32_u64(0, y << low);
