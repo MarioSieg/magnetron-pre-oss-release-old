@@ -10,8 +10,43 @@
 #include <cuda_fp16.h>
 
 namespace wl {
+    constexpr std::size_t max_devices = 32;
+    constexpr std::uint32_t warp_size = 32;
+    constexpr std::uint32_t max_streams = 8;
+
+    extern "C" [[noreturn]] auto wl__panic(const char* msg, ...) -> void;
+    #define wl_cu_chk(expr) \
+         do { \
+            if (auto rrr {(expr)}; rrr != cudaSuccess) [[unlikely]] { \
+                wl__panic(#expr, __func__, __FILE__, __LINE__, cudaGetErrorString(rrr)); \
+            } \
+        } while (0)
+
+    [[nodiscard]] static __device__ __forceinline__ auto warp_hsum(float x) -> float {
+        #pragma unroll
+        for (int mask = 16; mask; mask >>= 1)
+            x += __shfl_xor_sync(0xffffffff, x, mask, 32);
+        return x;
+    }
+
+    [[nodiscard]] static __device__ __forceinline__ auto warp_hsum(float2 a) -> float2 {
+        #pragma unroll
+        for (int mask = 16; mask; mask >>= 1) {
+            a.x += __shfl_xor_sync(0xffffffff, a.x, mask, 32);
+            a.y += __shfl_xor_sync(0xffffffff, a.y, mask, 32);
+        }
+        return a;
+    }
+
+    [[nodiscard]] static __device__ __forceinline__ auto warp_hsum_max(float x) -> float {
+        #pragma unroll
+        for (int mask = 16; mask; mask >>= 1)
+            x = fmaxf(x, __shfl_xor_sync(0xffffffff, x, mask, 32));
+        return x;
+    }
+
     struct physical_device final {
-        std::uint32_t id {}; // Device ID
+        int id {}; // Device ID
         std::size_t vram_total {}; // Total video memory
         std::uint32_t cl {}; // Compute capability
         std::uint32_t nsm {}; // Number of SMs
@@ -22,7 +57,6 @@ namespace wl {
     };
 
     struct physical_devices final {
-        static constexpr std::size_t max_devices = 32;
         std::array<physical_device, max_devices> devices {};
         std::size_t num_devices {};
     };
@@ -56,7 +90,7 @@ namespace wl {
 
     private:
         CUdeviceptr m_dvc_address {};
-        std::uint32_t m_dvc_id {};
+        int m_dvc_id {};
         std::size_t m_needle {};
         std::size_t m_cap {};
         std::size_t m_granularity {};
