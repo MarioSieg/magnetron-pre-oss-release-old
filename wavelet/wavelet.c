@@ -67,6 +67,18 @@
 #include <unistd.h>
 #endif
 
+#if defined(__GLIBC__) || defined(__GNU_LIBRARY__) || defined(__ANDROID__)
+#include <endian.h>
+#elif defined(__APPLE__) && defined(__MACH__)
+#include <machine/endian.h>
+#elif defined(BSD) || defined(_SYSTYPE_BSD)
+#if defined(__OpenBSD__)
+#include <machine/endian.h>
+#else
+#include <sys/endian.h>
+#endif
+#endif
+
 wl_static_assert(sizeof(0u) == 4);
 wl_static_assert(sizeof(0ull) == 8);
 
@@ -599,8 +611,51 @@ wl_static_assert(sizeof(wl__bitset_t) == 4);
 #define wl__bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&((4<<3)-1))))
 #define wl__bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&((4<<3)-1))))
 
+#ifdef __BYTE_ORDER
+#if defined(__BIG_ENDIAN) && (__BYTE_ORDER == __BIG_ENDIAN)
+#define WL__BE
+#elif defined(__LITTLE_ENDIAN) && (__BYTE_ORDER == __LITTLE_ENDIAN)
+#define WL__LE
+#endif
+#elif defined(_BYTE_ORDER)
+#if defined(_BIG_ENDIAN) && (_BYTE_ORDER == _BIG_ENDIAN)
+#define WL__BE
+#elif defined(_LITTLE_ENDIAN) && (_BYTE_ORDER == _LITTLE_ENDIAN)
+#define WL__LE
+#endif
+#elif defined(__BIG_ENDIAN__)
+#define WL__BE
+#elif defined(__LITTLE_ENDIAN__)
+#define WL__LE
+#else
+#if defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || \
+defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || \
+defined(__ia64__) || defined(_IA64) || defined(__IA64__) || defined(__ia64) || \
+defined(_M_IA64) || defined(__itanium__) || defined(i386) || defined(__i386__) || \
+defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(__i386) || \
+defined(_M_IX86) || defined(_X86_) || defined(__THW_INTEL__) || defined(__I86__) || \
+defined(__INTEL__) || defined(__x86_64) || defined(__x86_64__) || \
+defined(__amd64__) || defined(__amd64) || defined(_M_X64) || \
+defined(__bfin__) || defined(__BFIN__) || defined(bfin) || defined(BFIN)
+#define WL__LE
+#elif defined(__m68k__) || defined(M68000) || defined(__hppa__) || defined(__hppa) || defined(__HPPA__) || \
+defined(__sparc__) || defined(__sparc) || defined(__370__) || defined(__THW_370__) || \
+defined(__s390__) || defined(__s390x__) || defined(__SYSC_ZARCH__)
+#define WL__BE
+#elif defined(__arm__) || defined(__arm64) || defined(__thumb__) || \
+defined(__TARGET_ARCH_ARM) || defined(__TARGET_ARCH_THUMB) || defined(__ARM_ARCH) || \
+defined(_M_ARM) || defined(_M_ARM64)
+#if defined(_WIN32) || defined(_WIN64) || \
+defined(__WIN32__) || defined(__TOS_WIN__) || defined(__WINDOWS__)
+#define WL__LE
+#else
+#error "Unknown endianness"
+#endif
+#endif
+#endif
+
 static uint32_t WL__AINLINE wl__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
-    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #ifdef WL__BE
         #if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
             x = (uint32_t)__builtin_bswap32((int32_t)x);
         #else
@@ -614,7 +669,7 @@ static uint32_t WL__AINLINE wl__bswap32(uint32_t x) { /* Swap bytes for endianes
 }
 
 static uint64_t WL__AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
-    #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    #ifdef WL__BE
         #if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
             x = (uint64_t)__builtin_bswap64((int64_t)x);
         #else
@@ -659,10 +714,10 @@ static uint64x2_t WL__AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x
 #elif WL_INTRIN && defined(__x86_64__) || defined(_M_X64)
 static uint32_t wl__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
     uint64_t stack = ~(uint64_t)1;
-    uint32_t acc, low;
+    uint32_t low;
     for (; n > 191; n = (n>>1) - 16) stack = (stack<<1) + (n & 1);
     stack = ~stack;
-    acc = ((uint32_t)0x80000000) >> (n & 31);
+    uint32_t acc = 0x80000000 >> (n & 31);
     for (n >>= 5; n; --n) acc = _mm_crc32_u32(acc, 0);
     while ((low = stack & 1), stack >>= 1) {
         __m128i x = _mm_cvtsi32_si128(acc);
@@ -754,9 +809,6 @@ static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 c
             size_t klen = ((size - 8) / 24)<<3;
             uint32_t crc1 = 0;
             uint32_t crc2 = 0;
-            __m128i vc0;
-            __m128i vc1;
-            uint64_t vc;
             /* Main loop. */
             do {
                 crc = _mm_crc32_u64(crc, *(const uint64_t*)buf);
@@ -765,9 +817,9 @@ static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 c
                 buf += 8;
                 size -= 24;
             } while (size >= 32);
-            vc0 = wl__crc_shift(crc, (klen<<1) + 8);
-            vc1 = wl__crc_shift(crc1, klen + 8);
-            vc = _mm_extract_epi64(_mm_xor_si128(vc0, vc1), 0);
+            __m128i vc0 = wl__crc_shift(crc, (klen << 1) + 8);
+            __m128i vc1 = wl__crc_shift(crc1, klen + 8);
+            uint64_t vc = _mm_extract_epi64(_mm_xor_si128(vc0, vc1), 0);
             /* Final 8 bytes. */
             buf += klen<<1;
             crc = crc2;
