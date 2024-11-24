@@ -13,26 +13,6 @@ namespace wl::cuda {
     constexpr std::uint32_t warp_size = 32;
     constexpr std::uint32_t max_streams = 8;
 
-    extern "C" [[noreturn]] auto wl__panic(const char* msg, ...) -> void;
-
-    /* Driver result check. */
-    #define wl_cu_chk_rdv(expr) \
-         do { \
-            if (auto rrr {(expr)}; rrr != CUDA_SUCCESS) [[unlikely]] { \
-                const char* err_str = "?"; \
-                cuGetErrorString(rrr, &err_str); \
-                wl__panic(#expr, __func__, __FILE__, __LINE__, err_str); \
-            } \
-        } while (0)
-
-    /* Runtime result check. */
-    #define wl_cu_chk_rt(expr) \
-        do { \
-            if (auto rrr {(expr)}; rrr != cudaSuccess) [[unlikely]] { \
-                wl__panic(#expr, __func__, __FILE__, __LINE__, cudaGetErrorString(rrr)); \
-            } \
-        } while (0)
-
     struct physical_device final {
         std::int32_t id {};             /* Device ID */
         std::array<char, 256> name {};  /* Device name */
