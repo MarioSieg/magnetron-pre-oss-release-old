@@ -1,7 +1,7 @@
 /* (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com> */
 
-#ifndef WL_INCLUDE_WL_H
-#define WL_INCLUDE_WL_H
+#ifndef WAVELET_H
+#define WAVELET_H
 
 /* Compile time config macros */
 #define WL_CFG_X86_64_FAST_MATH 1 /* Use fast math for x86_64 by setting mxcsr control register. */
