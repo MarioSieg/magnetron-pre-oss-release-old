@@ -20,7 +20,7 @@ static constexpr std::int64_t k_lim_broadcast = 3;
         for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
             \
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x); \
             \
@@ -45,7 +45,7 @@ static constexpr std::int64_t k_lim_broadcast = 3;
             for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
             for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
                 wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-                wl_tensor_fill_random(x, 0.0f, 1.0f); \
+                wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
                 std::vector<float> x_origin {}; \
                 wl_tensor_buf_f32_to_vec(x, x_origin); \
                 \
@@ -76,7 +76,7 @@ TEST(compute_cpu, neg_same_shape) {
     for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4)
     for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) {
         wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5);
-        wl_tensor_fill_random(x, 0.0f, 1.0f);
+        wl_tensor_fill_random_uniform(x, 0.0f, 1.0f);
         wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_NEG, x);
         const auto* b_x = wl_tensor_data_as_f32(x);
         const auto* b_r = wl_tensor_data_as_f32(r);
@@ -174,8 +174,8 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             wl_tensor_t* y = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, x); \
-            wl_tensor_fill_random(x, 0.0f, 1.0f); \
-            wl_tensor_fill_random(y, -5.0f, 5.0f); \
+            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            wl_tensor_fill_random_uniform(y, -5.0f, 5.0f); \
             \
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x, y); \
                                                  \
@@ -205,7 +205,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         for (std::int64_t i5=1; i5 <= k_lim_broadcast; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
             wl_tensor_t* y = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
             wl_tensor_fill(y, 2.2f); \
             \
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x, y); \
@@ -232,8 +232,8 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
             wl_tensor_t* y = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, x); \
-            wl_tensor_fill_random(x, 0.0f, 1.0f); \
-            wl_tensor_fill_random(y, -5.0f, 5.0f); \
+            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            wl_tensor_fill_random_uniform(y, -5.0f, 5.0f); \
             std::vector<float> x_origin {}; \
             wl_tensor_buf_f32_to_vec(x, x_origin); \
             \
@@ -267,7 +267,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         for (std::int64_t i5=1; i5 <= k_lim_broadcast; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
             wl_tensor_t* y = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
             wl_tensor_fill(y, 2.2f); \
             \
             std::vector<float> x_origin {}; \
@@ -298,7 +298,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
             wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random(x, 0.0f, 1.0f); \
+            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
             \
             wl_op_param_t xi = wl_op_param_float(static_cast<float>(i0+i1+i2+i3+i4+i5)*0.221f); \
             wl_tensor_t* r = wl_tensor_emit_op_va_op_params<false>(ctx, WL_OP_##op##S, xi, x); \
@@ -424,7 +424,7 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
 TEST(compute_cpu, arithmetic_mean) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
     wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
-    wl_tensor_fill_random(A, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MEAN, A);
     ASSERT_NE(R, nullptr);
     double a_mean = 0.0;
@@ -435,10 +435,32 @@ TEST(compute_cpu, arithmetic_mean) {
     wl_ctx_destroy(ctx);
 }
 
+TEST(compute_cpu, min) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
+    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
+    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MIN, A);
+    ASSERT_NE(R, nullptr);
+    float a_min = *std::min_element(wl_tensor_data_as_f32(A), wl_tensor_data_as_f32(A) + wl_tensor_num_elements(A));
+    ASSERT_FLOAT_EQ(a_min, *wl_tensor_data_as_f32(R));
+    wl_ctx_destroy(ctx);
+}
+
+TEST(compute_cpu, max) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
+    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
+    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MAX, A);
+    ASSERT_NE(R, nullptr);
+    float a_min = *std::max_element(wl_tensor_data_as_f32(A), wl_tensor_data_as_f32(A) + wl_tensor_num_elements(A));
+    ASSERT_FLOAT_EQ(a_min, *wl_tensor_data_as_f32(R));
+    wl_ctx_destroy(ctx);
+}
+
 TEST(compute_cpu, hsum) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
     wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
-    wl_tensor_fill_random(A, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_SUM, A);
     ASSERT_NE(R, nullptr);
     double a_sum = 0.0;

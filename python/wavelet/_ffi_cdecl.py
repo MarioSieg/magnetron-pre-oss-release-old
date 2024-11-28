@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-13 17:48:03.589886, do NOT edit!
+# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-28 17:54:41.168396, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -66,7 +66,8 @@ extern   wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_
 extern   wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[6]);
 extern   void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size);
 extern   void wl_tensor_fill(wl_tensor_t* t, float x);
-extern   void wl_tensor_fill_random(wl_tensor_t* t, float min, float max);
+extern   void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max);
+extern   void wl_tensor_fill_random_normal(wl_tensor_t* t, float mean, float stddev);
 extern   size_t wl_tensor_get_memory_usage(const wl_tensor_t* t);
 extern   void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data);
 extern   void wl_tensor_set_name(wl_tensor_t* t, const char* name);

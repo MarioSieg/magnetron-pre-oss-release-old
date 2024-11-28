@@ -98,6 +98,7 @@ if (${WAVELET_ENABLE_CUDA})
         target_compile_definitions(wavelet_cuda PRIVATE WL_ENABLE_CUDA)
     else()
         message(WARNING "CUDA not found, disabling CUDA support")
+        set(WAVELET_ENABLE_CUDA OFF)
     endif()
 endif()
 

@@ -69,6 +69,8 @@ class Operator(Enum):
     TRANSPOSE = auto()  # R = Xᵀ
     PERMUTE = auto()  # R = permute(X, axes)
     MEAN = auto()  # R = ΣX/n
+    MIN = auto()  # R = min(X)
+    MAX = auto()  # R = max(X)
     SUM = auto()  # R = ΣX
     ABS = auto()  # R = |X|
     NEG = auto()  # R = -X
@@ -396,7 +398,15 @@ class Tensor:
         tensor._new(Context.active, shape=shape, dtype=dtype, name=name)
         if interval[1] < interval[0]:
             interval = (interval[1], interval[0])
-        C.wl_tensor_fill_random(tensor.tensor, interval[0], interval[1])
+        C.wl_tensor_fill_random_uniform(tensor.tensor, interval[0], interval[1])
+        return tensor
+
+    @staticmethod
+    def normal(shape: tuple[int, ...], *, mean: float, stddev: float):
+        """Creates a tensor filled with random values from a normal distribution."""
+        tensor = Tensor(None)
+        tensor._new(Context.active, shape=shape, dtype=DType.F32)
+        C.wl_tensor_fill_random_normal(tensor.tensor, mean, stddev)
         return tensor
 
     @staticmethod
@@ -597,6 +607,14 @@ class Tensor:
     def mean(self) -> 'Tensor':
         """ΣX/n"""
         return self.operator(Operator.MEAN, False, None, self)
+
+    def min(self) -> 'Tensor':
+        """min(X)"""
+        return self.operator(Operator.MIN, False, None, self)
+
+    def max(self) -> 'Tensor':
+        """max(X)"""
+        return self.operator(Operator.MAX, False, None, self)
 
     def sum(self) -> 'Tensor':
         """ΣX"""

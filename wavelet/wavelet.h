@@ -134,6 +134,8 @@ extern WL_EXPORT const wl_dtype_info_t* wl_dtype_info_of(wl_dtype_t type);
     _(TRANSPOSE,        "transpose",        1, 0, false)/* R = Xᵀ */__\
     _(PERMUTE,          "permute",          1, 6, false)/* R = permute(X, axes) */__\
     _(MEAN,             "mean",             1, 0, false)/* R = ΣX/n */__\
+    _(MIN,              "min",              1, 0, false)/* R = min x */__\
+    _(MAX,              "max",              1, 0, false)/* R = max x */__\
     _(SUM,              "sum",              1, 0, false)/* R = ΣX */__\
     _(ABS,              "abs",              1, 0, true)/* R = |X| */__\
     _(NEG,              "neg",              1, 0, true)/* R = -X */__\
@@ -223,7 +225,8 @@ extern WL_EXPORT wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool
 
 extern WL_EXPORT void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size); /* Copy data into tensor buffer */
 extern WL_EXPORT void wl_tensor_fill(wl_tensor_t* t, float x); /* Set all tensor elements to a specific value */
-extern WL_EXPORT void wl_tensor_fill_random(wl_tensor_t* t, float min, float max); /* Fill tensor with random values within [min, max] */
+extern WL_EXPORT void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max); /* Fill tensor with random values from uniform distribution within [min, max] */
+extern WL_EXPORT void wl_tensor_fill_random_normal(wl_tensor_t* t, float mean, float stddev); /* Fill tensor with random values from the normal distribution. */
 
 extern WL_EXPORT size_t wl_tensor_get_memory_usage(const wl_tensor_t* t); /* Return memory used by this tensor in bytes. */
 extern WL_EXPORT void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data); /* Print tensor info (with or without data) */
@@ -263,8 +266,8 @@ extern WL_EXPORT void* wl_tensor_get_user_data(const wl_tensor_t* t); /* Get the
 extern WL_EXPORT void wl_tensor_set_user_data(wl_tensor_t* t, void* ud); /* Set the user data of the tensor */
 extern WL_EXPORT void wl_tensor_save(const wl_tensor_t* t, const char* file); /* Save tensor to WAVELET binary file. */
 extern WL_EXPORT wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file); /* Load tensor from WAVELET binary file. */
-extern WL_EXPORT wl_tensor_t* wl_tensor_load_png(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t resize_w, uint32_t resize_h); /* Create a tensor from an image file. */
-extern WL_EXPORT void wl_tensor_save_png(const wl_tensor_t* t, const char* file); /* Save tensor data as an image */
+extern WL_EXPORT wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t resize_w, uint32_t resize_h); /* Create a tensor from an image file. */
+extern WL_EXPORT void wl_tensor_save_image(const wl_tensor_t* t, const char* file); /* Save tensor data as an image */
 #define wl_tensor_image_width(tensor) (wl_tensor_shape(tensor)[2]) /* Get image width from tensor */
 #define wl_tensor_image_height(tensor) (wl_tensor_shape(tensor)[1]) /* Get image height from tensor */
 #define wl_tensor_image_channels(tensor) (wl_tensor_shape(tensor)[0]) /* Get image channels from tensor */

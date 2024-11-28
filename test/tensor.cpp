@@ -188,7 +188,7 @@ TEST(wl_tensor_t, print) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
     wl_tensor_t* tensor = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 2, 2, 2, 2);
-    wl_tensor_fill_random(tensor, 0.0f, 1.0f);
+    wl_tensor_fill_random_uniform(tensor, 0.0f, 1.0f);
     wl_tensor_print(tensor, false, true);
 
     wl_ctx_destroy(ctx);
@@ -208,7 +208,7 @@ TEST(wl_tensor_t, deep_clone) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
     wl_tensor_t* origin = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 10, 4, 2, 5);
-    wl_tensor_fill_random(origin, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
     wl_tensor_t* clone = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, origin);
     ASSERT_NE(origin, clone);
     ASSERT_EQ(wl_tensor_rank(origin), wl_tensor_rank(clone));
@@ -239,10 +239,10 @@ TEST(wl_tensor_t, equals) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
     wl_tensor_t* origin = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 10, 4, 2, 5);
-    wl_tensor_fill_random(origin, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
     wl_tensor_t* clone = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, origin);
     wl_tensor_t* clone2 = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, origin);
-    wl_tensor_fill_random(clone2, 0.0f, 1.0f);
+    wl_tensor_fill_random_uniform(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(wl_tensor_eq(origin, clone));
     ASSERT_FALSE(wl_tensor_eq(origin, clone2));
     ASSERT_FALSE(wl_tensor_eq(clone, clone2));
@@ -295,7 +295,7 @@ TEST(wl_tensor_t, transpose) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
     wl_tensor_t* origin = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 4, 1);
-    wl_tensor_fill_random(origin, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
     wl_tensor_t* transposed = wl_tensor_emit_op_va(ctx, WL_OP_TRANSPOSE, origin);
     ASSERT_FALSE(wl_tensor_is_transposed(origin));
     ASSERT_TRUE(wl_tensor_is_transposed(transposed));
@@ -314,7 +314,7 @@ TEST(wl_tensor_t, transpose) {
 TEST(wl_tensor_t, permute) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
     wl_tensor_t* origin = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 4, 1);
-    wl_tensor_fill_random(origin, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
     wl_op_param_t params[WL_MAX_OP_PARAMS] {
         wl_op_param_int(5),
         wl_op_param_int(4),
@@ -348,10 +348,10 @@ TEST(wl_tensor_t, isclose) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
     wl_tensor_t* origin = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 10, 4, 2, 5);
-    wl_tensor_fill_random(origin, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
     wl_tensor_t* clone = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, origin);
     wl_tensor_t* clone2 = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, origin);
-    wl_tensor_fill_random(clone2, 0.0f, 1.0f);
+    wl_tensor_fill_random_uniform(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(wl_tensor_is_close(origin, clone, FLT_EPSILON, nullptr));
     ASSERT_FALSE(wl_tensor_is_close(origin, clone2, FLT_EPSILON, nullptr));
     ASSERT_FALSE(wl_tensor_is_close(clone, clone2, FLT_EPSILON, nullptr));
@@ -419,7 +419,7 @@ TEST(wl_tensor_t, random_pcg) {
     wl_ctx_set_prng_algorithm(ctx, WL_PRNG_PCG, std::bit_cast<std::uint64_t>(this));
 
     wl_tensor_t* tensor = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 128, 128, 128, 128);
-    wl_tensor_fill_random(tensor, rmin, rmax);
+    wl_tensor_fill_random_uniform(tensor, rmin, rmax);
 
     auto* buf = wl_tensor_data_as_f32(tensor);
     std::vector<float> set {};
@@ -451,7 +451,7 @@ TEST(wl_tensor_t, random_mersenne) {
     wl_ctx_set_prng_algorithm(ctx, WL_PRNG_MERSENNE_TWISTER, std::bit_cast<std::uint64_t>(this));
 
     wl_tensor_t* tensor = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 128, 128, 128, 128);
-    wl_tensor_fill_random(tensor, rmin, rmax);
+    wl_tensor_fill_random_uniform(tensor, rmin, rmax);
 
     auto* buf = wl_tensor_data_as_f32(tensor);
     std::vector<float> set {};

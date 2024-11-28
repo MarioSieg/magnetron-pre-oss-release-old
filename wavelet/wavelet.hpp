@@ -203,7 +203,7 @@ namespace wavelet {
             wl_tensor_copy_buffer_from(m_t, buffer.data(), buffer.size()*sizeof(T));
         }
         auto fill(const float x) noexcept -> void { wl_tensor_fill(m_t, x); }
-        auto fill_random(float min, float max) noexcept -> void { wl_tensor_fill_random(m_t, min, max); }
+        auto fill_random(float min, float max) noexcept -> void { wl_tensor_fill_random_uniform(m_t, min, max); }
 
 
     private:

@@ -8,7 +8,7 @@ TEST(storage, load_store) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
     wl_tensor_t* A = wl_tensor_create_6d(ctx, WL_DTYPE_F32, 10, 4, 2, 5, 2, 2);
-    wl_tensor_fill_random(A, -1.0f, 1.0f);
+    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
 
     if (std::filesystem::exists("test_data/test.wavelet"))
         std::filesystem::remove("test_data/test.wavelet");
@@ -32,7 +32,7 @@ TEST(storage, load_store) {
 TEST(storage, load_store_image) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
 
-    wl_tensor_t* img = wl_tensor_load_png(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 0, 0);
+    wl_tensor_t* img = wl_tensor_load_image(ctx, "test_data/car.jpg", WL_COLOR_CHANNELS_RGB, 0, 0);
     if (std::filesystem::exists("test_data/car.wavelet"))
         std::filesystem::remove("test_data/car.wavelet");
     wl_tensor_save(img, "test_data/car.wavelet");

@@ -1701,6 +1701,8 @@ static bool (*wl__op_get_validator_routine(wl_op_t op, wl_graph_eval_order_t ord
             [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
             [WL_OP_PERMUTE] = &wl__validate_op_transpose,
             [WL_OP_MEAN] = &wl__validate_op_scalar,
+            [WL_OP_MIN] = &wl__validate_op_scalar,
+            [WL_OP_MAX] = &wl__validate_op_scalar,
             [WL_OP_SUM] = &wl__validate_op_scalar,
             [WL_OP_ABS] = &wl__validate_op_unary,
             [WL_OP_NEG] = &wl__validate_op_unary,
@@ -1739,6 +1741,8 @@ static bool (*wl__op_get_validator_routine(wl_op_t op, wl_graph_eval_order_t ord
             [WL_OP_TRANSPOSE] = &wl__validate_op_transpose,
             [WL_OP_PERMUTE] = &wl__validate_op_transpose,
             [WL_OP_MEAN] = &wl__validate_op_scalar,
+            [WL_OP_MIN] = &wl__validate_op_scalar,
+            [WL_OP_MAX] = &wl__validate_op_scalar,
             [WL_OP_SUM] = &wl__validate_op_scalar,
             [WL_OP_ABS] = &wl__validate_op_unary,
             [WL_OP_NEG] = &wl__validate_op_unary,
@@ -1847,6 +1851,8 @@ static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op, wl_graph
             [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
             [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
             [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_MIN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_MAX] = &wl__result_constructor_routine_scalar,
             [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
             [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
             [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
@@ -1885,6 +1891,8 @@ static wl_tensor_t* (*wl__op_get_result_constructor_routine(wl_op_t op, wl_graph
             [WL_OP_TRANSPOSE] = &wl__result_constructor_routine_transposed,
             [WL_OP_PERMUTE] = &wl__result_constructor_routine_permuted,
             [WL_OP_MEAN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_MIN] = &wl__result_constructor_routine_scalar,
+            [WL_OP_MAX] = &wl__result_constructor_routine_scalar,
             [WL_OP_SUM] = &wl__result_constructor_routine_scalar,
             [WL_OP_ABS] = &wl__result_constructor_routine_isomorph,
             [WL_OP_NEG] = &wl__result_constructor_routine_isomorph,
@@ -2118,12 +2126,33 @@ void wl_tensor_fill(wl_tensor_t* t, float x) {
     }
 }
 
-void wl_tensor_fill_random(wl_tensor_t* t, float min, float max) {
+void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max) {
     switch (t->dtype) {
         case WL_DTYPE_F32: {
             int64_t n = wl__tensor_num_elements(t);
             float* buf = (float*)t->buf;
-            wl__prng_generate_n(t->ctx, buf, n, min, max);
+            wl__prng_generate_n(t->ctx, buf, n, min, max); /* Generate uniform random numbers. */
+        } break;
+        default: wl__panic("Unsupported DType: %d", t->dtype);
+    }
+}
+
+void wl_tensor_fill_random_normal(wl_tensor_t* t, float mean, float stddev) {
+    switch (t->dtype) {
+        case WL_DTYPE_F32: {
+            int64_t n = wl__tensor_num_elements(t);
+            wl__assert((n & 1) == 0, "Number of elements must be even");
+            float* buf = (float*)t->buf;
+            wl__prng_generate_n(t->ctx, buf, n, 0.0f, 1.0f); /* Generate uniform random numbers. */
+            for (int64_t i=0; i < n; i += 2) { /* Map uniform to normal distribution using Box-Muller transform. */
+                float* u1 = buf+i;
+                float* u2 = buf+i+1;
+                float mag = stddev*sqrtf(-2.0f*logf(*u1));
+                float y0 = mag*cosf((float)(2.0*M_PI)*(*u2)) + mean;
+                float y1 = mag*sinf((float)(2.0*M_PI)*(*u2)) + mean;
+                *u1 = y0;
+                *u2 = y1;
+            }
         } break;
         default: wl__panic("Unsupported DType: %d", t->dtype);
     }
@@ -2890,6 +2919,26 @@ static double WL__HOTPROC wl__vsum_f64_f32( /* Σx. */
     #endif
 }
 
+static float WL__HOTPROC wl__vmin_f32( /* min x */
+    const int64_t n,
+    const float* const x
+) {
+    float min = INFINITY;
+    for (int64_t i=0; i < n; ++i)
+        min = fminf(min, x[i]);
+    return min;
+}
+
+static float WL__HOTPROC wl__vmax_f32( /* max x */
+    const int64_t n,
+    const float* const x
+) {
+    float min = -INFINITY;
+    for (int64_t i=0; i < n; ++i)
+        min = fmaxf(min, x[i]);
+    return min;
+}
+
 static void WL__HOTPROC wl__vabs_f32( /* o = |x| */
     const int64_t n,
     float* const o,
@@ -3310,6 +3359,64 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
     }
     sum /= (double)x->num_elems;
     *b_r = (float)sum;
+}
+
+static void WL__HOTPROC wl__blas_min_f32( /* min x */
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    float min = INFINITY;
+    for (int64_t i5=0; i5 < x_d5; ++i5) {
+        for (int64_t i4=0; i4 < x_d4; ++i4) {
+            for (int64_t i3=0; i3 < x_d3; ++i3) {
+                for (int64_t i2=0; i2 < x_d2; ++i2) {
+                    for (int64_t i1=0; i1 < x_d1; ++i1) {
+                        const float* const p_x = b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5;
+                        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+                        min = fminf(wl__vmin_f32(x_d0, p_x), min);
+                    }
+                }
+            }
+        }
+    }
+    *b_r = min;
+}
+
+static void WL__HOTPROC wl__blas_max_f32( /* max x */
+    const wl__blas_compute_info_t* const bci,
+    wl_tensor_t* const r,
+    const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
+) {
+    (void)bci;
+    const wl_tensor_t* const x = inputs[0];
+    float* const b_r = (float*)r->buf;
+    const float* const b_x = (const float*)x->buf;
+    wl__load_local_storage_group(r, r_s, strides);
+    wl__load_local_storage_group(x, x_d, shape);
+    wl__load_local_storage_group(x, x_s, strides);
+    float max = -INFINITY;
+    for (int64_t i5=0; i5 < x_d5; ++i5) {
+        for (int64_t i4=0; i4 < x_d4; ++i4) {
+            for (int64_t i3=0; i3 < x_d3; ++i3) {
+                for (int64_t i2=0; i2 < x_d2; ++i2) {
+                    for (int64_t i1=0; i1 < x_d1; ++i1) {
+                        const float* const p_x = b_x + i1*x_s1 + i2*x_s2 + i3*x_s3 + i4*x_s4 + i5*x_s5;
+                        wl__bnd_chk(p_x, b_x, wl__tensor_data_size(x));
+                        max = fmaxf(wl__vmax_f32(x_d0, p_x), max);
+                    }
+                }
+            }
+        }
+    }
+    *b_r = max;
 }
 
 static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
@@ -4426,6 +4533,8 @@ static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_MEAN] = &wl__blas_mean_f32;
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MIN] = &wl__blas_min_f32,
+    (*dispatch_lut)[WL__GRA_FWD][WL_OP_MAX] = &wl__blas_max_f32,
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_SUM] = &wl__blas_sum_f32;
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_ABS] = &wl__blas_abs_f32;
     (*dispatch_lut)[WL__GRA_FWD][WL_OP_NEG] = &wl__blas_neg_f32;
@@ -4464,6 +4573,8 @@ static void wl__blas_compute_dispatch_table_default(void (*(*const dispatch_lut)
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_TRANSPOSE] = &wl__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_PERMUTE] = &wl__blas_nop; /* Transpose is a runtime no-op */
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_MEAN] = &wl__blas_mean_f32;
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MIN] = &wl__blas_min_f32,
+    (*dispatch_lut)[WL__GRA_BWD][WL_OP_MAX] = &wl__blas_max_f32,
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_SUM] = &wl__blas_sum_f32;
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_ABS] = &wl__blas_abs_f32;
     (*dispatch_lut)[WL__GRA_BWD][WL_OP_NEG] = &wl__blas_neg_f32;
@@ -5457,7 +5568,7 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     return target;
 }
 
-wl_tensor_t* wl_tensor_load_png(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t resize_w, uint32_t resize_h) {
+wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_channels_t channels, uint32_t resize_w, uint32_t resize_h) {
     uint8_t* (*loader)(const char*, uint32_t(*)[3], wl_color_channels_t) = ctx->image_load_fn;
     void (*load_free)(uint8_t*) = ctx->image_load_free_fn;
     wl__assert(loader && load_free, "Image loader not set");
@@ -5534,7 +5645,7 @@ wl_tensor_t* wl_tensor_load_png(wl_ctx_t* ctx, const char* file, wl_color_channe
     }
 }
 
-void wl_tensor_save_png(const wl_tensor_t* t, const char* file) {
+void wl_tensor_save_image(const wl_tensor_t* t, const char* file) {
     bool (*saver)(const char*, const uint8_t*, const uint32_t(*)[3]) = t->ctx->image_save_fn;
     wl__assert(saver, "Image saver not set");
     int64_t rank = wl_tensor_rank(t);
