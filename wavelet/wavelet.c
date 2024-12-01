@@ -453,12 +453,6 @@ static uint64_t WL__AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianes
     return x;
 }
 
-static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
-    void* pp = (void*)(((uintptr_t)*p+align-1) & -align);
-    *p = (void*)((uint8_t*)pp + sz);
-    return pp;
-}
-
 #if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
 static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
     register uint64x2_t r;
@@ -969,9 +963,9 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
        if (wl__log_enabled) {
            printf("CPU Features:");
-           for (unsigned i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
+           for (uint32_t i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
                if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
-                   if (k++ % 8 == 0) printf("\n\t");
+                   if ((k++ & 7) == 0) printf("\n\t");
                    printf("%s ", wl__x86_64_feature_names[i]);
                }
            }
@@ -991,7 +985,6 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
     /* Configure configureable media processors */
-
     #if WL_ENABLE_IMAGE_SUPPORT
         ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &wl__default_image_load_impl;
         ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &wl__default_image_load_free_fn_impl;
@@ -1007,18 +1000,23 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__prng_init(ctx, ctx_info.prng_seed^host_tid^(uintptr_t)ctx^(uintptr_t)&ctx_info); /* Initialize PRNG state. */
     ctx->host_thread_id = host_tid;
 
-    /* Install BLAS dispatch table, specialized for host. */
+    /* Create selected compute device. */
     ctx->exec_mode = ctx_info.exec_mode;
-    wl__cpu_init(ctx->compute_device); /* Initialize CPU device. TODO: check device selection */
+    ctx->device_type = ctx_info.device;
+    switch (ctx->device_type) {
+        case WL_COMPUTE_DEVICE_TYPE_CPU: ctx->device = wl__cpu_init(ctx, 0); break;
+        default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
+    }
+    wl__assert2(ctx->device);
 
     /* Print context initialization time. */
     wl__log_info("WAVELET context initialized in %.05f ms.", wl__hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
 }
 
-wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size) {
+wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device) {
     wl_ctx_info_t info = {0};
-    info.pool_chunk_size = pool_chunk_size;
+    info.device = device;
     return wl_ctx_create(&info);
 }
 
@@ -1186,6 +1184,11 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
             if (ctx->sh_hooks[i]) (*ctx->sh_hooks[i])(ctx);
         (*wl__alloc)(ctx->sh_hooks, 0);
     }
+    switch (ctx->device_type) {
+        case WL_COMPUTE_DEVICE_TYPE_CPU: wl__cpu_destroy(ctx->device); break;
+        default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
+    }
+    ctx->device = NULL;
     size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
     size_t mem_mapped = ctx->pool.mapped_total;
     size_t tensors_created = ctx->tensors_created;
@@ -1758,8 +1761,8 @@ static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl__compute_device_t* dvc, w
     wl__op_perf_info_t (*pmon_ops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
     wl__op_perf_info_t* pmon_op = (*pmon_ops)+R->op;
     uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_ns();    /* Profiling monitoring */
-    void (*exec)(wl_tensor_t*) = ord == WL_GRAPH_EVAL_ORDER_FORWARD ? dvc->exec_forward : dvc->exec_backward;
-    (*exec)(R); /* Dispatch to backend. */
+    void (*exec)(wl__compute_device_t*, wl_tensor_t*) = ord == WL_GRAPH_EVAL_ORDER_FORWARD ? dvc->exec_forward : dvc->exec_backward;
+    (*exec)(dvc, R); /* Dispatch to backend. */
     if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
     pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
     pmon->elapsed_ns_acc += pmon->elapsed_ns;
@@ -1775,15 +1778,15 @@ wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inpl
         = wl__op_get_result_constructor_routine(op, gra);
     bool (*validate_op)(wl_op_t, wl_tensor_t*, wl_tensor_t**, uint32_t, const wl_op_param_t(*)[WL_MAX_OP_PARAMS])
         = wl__op_get_validator_routine(op, gra);
-    wl_tensor_t* R = (inplace && n_inputs && wl_op_supports_inplace(op))                        /* Inplace requested? */
-        ? wl__tensor_create(ctx, (*inputs)->dtype, (*inputs)->shape, (*inputs)->rank, *inputs, 0)   /* View R <- X for inplace aliasing op. */
-        : (*construct_result)(inputs, params);                                                  /* Construct new result tensor. */
-    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;            /* Validation failed. */
-    wl_tensor_t* grad = NULL;                                                                   /* ∇ᵦL = ∂L/∂B - Upper gradient tensor. */  /* TODO */
+    wl_tensor_t* R = (inplace && n_inputs && wl_op_supports_inplace(op))                                            /* Inplace requested? */
+        ? wl__tensor_create(ctx, (*inputs)->dtype, (*inputs)->shape, (*inputs)->rank, *inputs, 0)           /* View R <- X for inplace aliasing op. */
+        : (*construct_result)(inputs, params);                                                                      /* Construct new result tensor. */
+    if (wl__unlikely(!(*validate_op)(op, R, inputs, n_inputs, params))) return NULL;                                /* Validation failed. */
+    wl_tensor_t* grad = NULL;                                                                                       /* ∇ᵦL = ∂L/∂B - Upper gradient tensor. */  /* TODO */
     if (gra == WL__GRA_BWD && grad) {
-        R->grad = R->grad                                                                       /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
-            ? wl_tensor_operator(R->ctx, WL_OP_ADD, false, (wl_tensor_t*[]) {R->grad, grad}, 2, NULL)
-            : wl_tensor_operator(R->ctx, WL_OP_CLONE, false, &grad, 1, NULL);                   /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
+        R->grad = R->grad                                                                                           /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
+            ? wl_tensor_operator(R->ctx, WL_OP_ADD, false, (wl_tensor_t*[]){R->grad, grad}, 2, NULL)
+            : wl_tensor_operator(R->ctx, WL_OP_CLONE, false, &grad, 1, NULL);                        /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
         R->grad->flags |= WL__TFLAG_OP_OUTPUT;
     }
     R->flags |= WL__TFLAG_OP_OUTPUT;
@@ -1795,7 +1798,7 @@ wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inpl
     }
     if (params) memcpy(R->op_params, *params, sizeof(*params));         /* Copy operation parameters */
     if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                         /* In eager execution mode, we execute immediately. */
-        wl__op_exec(R, ctx->compute_device, gra);                       /* Execute the operation immediately. */
+        wl__op_exec(R, ctx->device, gra);                       /* Execute the operation immediately. */
     }
     return R;
 }
@@ -2337,7 +2340,7 @@ wl_tensor_t* WL__HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
     wl_tensor_t* root = nodes[n-1]; /* Evaluation root node */
     for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
         wl_tensor_t* R = nodes[i];
-        wl__op_exec(R, gra->ctx->compute_device, gra->order);
+        wl__op_exec(R, gra->ctx->device, gra->order);
     }
     return root;
 }

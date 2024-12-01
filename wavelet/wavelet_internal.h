@@ -132,11 +132,18 @@ extern WL_EXPORT void* (*wl__alloc)(void* blk, size_t size);
 #define wl__bnd_chk(ptr, base, n)
 #endif
 
+/* Increment pointer or size with correct type alignment. */
+static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
+    void* pp = (void*)(((uintptr_t)*p+align-1)&-align);
+    *p = (void*)((uint8_t*)pp+sz);
+    return pp;
+}
+
 /* Abstract interface to any compute backend device (CPU, GPU, TPU etc..) */
 typedef struct wl__compute_device_t {
     char name[128]; /* Device name. */
-    void (*exec_forward)(wl_tensor_t* root); /* Execute a computation graph forward. */
-    void (*exec_backward)(wl_tensor_t* root); /* Execute a computation graph backwards. */
+    void (*exec_forward)(struct wl__compute_device_t* dvc, wl_tensor_t* root); /* Execute a computation graph forward. */
+    void (*exec_backward)(struct wl__compute_device_t* dvc, wl_tensor_t* root); /* Execute a computation graph backwards. */
     void* impl; /* Device specific implementation, if applicable. */
 } wl__compute_device_t;
 
@@ -203,7 +210,8 @@ struct wl_ctx_t {
     void (**sh_hooks)(wl_ctx_t*);           /* Shutdown hooks are invoked when context is destroyed. */
     size_t sh_len;                          /* Number of shutdown hooks. */
     size_t sh_cap;                          /* Maximum number of shutdown hooks. */
-    wl__compute_device_t* compute_device;   /* Active compute device. */
+    wl_compute_device_type_t device_type; /* Active compute device. */
+    wl__compute_device_t* device;   /* Active compute device. */
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
     void (*image_load_free_fn)(uint8_t*);
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
