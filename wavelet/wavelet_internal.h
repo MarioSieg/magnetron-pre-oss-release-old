@@ -30,6 +30,10 @@
 #endif
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define WL__GELU_COEFF 0.044715f
 #define WL__GRA_FWD WL_GRAPH_EVAL_ORDER_FORWARD
 #define WL__GRA_BWD WL_GRAPH_EVAL_ORDER_REVERSE
@@ -90,6 +94,7 @@ wl_static_assert(sizeof(0ull) == 8);
 extern WL__NORET WL__COLDPROC WL_EXPORT void wl__panic(const char* msg, ...);
 extern WL_EXPORT bool wl__log_enabled;
 extern WL_EXPORT void* (*wl__alloc)(void* blk, size_t size);
+extern WL_EXPORT void* wl__alloc_aligned(size_t size, size_t align);
 
 #define wl__swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
 #define wl__max(x, y) (((x) > (y)) ? (x) : (y))
@@ -269,5 +274,9 @@ struct wl_tensor_t {
     (void)prefix##5
 
 #define wl__load_local_storage_group(xk, prefix, var) wl__load_local_storage_group_arr((xk)->var, prefix)
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

@@ -19,6 +19,10 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #define WL_DEFAULT_CHUNK_SIZE (1ull<<30)  /* Default size of memory chunk in bytes. 1 GiB */
 #define WL_DEFAULT_CHUNK_CAP 128          /* Default capacity of memory chunk */
 #define WL_MAX_DIMS 6                     /* Maximum number of dimensions for a tensor */
@@ -36,10 +40,6 @@
 #   else
 #       define WL_EXPORT
 #   endif
-#endif
-
-#ifdef __cplusplus
-extern "C" {
 #endif
 
 #define wl_version_pack(major, minor) ((uint32_t)((((major)&0xff)<<8)+((minor)&0xff)))

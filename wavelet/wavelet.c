@@ -90,6 +90,11 @@ static void* wl__default_allocator_impl(void* blk, size_t size) {
 
 void* (*wl__alloc)(void* blk, size_t size) = &wl__default_allocator_impl;
 
+void* wl__alloc_aligned(size_t size, size_t align) {
+    wl__assert(align && !(align&(align-1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
+    return (void*)(((uintptr_t)(*wl__alloc)(NULL, size+align-1)+align-1)&-align);
+}
+
 #ifdef WL_ENABLE_IMAGE_SUPPORT
 #define STBI_STATIC
 #define STBI_MALLOC(sz) ((*wl__alloc)(NULL, (sz)))
