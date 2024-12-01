@@ -1,4 +1,4 @@
-# Autogenered by /Users/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-11-28 18:17:12.673730, do NOT edit!
+# Autogenered by /home/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-12-01 18:12:54.911044, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -8,6 +8,7 @@ typedef struct wl_dtype_info_t wl_dtype_info_t;
 typedef struct wl_tensor_t wl_tensor_t;
 typedef struct wl_compute_graph_t wl_compute_graph_t;
 
+typedef int wl_compute_device_type_t;
 typedef int wl_exec_mode_t;
 typedef int wl_prng_algorithm_t;
 typedef int wl_color_channels_t;
@@ -21,7 +22,7 @@ extern   void wl_set_alloc_fn(void* (*alloc)(void* blk, size_t size));
 extern   void wl_set_set_log_mode(bool enabled);
 typedef uint32_t wl_char32_t;
 extern   wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info);
-extern   wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size);
+extern   wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device);
 extern   void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size);
 extern   void* wl_ctx_pool_alloc_aligned(wl_ctx_t* ctx, size_t size, size_t align);
 extern   size_t wl_ctx_total_allocated_pool_memory(const wl_ctx_t* ctx);

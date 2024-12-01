@@ -41,6 +41,10 @@ if getenv('WAVELET_LOG', '0') == '1':
 def pack_color(r: int, g: int, b: int) -> int:
     return C.wl_pack_color_u8(r, g, b)
 
+class ComputeDevice(Enum):
+    """Compute devices available for parallel computations."""
+    CPU = 0
+    CUDA = auto()
 
 class PRNGAlgorithm(Enum):
     MERSENNE_TWISTER = 0  # Default - Mersenne Twister Generator
@@ -48,12 +52,12 @@ class PRNGAlgorithm(Enum):
 
 
 class DType(Enum):
-    """Enumerates the supported data types for tensors."""
+    """Supported data types for tensors."""
     F32 = 0
 
 
 class ColorChannels(Enum):
-    """Enumerates the desired color channels when loading images."""
+    """Desired color channels when loading images."""
     AUTO = 0  # Automatically determine the number of color channels
     GRAY = auto()  # Grayscale F32
     GRAY_A = auto()  # Grayscale F32 with alpha F32
@@ -189,9 +193,8 @@ class Context:
 
     active: 'Context' = None  # Global context
 
-    def __init__(self, execution_mode: ExecutionMode = ExecutionMode.EAGER,
-                 pool_chunk_size: int = 1 << 30):  # Pool chunk size. Default: 2GiB
-        self.ctx = C.wl_ctx_create2(pool_chunk_size)
+    def __init__(self, device: ComputeDevice, *, execution_mode: ExecutionMode = ExecutionMode.EAGER):  # Pool chunk size. Default: 2GiB
+        self.ctx = C.wl_ctx_create2(device.value)
         self.execution_mode = execution_mode
 
     @property
@@ -288,7 +291,7 @@ class Context:
         self.ctx = ffi.NULL
 
 
-Context.active = Context()  # Create the global context
+Context.active = Context(ComputeDevice.CPU)  # Create the global context
 
 
 class Tensor:

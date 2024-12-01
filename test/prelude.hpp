@@ -1,6 +1,6 @@
 #pragma once
 
-#include <wavelet.hpp>
+#include <wavelet.h>
 #include <gtest/gtest.h>
 
 #include <array>

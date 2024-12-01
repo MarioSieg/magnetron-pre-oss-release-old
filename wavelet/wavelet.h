@@ -1,7 +1,7 @@
 /* (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com> */
 
-#ifndef WL_INCLUDE_WL_H
-#define WL_INCLUDE_WL_H
+#ifndef WAVELET_H
+#define WAVELET_H
 
 /* Compile time config macros */
 #define WL_CFG_X86_64_FAST_MATH 1 /* Use fast math for x86_64 by setting mxcsr control register. */
@@ -52,6 +52,11 @@ extern "C" {
 #define wl_assert_name(line) wl_assert_name2(_assert_, line)
 #define wl_static_assert(expr) extern void wl_assert_name(__LINE__)(bool STATIC_ASSERTION_FAILED[((expr)?1:-1)])
 
+typedef enum wl_compute_device_type_t {
+    WL_COMPUTE_DEVICE_TYPE_CPU = 0, /* CPU compute device */
+    WL_COMPUTE_DEVICE_TYPE_CUDA = 1  /* CUDA GPU compute device */
+} wl_compute_device_type_t;
+
 typedef enum wl_exec_mode_t {
     WL_EXEC_MODE_EAGER = 0, /* Execute operations immediately. (Dynamic computation graph, like PyTorch). */
     WL_EXEC_MODE_DEFERRED = 1 /* Build computation graph and execute later. (Static computation graph, like TensorFlow 1.0). */
@@ -77,6 +82,7 @@ extern WL_EXPORT void wl_set_set_log_mode(bool enabled); /* Enable/disable loggi
 typedef uint32_t wl_char32_t;
 
 typedef struct wl_ctx_info_t {
+    wl_compute_device_type_t device; /* Compute device */
     size_t pool_chunk_size; /* Size of each memory pool chunk */
     size_t pool_chunks_cap; /* Maximum chunks in the pool */
     uint64_t prng_seed; /* Seed for PRNG if prng_init_seed == true */
@@ -92,7 +98,7 @@ typedef struct wl_ctx_info_t {
 typedef struct wl_ctx_t wl_ctx_t; /* Opaque context type for managing memory pools */
 
 extern WL_EXPORT wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info); /* Create context with configuration data. */
-extern WL_EXPORT wl_ctx_t* wl_ctx_create2(size_t pool_chunk_size); /* Create context with just pool chunk size. */
+extern WL_EXPORT wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device); /* Create context with default config, and only specificy device. */
 extern WL_EXPORT void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size); /* Allocate memory from pool */
 extern WL_EXPORT void* wl_ctx_pool_alloc_aligned(wl_ctx_t* ctx, size_t size, size_t align); /* Aligned memory allocation */
 extern WL_EXPORT size_t wl_ctx_total_allocated_pool_memory(const wl_ctx_t* ctx); /* Get total allocated pool memory */
