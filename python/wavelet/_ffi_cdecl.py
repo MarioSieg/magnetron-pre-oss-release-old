@@ -1,4 +1,4 @@
-# Autogenered by /home/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-12-01 18:12:54.911044, do NOT edit!
+# Autogenered by /home/mario/Documents/projects/wavelet/python/wavelet/_ffi_cdecl_generator.py 2024-12-01 19:00:48.468253, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -30,6 +30,8 @@ extern   wl_exec_mode_t wl_ctx_get_exec_mode(const wl_ctx_t* ctx);
 extern   void wl_ctx_set_exec_mode(wl_ctx_t* ctx, wl_exec_mode_t mode);
 extern   wl_prng_algorithm_t wl_ctx_get_prng_algorithm(const wl_ctx_t* ctx);
 extern   void wl_ctx_set_prng_algorithm(wl_ctx_t* ctx, wl_prng_algorithm_t algorithm, uint64_t seed);
+extern   wl_compute_device_type_t wl_ctx_get_compute_device_type(const wl_ctx_t* ctx);
+extern   const char* wl_ctx_get_compute_device_name(const wl_ctx_t* ctx);
 extern   const char* wl_ctx_get_os_name(const wl_ctx_t* ctx);
 extern   const char* wl_ctx_get_cpu_name(const wl_ctx_t* ctx);
 extern   uint32_t wl_ctx_get_cpu_virtual_cores(const wl_ctx_t* ctx);

@@ -5,7 +5,7 @@
 
 #include "wavelet_internal.h"
 
-extern wl__compute_device_t* wl__cpu_init(wl_ctx_t* ctx, uint32_t num_threads); /* Initialize CPU compute device. num_threads = 0 = num of host CPUs */
-extern void wl__cpu_destroy(wl__compute_device_t* dvc); /* Destroy CPU compute device. */
+extern wl__compute_device_t* wl__init_device_cpu(wl_ctx_t* ctx, uint32_t num_threads); /* Initialize CPU compute device. num_threads = 0 = num of host CPUs */
+extern void wl__destroy_device_cpu(wl__compute_device_t* dvc); /* Destroy CPU compute device. */
 
 #endif

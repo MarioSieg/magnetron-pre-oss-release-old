@@ -9,8 +9,6 @@ A = wl.Tensor.rand((N, N), name='A')
 B = wl.Tensor.rand((N, N), name='B')
 print(A.shape)
 
-wl.Context.active.start_profiler()
-
 flop = 2*N**3
 avg = 0
 I = 10
@@ -21,8 +19,5 @@ for _ in range(I):
     s = et - st
     print(f'{flop/s * 1e-12} TFLOP/s')
     avg += flop/s
-
-wl.Context.active.stop_profiler()
-wl.Context.active.print_profiler_report()
 
 print(f'Average: {avg/I * 1e-12} TFLOP/s')

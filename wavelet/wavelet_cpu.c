@@ -9,11 +9,11 @@
 #include <Accelerate/Accelerate.h>
 #endif
 
-typedef struct wl__cpu_blas_ctx_t {
+typedef struct wl__cpu_thread_local_ctx_t {
     wl_ctx_t* ctx;
     int64_t thread_num;
     int64_t thread_idx;
-} wl__cpu_blas_ctx_t;
+} wl__cpu_thread_local_ctx_t;
 
 #if WL_INTRIN && defined(__aarch64__) && defined(__ARM_NEON)
 static float32x4_t wl__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
@@ -792,7 +792,7 @@ static void WL__HOTPROC wl__vgelu_dv_f32( /* gelu' : ℝ -> ℝ, x |-> TODO */
 }
 
 static void wl__blas_nop(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs
 ) {
@@ -802,7 +802,7 @@ static void wl__blas_nop(
 }
 
 static void wl__blas_clone(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs
 ) {
@@ -814,7 +814,7 @@ static void wl__blas_clone(
 }
 
 static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -847,7 +847,7 @@ static void WL__HOTPROC wl__blas_mean_f32( /* Σx/n Arithmetic mean */
 }
 
 static void WL__HOTPROC wl__blas_min_f32( /* min x */
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -876,7 +876,7 @@ static void WL__HOTPROC wl__blas_min_f32( /* min x */
 }
 
 static void WL__HOTPROC wl__blas_max_f32( /* max x */
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -905,7 +905,7 @@ static void WL__HOTPROC wl__blas_max_f32( /* max x */
 }
 
 static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -934,7 +934,7 @@ static void WL__HOTPROC wl__blas_sum_f32( /* Σx/n Arithmetic mean */
 }
 
 static void WL__HOTPROC wl__blas_abs_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -956,7 +956,7 @@ static void WL__HOTPROC wl__blas_abs_f32(
 }
 
 static void WL__HOTPROC wl__blas_neg_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -978,7 +978,7 @@ static void WL__HOTPROC wl__blas_neg_f32(
 }
 
 static void WL__HOTPROC wl__blas_log_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1000,7 +1000,7 @@ static void WL__HOTPROC wl__blas_log_f32(
 }
 
 static void WL__HOTPROC wl__blas_sqr_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1022,7 +1022,7 @@ static void WL__HOTPROC wl__blas_sqr_f32(
 }
 
 static void WL__HOTPROC wl__blas_sqrt_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1044,7 +1044,7 @@ static void WL__HOTPROC wl__blas_sqrt_f32(
 }
 
 static void WL__HOTPROC wl__blas_sin_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1066,7 +1066,7 @@ static void WL__HOTPROC wl__blas_sin_f32(
 }
 
 static void WL__HOTPROC wl__blas_cos_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1088,7 +1088,7 @@ static void WL__HOTPROC wl__blas_cos_f32(
 }
 
 static void WL__HOTPROC wl__blas_step_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1110,7 +1110,7 @@ static void WL__HOTPROC wl__blas_step_f32(
 }
 
 static void WL__HOTPROC wl__blas_softmax_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1132,7 +1132,7 @@ static void WL__HOTPROC wl__blas_softmax_f32(
 }
 
 static void WL__HOTPROC wl__blas_softmax_dv_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1154,7 +1154,7 @@ static void WL__HOTPROC wl__blas_softmax_dv_f32(
 }
 
 static void WL__HOTPROC wl__blas_sigmoid_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1176,7 +1176,7 @@ static void WL__HOTPROC wl__blas_sigmoid_f32(
 }
 
 static void WL__HOTPROC wl__blas_sigmoid_dv_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1198,7 +1198,7 @@ static void WL__HOTPROC wl__blas_sigmoid_dv_f32(
 }
 
 static void WL__HOTPROC wl__blas_hard_sigmoid_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1220,7 +1220,7 @@ static void WL__HOTPROC wl__blas_hard_sigmoid_f32(
 }
 
 static void WL__HOTPROC wl__blas_silu_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1242,7 +1242,7 @@ static void WL__HOTPROC wl__blas_silu_f32(
 }
 
 static void WL__HOTPROC wl__blas_silu_dv_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1264,7 +1264,7 @@ static void WL__HOTPROC wl__blas_silu_dv_f32(
 }
 
 static void WL__HOTPROC wl__blas_tanh_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1286,7 +1286,7 @@ static void WL__HOTPROC wl__blas_tanh_f32(
 }
 
 static void WL__HOTPROC wl__blas_tanh_dv_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1308,7 +1308,7 @@ static void WL__HOTPROC wl__blas_tanh_dv_f32(
 }
 
 static void WL__HOTPROC wl__blas_relu_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1330,7 +1330,7 @@ static void WL__HOTPROC wl__blas_relu_f32(
 }
 
 static void WL__HOTPROC wl__blas_relu_dv_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1352,7 +1352,7 @@ static void WL__HOTPROC wl__blas_relu_dv_f32(
 }
 
 static void WL__HOTPROC wl__blas_gelu_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1374,7 +1374,7 @@ static void WL__HOTPROC wl__blas_gelu_f32(
 }
 
 static void WL__HOTPROC wl__blas_gelu_dv_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1396,7 +1396,7 @@ static void WL__HOTPROC wl__blas_gelu_dv_f32(
 }
 
 static void WL__HOTPROC wl__blas_add_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1496,7 +1496,7 @@ static void WL__HOTPROC wl__blas_add_f32(
 }
 
 static void WL__HOTPROC wl__blas_sub_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1596,7 +1596,7 @@ static void WL__HOTPROC wl__blas_sub_f32(
 }
 
 static void WL__HOTPROC wl__blas_mul_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1696,7 +1696,7 @@ static void WL__HOTPROC wl__blas_mul_f32(
 }
 
 static void WL__HOTPROC wl__blas_div_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1796,7 +1796,7 @@ static void WL__HOTPROC wl__blas_div_f32(
 }
 
 static void WL__HOTPROC wl__blas_adds_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1819,7 +1819,7 @@ static void WL__HOTPROC wl__blas_adds_f32(
 }
 
 static void WL__HOTPROC wl__blas_subs_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1842,7 +1842,7 @@ static void WL__HOTPROC wl__blas_subs_f32(
 }
 
 static void WL__HOTPROC wl__blas_muls_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1865,7 +1865,7 @@ static void WL__HOTPROC wl__blas_muls_f32(
 }
 
 static void WL__HOTPROC wl__blas_divs_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1889,7 +1889,7 @@ static void WL__HOTPROC wl__blas_divs_f32(
 
 #if 0 /* Naive matrix multiplication, but no broadcasting support. */
 static void WL__HOTPROC wl__blas_matmul_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -1931,7 +1931,7 @@ static void WL__HOTPROC wl__blas_matmul_f32(
 ** R = A x B
 */
 static void WL__HOTPROC wl__blas_matmul_f32(
-    const wl__cpu_blas_ctx_t* const bci,
+    const wl__cpu_thread_local_ctx_t* const bci,
     wl_tensor_t* const r,
     const wl_tensor_t** const inputs /* Assumes correct inputs for op, all != NULL! */
 ) {
@@ -2006,7 +2006,7 @@ static void WL__HOTPROC wl__blas_matmul_f32(
 #endif
 }
 
-static void (*wl__blas_dispatch_table_forward[WL_OP__COUNT])(const wl__cpu_blas_ctx_t*, wl_tensor_t*, const wl_tensor_t**) = {
+static void (*wl__blas_dispatch_table_forward[WL_OP__COUNT])(const wl__cpu_thread_local_ctx_t*, wl_tensor_t*, const wl_tensor_t**) = {
     [WL_OP_NOP] = &wl__blas_nop, /* No operation */
     [WL_OP_CLONE] = &wl__blas_clone,
     [WL_OP_VIEW] = &wl__blas_nop, /* View is a no-op */
@@ -2048,7 +2048,7 @@ static void (*wl__blas_dispatch_table_forward[WL_OP__COUNT])(const wl__cpu_blas_
     [WL_OP_MATMUL] = &wl__blas_matmul_f32
 };
 
-static void (*wl__blas_dispatch_table_backward[WL_OP__COUNT])(const wl__cpu_blas_ctx_t*, wl_tensor_t*, const wl_tensor_t**) = {
+static void (*wl__blas_dispatch_table_backward[WL_OP__COUNT])(const wl__cpu_thread_local_ctx_t*, wl_tensor_t*, const wl_tensor_t**) = {
     [WL_OP_NOP] = &wl__blas_nop, /* No operation */
     [WL_OP_CLONE] = &wl__blas_clone,
     [WL_OP_VIEW] = &wl__blas_nop, /* View is a no-op */
@@ -2091,20 +2091,20 @@ static void (*wl__blas_dispatch_table_backward[WL_OP__COUNT])(const wl__cpu_blas
 };
 
 static WL__HOTPROC void wl__cpu_exec_fwd(wl__compute_device_t* dvc, wl_tensor_t* root) {
-    wl__cpu_blas_ctx_t* bci = (wl__cpu_blas_ctx_t*)(dvc+1); // todo
+    wl__cpu_thread_local_ctx_t* bci = (wl__cpu_thread_local_ctx_t*)(dvc+1); // todo
     wl__blas_dispatch_table_forward[root->op](bci, root, (const wl_tensor_t**)root->op_inputs);
 }
 
 static WL__HOTPROC void wl__cpu_exec_bwd(wl__compute_device_t* dvc, wl_tensor_t* root) {
-    wl__cpu_blas_ctx_t* bci = (wl__cpu_blas_ctx_t*)(dvc+1); // todo
+    wl__cpu_thread_local_ctx_t* bci = (wl__cpu_thread_local_ctx_t*)(dvc+1); // todo
     wl__blas_dispatch_table_forward[root->op](bci, root, (const wl_tensor_t**)root->op_inputs);
 }
 
-wl__compute_device_t* wl__cpu_init(wl_ctx_t* ctx, uint32_t num_threads) {
+wl__compute_device_t* wl__init_device_cpu(wl_ctx_t* ctx, uint32_t num_threads) {
     num_threads = num_threads ? num_threads : wl__max(1, ctx->sys.cpu_virtual_cores);
     uintptr_t size = 0;
     wl__pincr((void**)&size, sizeof(wl__compute_device_t), __alignof__(wl__compute_device_t));
-    wl__pincr((void**)&size, num_threads*sizeof(wl__cpu_blas_ctx_t), __alignof__(wl__cpu_blas_ctx_t));
+    wl__pincr((void**)&size, num_threads*sizeof(wl__cpu_thread_local_ctx_t), __alignof__(wl__cpu_thread_local_ctx_t));
     wl__compute_device_t* dvc = (*wl__alloc)(NULL, size);
     snprintf(dvc->name, sizeof(dvc->name), "%s", ctx->sys.cpu_name);
     dvc->exec_forward = &wl__cpu_exec_fwd;
@@ -2115,16 +2115,28 @@ wl__compute_device_t* wl__cpu_init(wl_ctx_t* ctx, uint32_t num_threads) {
     }
     void* data = dvc+1; /* Start of data section. */
     for (uint32_t i=0; i < num_threads; ++i) { /* Initialize CPU BLAS context for each thread. */
-        *(wl__cpu_blas_ctx_t*)wl__pincr(&data, sizeof(wl__cpu_blas_ctx_t), __alignof__(wl__cpu_blas_ctx_t)) = (wl__cpu_blas_ctx_t){
+        *(wl__cpu_thread_local_ctx_t*)wl__pincr(&data, sizeof(wl__cpu_thread_local_ctx_t), __alignof__(wl__cpu_thread_local_ctx_t)) = (wl__cpu_thread_local_ctx_t){
             .ctx = ctx,
             .thread_idx = i,
             .thread_num = num_threads,
         };
     }
     wl__assert2(data == (void*)dvc+size);
+    #if WL_CFG_X86_64_FAST_MATH && (defined(__x86_64__) || defined(_M_X64)) && !defined(_MSC_VER)
+        /*
+        ** Enable non-IEEE hardware optimizations in MXCSR:
+        ** 0x0040: DAZ (Denormals Are Zeros) -> Converts denormal inputs to zero.
+        ** 0x8000: FTZ (Flush To Zero) -> Sets underflow results to zero.
+        ** See Intel Manual Vol. 1 §10.2.3.3-4 for details.
+        */
+        unsigned mxcsr;
+        __asm__ __volatile__("stmxcsr\t%0":"=m"(mxcsr)); /* Store MXCSR register to var. */
+        mxcsr |= 0x8040; /* Enable DAZ and FTZ bits. */
+        __asm__ __volatile__("ldmxcsr\t%0"::"m"(mxcsr)); /* Load MXCSR register from var. */
+    #endif
     return dvc;
 }
 
-void wl__cpu_destroy(wl__compute_device_t* dvc) {
+void wl__destroy_device_cpu(wl__compute_device_t* dvc) {
     (*wl__alloc)(dvc, 0);
 }

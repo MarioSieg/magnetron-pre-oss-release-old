@@ -1,8 +1,9 @@
 /* (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com> */
 
-#include "wavelet.cuh"
+#include "wavelet_cuda.cuh"
 
 #include <bit>
+#include <cstdio>
 
 namespace wl::cuda {
     extern "C" [[noreturn]] auto wl__panic(const char* msg, ...) -> void;
@@ -30,6 +31,18 @@ namespace wl::cuda {
             wl__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
         }
     #define wl__cu_assert2(expr) wl__cu_assert(expr, "")
+
+    auto wl__init_device_cuda(wl_ctx_t* ctx) -> wl__compute_device_t* {
+        std::span<const physical_device> devices {cuda_init()};
+        auto* dvc {static_cast<wl__compute_device_t*>((*wl__alloc)(nullptr, sizeof(wl__compute_device_t)))};
+        const auto& active_dvc {devices[0]};
+        std::snprintf(dvc->name, sizeof(dvc->name), "%s", active_dvc.name.data());
+        return dvc;
+    }
+
+    void wl__destroy_device_cuda(wl__compute_device_t* dvc) {
+        (*wl__alloc)(dvc, 0);
+    }
 
     auto cuda_init() -> std::span<const physical_device> {
         static constinit bool is_init {};

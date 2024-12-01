@@ -25,18 +25,8 @@ MAX_ARG_TENSORS: int = 2
 WL_MAX_OP_PARAMS: int = 6
 DIM_MAX: int = ((1 << 64) - 1) >> 1
 
-
 def set_log_mode(enable_log: bool) -> None:
     C.wl_set_set_log_mode(enable_log)
-
-
-if getenv('WAVELET_LOG', '0') == '1':
-    # Enable logging if the environment variable WAVELET_LOG is set to 1.
-    # To enable logging:
-    # os.environ['WAVELET_LOG'] = '1'
-    # before importing wavelet.
-    set_log_mode(True)
-
 
 def pack_color(r: int, g: int, b: int) -> int:
     return C.wl_pack_color_u8(r, g, b)
@@ -187,15 +177,41 @@ class ExecutionMode(Enum):
     EAGER = 0  # Execute operations immediately. (Dynamic computation graph, like PyTorch).
     DEFERRED = 1  # Build computation graph and execute later. (Static computation graph, like TensorFlow 1.0).
 
+class GlobalConfig:
+    """
+        Global configuration, which is applied to the global context.
+        These fields must be set before creating the first tensor, otherwise they will have no effect.
+        Can be set via environment variables.
+    """
+    verbose: bool = getenv('WL_VERBOSE', '0') == '1'
+    compute_device: ComputeDevice = ComputeDevice.CUDA if getenv('WL_COMPUTE_DEVICE') == 'CUDA' else ComputeDevice.CPU
 
 class Context:
     """Manages the WAVELET context and tensor lifecycles."""
 
-    active: 'Context' = None  # Global context
+    _active: 'Context' = None  # Global context
+
+    @staticmethod
+    def _active_ctx() -> 'Context':
+        if Context._active is None:
+            set_log_mode(GlobalConfig.verbose)
+            Context._active = Context(GlobalConfig.compute_device)
+        return Context._active
 
     def __init__(self, device: ComputeDevice, *, execution_mode: ExecutionMode = ExecutionMode.EAGER):  # Pool chunk size. Default: 2GiB
         self.ctx = C.wl_ctx_create2(device.value)
         self.execution_mode = execution_mode
+
+
+    @property
+    def compute_device(self) -> ComputeDevice:
+        """Returns the active compute device of the context."""
+        return ComputeDevice(C.wl_ctx_get_compute_device_type(self.ctx))
+
+    @property
+    def compute_device_name(self) -> str:
+        """Returns the name of the active compute device of the context."""
+        return ffi.string(C.wl_ctx_get_compute_device_name(self.ctx)).decode('utf-8')
 
     @property
     def execution_mode(self) -> ExecutionMode:
@@ -291,9 +307,6 @@ class Context:
         self.ctx = ffi.NULL
 
 
-Context.active = Context(ComputeDevice.CPU)  # Create the global context
-
-
 class Tensor:
     """Represents a tensor in the WAVELET library."""
 
@@ -346,7 +359,7 @@ class Tensor:
     def empty(shape: tuple[int, ...], *, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """Creates an empty tensor, with uninitialized data."""
         tensor = Tensor(None)
-        tensor._new(Context.active, shape=shape, dtype=dtype, name=name)
+        tensor._new(Context._active_ctx(), shape=shape, dtype=dtype, name=name)
         return tensor
 
     @staticmethod
@@ -354,7 +367,7 @@ class Tensor:
              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with a constant value."""
         tensor = Tensor(None)
-        tensor._new(Context.active, shape=shape, dtype=dtype, name=name)
+        tensor._new(Context._active_ctx(), shape=shape, dtype=dtype, name=name)
         C.wl_tensor_fill(tensor.tensor, fill_value)
         return tensor
 
@@ -382,7 +395,7 @@ class Tensor:
 
         shape, flattened_data = determine_shape_and_flatten(data)
         tensor = Tensor(None)
-        tensor._new(Context.active, shape=tuple(shape), dtype=dtype, name=name)
+        tensor._new(Context._active_ctx(), shape=tuple(shape), dtype=dtype, name=name)
         size: int = len(flattened_data) * ffi.sizeof('float')
         C.wl_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(flattened_data)}]', flattened_data), size)
         return tensor
@@ -398,7 +411,7 @@ class Tensor:
              name: str | None = None) -> 'Tensor':
         """Creates a tensor filled with random values within [min, max]."""
         tensor = Tensor(None)
-        tensor._new(Context.active, shape=shape, dtype=dtype, name=name)
+        tensor._new(Context._active_ctx(), shape=shape, dtype=dtype, name=name)
         if interval[1] < interval[0]:
             interval = (interval[1], interval[0])
         C.wl_tensor_fill_random_uniform(tensor.tensor, interval[0], interval[1])
@@ -408,7 +421,7 @@ class Tensor:
     def normal(shape: tuple[int, ...], *, mean: float, stddev: float):
         """Creates a tensor filled with random values from a normal distribution."""
         tensor = Tensor(None)
-        tensor._new(Context.active, shape=shape, dtype=DType.F32)
+        tensor._new(Context._active_ctx(), shape=shape, dtype=DType.F32)
         C.wl_tensor_fill_random_normal(tensor.tensor, mean, stddev)
         return tensor
 
@@ -416,7 +429,7 @@ class Tensor:
     def load(file_path: str) -> 'Tensor':
         assert file_path.endswith('.wavelet'), 'File must be a WAVELET file'
         """Loads a tensor from a binary WAVELET file."""
-        instance = C.wl_tensor_load(Context.active.ctx, bytes(file_path, 'utf-8'))
+        instance = C.wl_tensor_load(Context._active_ctx().ctx, bytes(file_path, 'utf-8'))
         return Tensor(internal_instance=instance)
 
     @staticmethod
@@ -426,7 +439,7 @@ class Tensor:
                    resize_to: (int, int) = (0, 0)) -> 'Tensor':
         """Loads an image from a file and creates a tensor from it."""
         assert isfile(file_path), f'File not found: {file_path}'
-        instance = C.wl_tensor_load_image(Context.active.ctx, bytes(file_path, 'utf-8'), channels.value,
+        instance = C.wl_tensor_load_image(Context._active_ctx().ctx, bytes(file_path, 'utf-8'), channels.value,
                                           resize_to[0],
                                           resize_to[1])
         tensor = Tensor(internal_instance=instance)

@@ -106,6 +106,8 @@ extern WL_EXPORT wl_exec_mode_t wl_ctx_get_exec_mode(const wl_ctx_t* ctx); /* Ge
 extern WL_EXPORT void wl_ctx_set_exec_mode(wl_ctx_t* ctx, wl_exec_mode_t mode); /* Set execution mode */
 extern WL_EXPORT wl_prng_algorithm_t wl_ctx_get_prng_algorithm(const wl_ctx_t* ctx); /* Get PRNG algorithm */
 extern WL_EXPORT void wl_ctx_set_prng_algorithm(wl_ctx_t* ctx, wl_prng_algorithm_t algorithm, uint64_t seed); /* Set PRNG algorithm */
+extern WL_EXPORT wl_compute_device_type_t wl_ctx_get_compute_device_type(const wl_ctx_t* ctx); /* Get compute device type */
+extern WL_EXPORT const char* wl_ctx_get_compute_device_name(const wl_ctx_t* ctx); /* Get the name of the compute device */
 extern WL_EXPORT const char* wl_ctx_get_os_name(const wl_ctx_t* ctx); /* Get the name of the operating system */
 extern WL_EXPORT const char* wl_ctx_get_cpu_name(const wl_ctx_t* ctx); /* Get the name of the CPU */
 extern WL_EXPORT uint32_t wl_ctx_get_cpu_virtual_cores(const wl_ctx_t* ctx); /* Get the number of virtual cores */

@@ -30,6 +30,10 @@
 #include "wavelet.h"
 #include "wavelet_internal.h"
 #include "wavelet_cpu.h"
+#ifdef WL_ENABLE_CUDA
+extern wl__compute_device_t* wl__init_device_cuda(wl_ctx_t* ctx); /* Initialize GPU compute device. */
+extern void wl__destroy_device_cuda(wl__compute_device_t* dvc); /* Destroy GPU compute device. */
+#endif
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -880,8 +884,6 @@ static void wl__ctx_push_chunk(wl_ctx_t* ctx) {
     ctx->pool.chunks[ctx->pool.chunk_len++] = chunk;
 }
 
-static void wl__system_host_info_query(wl_ctx_t* ctx); /* Query host system information. */
-
 #if defined(__x86_64__) || defined(_M_X64)
 static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_feature_t feature) {
     const uint8_t (*leafs)[49] = &wl__x86_64_feature_leaves;
@@ -892,17 +894,46 @@ static bool wl__ctx_x86_64_cpu_has_feature(const wl_ctx_t* ctx, wl__x86_64_featu
 }
 #endif
 
+static void wl__system_host_info_query(wl_ctx_t* ctx); /* Query host system information. */
+static void wl__system_host_info_dump(wl_ctx_t* ctx) {
+    wl__log_info("OS/Kernel: %s", ctx->sys.os_name);
+    const char* cpu_arch = "?";
+    #if defined(__x86_64__) || defined(_M_X64)
+        cpu_arch = "x86-64";
+    #elif defined(__aarch64__)
+        cpu_arch = "aarch64";
+    #else
+    #error "Unknwon CPU arch"
+    #endif
+    wl__log_info("CPU (%s): %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", cpu_arch, ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
+    #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
+        if (wl__log_enabled) {
+            printf("CPU Features:");
+            for (uint32_t i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
+                if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
+                    if ((k++ & 7) == 0) printf("\n\t");
+                    printf("%s ", wl__x86_64_feature_names[i]);
+                }
+            }
+            putchar('\n');
+        }
+    #endif
+    double mem_total, mem_free, mem_used;
+    const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
+    wl__humanize_memory_size(ctx->sys.phys_mem_total, &mem_total, &mem_unit_total);
+    wl__humanize_memory_size(ctx->sys.phys_mem_free, &mem_free, &mem_unit_free);
+    wl__humanize_memory_size((size_t)llabs((int64_t)ctx->sys.phys_mem_total-(int64_t)ctx->sys.phys_mem_free), &mem_used, &mem_unit_used);
+    double mem_used_percent = fabs((double)(ctx->sys.phys_mem_total-ctx->sys.phys_mem_free))/(double)ctx->sys.phys_mem_total*100.0;
+    wl__log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
+}
+
 #if WL_ENABLE_IMAGE_SUPPORT
 static uint8_t* wl__default_image_load_impl(const char*, uint32_t(*)[3], wl_color_channels_t);
 static void wl__default_image_load_free_fn_impl(uint8_t*);
 static bool wl__default_image_save_impl(const char*, const uint8_t*, const uint32_t(*)[3]);
 #endif
 
-wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
-    wl__log_info("Creating WAVELET context...");
-    int64_t time_stamp_start = wl__hpc_clock_ns();
-
-    /* Print WAVELET version and compiler info. */
+static WL__COLDPROC void wl__ctx_dump_compiler_info(void) {
     const char* compiler_name = "Unknown";
     int compiler_version_major = 0, compiler_version_minor = 0;
     #ifdef __clang__
@@ -919,20 +950,53 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
         compiler_version_minor = _MSC_VER % 100;
     #endif
     wl__log_info("WAVELET v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d", wl_version_major(WL_VERSION), wl_version_minor(WL_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
+}
 
-    /* Enable fast math optimizations for x86-64 platforms. */
-    #if WL_CFG_X86_64_FAST_MATH && (defined(__x86_64__) || defined(_M_X64)) && !defined(_MSC_VER)
-        /*
-        ** Enable non-IEEE hardware optimizations in MXCSR:
-        ** 0x0040: DAZ (Denormals Are Zeros) -> Converts denormal inputs to zero.
-        ** 0x8000: FTZ (Flush To Zero) -> Sets underflow results to zero.
-        ** See Intel Manual Vol. 1 §10.2.3.3-4 for details.
-        */
-        unsigned mxcsr;
-        __asm__ __volatile__("stmxcsr\t%0":"=m"(mxcsr)); /* Store MXCSR register to var. */
-        mxcsr |= 0x8040; /* Enable DAZ and FTZ bits. */
-        __asm__ __volatile__("ldmxcsr\t%0"::"m"(mxcsr)); /* Load MXCSR register from var. */
+static void wl__compute_device_init(wl_ctx_t* ctx, wl_compute_device_type_t type) {
+    wl__assert2(!ctx->device);
+    #ifndef WL_ENABLE_CUDA
+        retry:
     #endif
+    switch (ctx->device_type = type) {
+        case WL_COMPUTE_DEVICE_TYPE_CPU: /* Initialize CPU device. */
+            ctx->device = wl__init_device_cpu(ctx, 0);
+            wl__log_info("Using CPU compute device: %s", ctx->device->name);
+        break;
+        case WL_COMPUTE_DEVICE_TYPE_CUDA: /* Initialize CUDA device. */
+            #ifdef WL_ENABLE_CUDA
+                ctx->device = wl__init_device_cuda(ctx);
+                wl__log_info("Using CUDA compute device: %s", ctx->device->name);
+            #else /* CUDA support is not enabled. */
+                wl__log_error("CUDA support is not enabled, falling back to CPU");
+                type = WL_COMPUTE_DEVICE_TYPE_CPU;
+                goto retry; /* Retry with CPU device. */
+            #endif
+        break;
+        default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
+    }
+    wl__assert2(ctx->device);
+}
+
+static void wl__compute_device_destroy(wl_ctx_t* ctx) {
+    wl__assert2(ctx->device);
+    switch (ctx->device_type) {
+        case WL_COMPUTE_DEVICE_TYPE_CPU:
+            wl__destroy_device_cpu(ctx->device);
+        break;
+        case WL_COMPUTE_DEVICE_TYPE_CUDA:
+            #ifdef WL_ENABLE_CUDA
+                wl__destroy_device_cuda(ctx->device);
+            #endif
+        break;
+        default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
+    }
+    ctx->device = NULL;
+}
+
+wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
+    wl__log_info("Creating WAVELET context...");
+    uint64_t time_stamp_start = wl__hpc_clock_ns();
+    wl__ctx_dump_compiler_info(); /* Dump compiler info. */
 
     /* Initialize context with default values or from context info. */
     wl_ctx_info_t ctx_info = {0};
@@ -950,35 +1014,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
 
     /* Query and print host system information. */
     wl__system_host_info_query(ctx);
-    wl__log_info("OS/Kernel: %s", ctx->sys.os_name);
-    const char* cpu_arch = "?";
-    #if defined(__x86_64__) || defined(_M_X64)
-        cpu_arch = "x86-64";
-    #elif defined(__aarch64__)
-        cpu_arch = "aarch64";
-    #else
-    #error "Unknwon CPU arch"
-    #endif
-    wl__log_info("CPU (%s): %s, Virtual Cores: %u, Physical Cores: %u, Sockets: %u", cpu_arch, ctx->sys.cpu_name, ctx->sys.cpu_virtual_cores, ctx->sys.cpu_physical_cores, ctx->sys.cpu_sockets);
-    #if defined(__x86_64__) || defined(_M_X64) /* Print CPU features for x86-64 platforms. */
-       if (wl__log_enabled) {
-           printf("CPU Features:");
-           for (uint32_t i=0, k=0; i < WL__X86_64_FEATURE__COUNT; ++i) {
-               if (wl__ctx_x86_64_cpu_has_feature(ctx, i)) {
-                   if ((k++ & 7) == 0) printf("\n\t");
-                   printf("%s ", wl__x86_64_feature_names[i]);
-               }
-           }
-           putchar('\n');
-       }
-    #endif
-    double mem_total, mem_free, mem_used;
-    const char* mem_unit_total, *mem_unit_free, *mem_unit_used;
-    wl__humanize_memory_size(ctx->sys.phys_mem_total, &mem_total, &mem_unit_total);
-    wl__humanize_memory_size(ctx->sys.phys_mem_free, &mem_free, &mem_unit_free);
-    wl__humanize_memory_size((size_t)llabs((int64_t)ctx->sys.phys_mem_total-(int64_t)ctx->sys.phys_mem_free), &mem_used, &mem_unit_used);
-    double mem_used_percent = fabs((double)(ctx->sys.phys_mem_total-ctx->sys.phys_mem_free))/(double)ctx->sys.phys_mem_total*100.0;
-    wl__log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
+    wl__system_host_info_dump(ctx);
 
     /* Prepare memory pool. */
     ctx->pool.chunks = (uint8_t**)(*wl__alloc)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
@@ -1003,11 +1039,7 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     /* Create selected compute device. */
     ctx->exec_mode = ctx_info.exec_mode;
     ctx->device_type = ctx_info.device;
-    switch (ctx->device_type) {
-        case WL_COMPUTE_DEVICE_TYPE_CPU: ctx->device = wl__cpu_init(ctx, 0); break;
-        default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
-    }
-    wl__assert2(ctx->device);
+    wl__compute_device_init(ctx, ctx->device_type);
 
     /* Print context initialization time. */
     wl__log_info("WAVELET context initialized in %.05f ms.", wl__hpc_clock_elapsed_ms(time_stamp_start));
@@ -1018,6 +1050,31 @@ wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device) {
     wl_ctx_info_t info = {0};
     info.device = device;
     return wl_ctx_create(&info);
+}
+
+void wl_ctx_destroy(wl_ctx_t* ctx) {
+    if (ctx->sh_hooks) {
+        for (size_t i=0; i < ctx->sh_len; ++i)
+            if (ctx->sh_hooks[i]) (*ctx->sh_hooks[i])(ctx);
+        (*wl__alloc)(ctx->sh_hooks, 0);
+    }
+    wl__compute_device_destroy(ctx);
+    size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
+    size_t mem_mapped = ctx->pool.mapped_total;
+    size_t tensors_created = ctx->tensors_created;
+    size_t tensors_alloced = ctx->tensors_alloced;
+    for (size_t i=0; i < ctx->pool.chunk_len; ++i) /* Free individual chunks */
+        (*wl__alloc)(ctx->pool.chunks[i], 0);
+    (*wl__alloc)(ctx->pool.chunks, 0);
+    memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
+    (*wl__alloc)(ctx, 0);
+    ctx = NULL;
+    double alloc_total, mapped_total;
+    const char* alloc_unit, *mapped_unit;
+    wl__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
+    wl__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
+    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s, Tensors Created: %zu, Tensors Allocated: %zu", alloc_total, alloc_unit, mapped_total, mapped_unit, tensors_created, tensors_alloced);
+    wl__log_info("WAVELET context destroyed.");
 }
 
 static void wl_ctx_register_shutdown_hook(wl_ctx_t* ctx, void(*fn)(wl_ctx_t*)) {
@@ -1073,6 +1130,8 @@ void wl_ctx_set_prng_algorithm(wl_ctx_t* ctx, wl_prng_algorithm_t algorithm, uin
     wl__prng_init(ctx, seed); /* Reinitialize PRNG state with new seed. */
 }
 
+wl_compute_device_type_t wl_ctx_get_compute_device_type(const wl_ctx_t* ctx) { return ctx->device_type; }
+const char* wl_ctx_get_compute_device_name(const wl_ctx_t* ctx) { return ctx->device->name; }
 const char* wl_ctx_get_os_name(const wl_ctx_t* ctx) { return ctx->sys.os_name; }
 const char* wl_ctx_get_cpu_name(const wl_ctx_t* ctx) { return ctx->sys.cpu_name; }
 uint32_t wl_ctx_get_cpu_virtual_cores(const wl_ctx_t* ctx) { return ctx->sys.cpu_virtual_cores; }
@@ -1176,35 +1235,6 @@ void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file) {
         printf("Total operations profiled: %" PRIu64 "\n", exec_total);
         wl__print_separator(stdout);
     }
-}
-
-void wl_ctx_destroy(wl_ctx_t* ctx) {
-    if (ctx->sh_hooks) {
-        for (size_t i=0; i < ctx->sh_len; ++i)
-            if (ctx->sh_hooks[i]) (*ctx->sh_hooks[i])(ctx);
-        (*wl__alloc)(ctx->sh_hooks, 0);
-    }
-    switch (ctx->device_type) {
-        case WL_COMPUTE_DEVICE_TYPE_CPU: wl__cpu_destroy(ctx->device); break;
-        default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
-    }
-    ctx->device = NULL;
-    size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
-    size_t mem_mapped = ctx->pool.mapped_total;
-    size_t tensors_created = ctx->tensors_created;
-    size_t tensors_alloced = ctx->tensors_alloced;
-    for (size_t i=0; i < ctx->pool.chunk_len; ++i) /* Free individual chunks */
-        (*wl__alloc)(ctx->pool.chunks[i], 0);
-    (*wl__alloc)(ctx->pool.chunks, 0);
-    memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
-    (*wl__alloc)(ctx, 0);
-    ctx = NULL;
-    double alloc_total, mapped_total;
-    const char* alloc_unit, *mapped_unit;
-    wl__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
-    wl__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
-    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s, Tensors Created: %zu, Tensors Allocated: %zu", alloc_total, alloc_unit, mapped_total, mapped_unit, tensors_created, tensors_alloced);
-    wl__log_info("WAVELET context destroyed.");
 }
 
 #define wl__op_param_pack_u64(tag, x) ((wl_op_param_t)(((x)&((1ull<<(64-2))-1))|(((uint64_t)(tag)&3)<<(64-2))))

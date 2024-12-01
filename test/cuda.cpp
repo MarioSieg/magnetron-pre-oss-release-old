@@ -3,7 +3,7 @@
 #ifdef WL_ENABLE_CUDA
 
 #include "prelude.hpp"
-#include "wavelet.cuh"
+#include "wavelet_cuda.cuh"
 
 using namespace wl::cuda;
 

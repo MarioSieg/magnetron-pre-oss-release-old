@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "wavelet_internal.h"
+
 #include <array>
 #include <cstdint>
 #include <span>
@@ -9,6 +11,9 @@
 #include <cuda.h>
 
 namespace wl::cuda {
+    extern "C" auto wl__init_device_cuda(wl_ctx_t* ctx) -> wl__compute_device_t*; /* Initialize GPU compute device. */
+    extern "C" void wl__destroy_device_cuda(wl__compute_device_t* dvc); /* Destroy GPU compute device. */
+
     constexpr std::size_t max_devices = 32;
     constexpr std::uint32_t warp_size = 32;
     constexpr std::uint32_t max_streams = 8;
