@@ -3,6 +3,8 @@
 import wavelet.core as wl
 
 wl.GlobalConfig.verbose = True
-wl.GlobalConfig.compute_device = wl.ComputeDevice.CUDA
+#wl.GlobalConfig.compute_device = wl.ComputeDevice.CUDA
 
-test = wl.Tensor.rand(shape=(10, 10, 10, 10))
+test = wl.Tensor.rand(shape=(4, 4))
+r = test + test
+print(r)

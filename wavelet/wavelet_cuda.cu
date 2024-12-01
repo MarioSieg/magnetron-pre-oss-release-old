@@ -32,10 +32,24 @@ namespace wl::cuda {
         }
     #define wl__cu_assert2(expr) wl__cu_assert(expr, "")
 
-    auto wl__init_device_cuda(wl_ctx_t* ctx) -> wl__compute_device_t* {
+    static constinit bool s_is_init {};
+    static constinit std::array<physical_device, max_devices> s_devices {};
+    static constinit std::int32_t s_num_devices {};
+
+    auto wl__init_device_cuda([[maybe_unused]] wl_ctx_t* ctx) -> wl__compute_device_t* {
+        std::int32_t active_device_id {0}; // TODO: Implement device selection.
         std::span<const physical_device> devices {cuda_init()};
+        if (devices.empty()) { /* No devices available or initialization failed, let runtime fallback to other compute device. */
+            wl__log_error("No CUDA devices available, using CPU processing");
+            return nullptr; /* Return null device. */
+        }
+        if (active_device_id < 0 || active_device_id >= devices.size()) {
+            wl__log_error("Invalid device ID %d, using device 0", active_device_id);
+            active_device_id = 0;
+        }
         auto* dvc {static_cast<wl__compute_device_t*>((*wl__alloc)(nullptr, sizeof(wl__compute_device_t)))};
-        const auto& active_dvc {devices[0]};
+        set_active_device_by_id(active_device_id);
+        const auto& active_dvc {get_active_device()};
         std::snprintf(dvc->name, sizeof(dvc->name), "%s", active_dvc.name.data());
         return dvc;
     }
@@ -44,29 +58,31 @@ namespace wl::cuda {
         (*wl__alloc)(dvc, 0);
     }
 
+    /*
+    ** Initialize CUDA runtime. Returns empty span if initialization failed or not devices are available.
+    ** Normally, we panic when some CUDA runtime function fails, but in this case we just return an empty span,
+    ** to allow the runtime to fall back to CPU processing, if no CUDA devices are available.
+    */
     auto cuda_init() -> std::span<const physical_device> {
-        static constinit bool is_init {};
-        static constinit std::array<physical_device, max_devices> devices {};
-        static constinit std::int32_t num_devices {};
-        if (is_init) return {devices.data(), static_cast<std::size_t>(num_devices)};
-        wl__cu_chk_rt(cudaGetDeviceCount(&num_devices));
-        wl__cu_assert2(num_devices && num_devices <= max_devices);
-        for (std::int32_t id {}; id < num_devices; ++id) { /* Iterate over devices */
-            physical_device& dvc {devices[id]};
+        if (s_is_init) return {s_devices.data(), static_cast<std::size_t>(s_num_devices)};
+        if (cudaGetDeviceCount(&s_num_devices) != cudaSuccess) [[unlikely]] return {};
+        if (!(s_num_devices && s_num_devices <= max_devices)) [[unlikely]] return {};
+        for (std::int32_t id {}; id < s_num_devices; ++id) { /* Iterate over devices */
+            physical_device& dvc {s_devices[id]};
             CUdevice cu_dvc {};
             std::int32_t vmm_support {};
-            wl__cu_chk_rdv(cuDeviceGet(&cu_dvc, id));
-            wl__cu_chk_rdv(cuDeviceGetAttribute(&vmm_support, CU_DEVICE_ATTRIBUTE_VIRTUAL_MEMORY_MANAGEMENT_SUPPORTED, cu_dvc));
+            if (cuDeviceGet(&cu_dvc, id) != CUDA_SUCCESS) [[unlikely]] continue; /* Get device handle */
+            if (cuDeviceGetAttribute(&vmm_support, CU_DEVICE_ATTRIBUTE_VIRTUAL_MEMORY_MANAGEMENT_SUPPORTED, cu_dvc) != CUDA_SUCCESS) [[unlikely]] continue; /* Check VMM support */
             if (vmm_support) { /* Virtual memory management supported */
                 CUmemAllocationProp alloc_props {};
                 alloc_props.type = CU_MEM_ALLOCATION_TYPE_PINNED;
                 alloc_props.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
                 alloc_props.location.id = id;
-                wl__cu_chk_rdv(cuMemGetAllocationGranularity(&dvc.vmm_granularity, &alloc_props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED));
+                if (cuMemGetAllocationGranularity(&dvc.vmm_granularity, &alloc_props, CU_MEM_ALLOC_GRANULARITY_RECOMMENDED) != CUDA_SUCCESS) [[unlikely]] continue; /* Get VMM granularity */
             }
             dvc.has_vmm = !!vmm_support;
             cudaDeviceProp props {};
-            wl__cu_chk_rt(cudaGetDeviceProperties(&props, id)); /* Get device properties */
+            if (cudaGetDeviceProperties(&props, id) != cudaSuccess) [[unlikely]] continue; /* Get device properties */
             dvc.id = id;
             dvc.name = std::bit_cast<decltype(dvc.name)>(props.name);
             dvc.nsm = props.multiProcessorCount;
@@ -76,8 +92,27 @@ namespace wl::cuda {
             dvc.ntpb = props.maxThreadsPerBlock;
             dvc.vram = props.totalGlobalMem;
         }
-        is_init = true;
-        return {devices.data(), static_cast<std::size_t>(num_devices)};
+        s_is_init = true;
+        return {s_devices.data(), static_cast<std::size_t>(s_num_devices)};
+    }
+
+    auto set_active_device_by_id(std::int32_t id) -> void {
+        std::int32_t curr;
+        wl__cu_chk_rt(cudaGetDevice(&curr));
+        if (curr == id) return; /* Already active */
+        wl__cu_chk_rt(cudaSetDevice(id));
+    }
+
+    auto get_active_device_id() -> std::int32_t {
+        std::int32_t curr;
+        wl__cu_chk_rt(cudaGetDevice(&curr));
+        return curr;
+    }
+
+    auto get_active_device() -> const physical_device& {
+        const auto id {get_active_device_id()}; /* Ensure device is active. */
+        wl__cu_assert2(id >= 0 && id < s_num_devices);
+        return s_devices[id];
     }
 
     vm_pool::vm_pool(const physical_device& dvc) {

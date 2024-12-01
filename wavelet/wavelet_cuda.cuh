@@ -11,8 +11,8 @@
 #include <cuda.h>
 
 namespace wl::cuda {
-    extern "C" auto wl__init_device_cuda(wl_ctx_t* ctx) -> wl__compute_device_t*; /* Initialize GPU compute device. */
-    extern "C" void wl__destroy_device_cuda(wl__compute_device_t* dvc); /* Destroy GPU compute device. */
+    extern "C" auto wl__init_device_cuda(wl_ctx_t* ctx) -> wl__compute_device_t*; /* Initialize GPU compute device. (Invoked from wavelet C core) */
+    extern "C" void wl__destroy_device_cuda(wl__compute_device_t* dvc); /* Destroy GPU compute device. (Invoked from wavelet C core) */
 
     constexpr std::size_t max_devices = 32;
     constexpr std::uint32_t warp_size = 32;
@@ -31,7 +31,12 @@ namespace wl::cuda {
         std::size_t vmm_granularity {}; /* Virtual memory management granularity */
     };
 
+    /* Initialize CUDA runtime. Returns empty span if initialization failed or not devices are available. */
     [[nodiscard]] extern auto cuda_init() -> std::span<const physical_device>;
+
+    extern auto set_active_device_by_id(std::int32_t id) -> void;
+    extern auto get_active_device_id() -> std::int32_t;
+    extern auto get_active_device() -> const physical_device&;
 
     /* Memory pool interface. */
     class pool {

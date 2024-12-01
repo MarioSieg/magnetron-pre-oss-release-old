@@ -109,8 +109,8 @@ extern WL_EXPORT void* (*wl__alloc)(void* blk, size_t size);
 #   define WL__SRC_NAME __FILE__ ":" WL__STRINGIZE(__LINE__)
 #endif
 #define wl__log_info(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__); } while (0)
-#define wl__log_warn(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__); } while (0)
-#define wl__log_error(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stderr,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__); } while (0)
+#define wl__log_warn(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__); fflush(stderr); } while (0)
+#define wl__log_error(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__); fflush(stderr); } while (0)
 
 #define wl__assert(expr, msg, ...) \
     if (wl__unlikely(!(expr))) { \

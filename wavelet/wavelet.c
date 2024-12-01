@@ -954,27 +954,31 @@ static WL__COLDPROC void wl__ctx_dump_compiler_info(void) {
 
 static void wl__compute_device_init(wl_ctx_t* ctx, wl_compute_device_type_t type) {
     wl__assert2(!ctx->device);
-    #ifndef WL_ENABLE_CUDA
-        retry:
-    #endif
-    switch (ctx->device_type = type) {
-        case WL_COMPUTE_DEVICE_TYPE_CPU: /* Initialize CPU device. */
-            ctx->device = wl__init_device_cpu(ctx, 0);
-            wl__log_info("Using CPU compute device: %s", ctx->device->name);
-        break;
-        case WL_COMPUTE_DEVICE_TYPE_CUDA: /* Initialize CUDA device. */
-            #ifdef WL_ENABLE_CUDA
-                ctx->device = wl__init_device_cuda(ctx);
-                wl__log_info("Using CUDA compute device: %s", ctx->device->name);
-            #else /* CUDA support is not enabled. */
-                wl__log_error("CUDA support is not enabled, falling back to CPU");
-                type = WL_COMPUTE_DEVICE_TYPE_CPU;
-                goto retry; /* Retry with CPU device. */
-            #endif
-        break;
-        default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
-    }
-    wl__assert2(ctx->device);
+    retry:
+        switch (ctx->device_type = type) {
+            case WL_COMPUTE_DEVICE_TYPE_CPU: /* Initialize CPU device. */
+                ctx->device = wl__init_device_cpu(ctx, 0);
+                wl__assert(ctx->device, "Failed to initialize CPU compute device");
+                wl__log_info("Using CPU compute device: %s", ctx->device->name);
+            break;
+            case WL_COMPUTE_DEVICE_TYPE_CUDA: /* Initialize CUDA device. */
+                #ifdef WL_ENABLE_CUDA
+                    ctx->device = wl__init_device_cuda(ctx);
+                    if (wl__unlikely(!ctx->device)) { /* Fallback to CPU device if CUDA device initialization failed. */
+                        wl__log_error("Failed to initialize CUDA compute device or no CUDA devices found, falling back to CPU");
+                        type = WL_COMPUTE_DEVICE_TYPE_CPU;
+                        goto retry; /* Retry with CPU device. */
+                    }
+                    wl__log_info("Using CUDA compute device: %s", ctx->device->name);
+                #else /* CUDA support is not enabled. */
+                    wl__log_error("CUDA support is not enabled, falling back to CPU. To use CUDA recompile wavelet with CUDA support enabled");
+                    type = WL_COMPUTE_DEVICE_TYPE_CPU;
+                    goto retry; /* Retry with CPU device. */
+                #endif
+            break;
+            default: wl__panic("Unsupported compute device type: %d", ctx->device_type);
+        }
+        wl__assert2(ctx->device);
 }
 
 static void wl__compute_device_destroy(wl_ctx_t* ctx) {
