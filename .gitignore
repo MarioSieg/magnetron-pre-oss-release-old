@@ -21,6 +21,7 @@ _deps
 /python/__pycache__
 /python/wavelet/__pycache__/
 /python/examples/__pycache__/
+/python/extra/__pycache__/
 **/.DS_Store
 .vs/
 out/

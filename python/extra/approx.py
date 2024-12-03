@@ -11,7 +11,7 @@ def plot_approximation_error(name: str, exact_func: callable, approx_op: wl.Oper
                              step: float = 0.0001):
     x_values = [i * step for i in range(int(domain[0] / step), int(domain[1] / step))]
     exact = [exact_func(x) for x in x_values]
-    approx = wl.Tensor.operator(approx_op, None, wl.Tensor.const(x_values)).data_as_f32()
+    approx = wl.Tensor.operator(approx_op, False, None, wl.Tensor.const(x_values)).data_as_f32()
     errors = [abs(exact[i] - approx[i]) for i in range(len(exact))]
     assert len(exact) == len(approx) == len(errors) == len(x_values)
 
@@ -26,7 +26,6 @@ def plot_approximation_error(name: str, exact_func: callable, approx_op: wl.Oper
 
     plt.figure(figsize=(10, 5))
     plt.plot(x_values, errors, label='Absolute Error', color='red')
-    plt.ticklabel_format(useOffset=False, style='plain')
     plt.title(f'Error in {name} Approximation')
     plt.xlabel('x')
     plt.ylabel('Absolute Error')
@@ -34,7 +33,6 @@ def plot_approximation_error(name: str, exact_func: callable, approx_op: wl.Oper
     plt.plot([], [], ' ', label=f'Mean Error: {sum(errors) / len(errors):.20f}')
     plt.plot([], [], ' ', label=f'Min Error: {min(errors):.20f}')
     plt.plot([], [], ' ', label=f'Max Error: {max(errors):.20f}')
-    plt.yscale('linear')
     plt.legend()
     plt.grid(True)
 

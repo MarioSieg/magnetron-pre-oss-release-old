@@ -18,7 +18,7 @@ A = wl.Tensor.rand((DIM, DIM), name='A')
 B = wl.Tensor.rand((DIM, DIM), name='B')
 
 # Start the profiler
-wl.Context.active.start_profiler()
+wl.Context.active().start_profiler()
 
 # Perform #ITERATIONS matrix multiplications
 avg = 0
@@ -33,4 +33,4 @@ for _ in range(ITERATIONS):
 print(f'Average: {avg / ITERATIONS * 1e-12} TFLOP/s')
 
 # Stop the profiler and print the results
-wl.Context.active.stop_profiler(EXPORT_CSV)
+wl.Context.active().stop_profiler(EXPORT_CSV)
