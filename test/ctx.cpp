@@ -24,7 +24,7 @@ TEST(ctx, alloc_aligned) {
     *i = -1;
     ASSERT_EQ(*i, -1);
     ASSERT_EQ(reinterpret_cast<std::uintptr_t>(i) % 512, 0);
-    wl__alloc(i, 0);
+    wl__free_aligned(i);
 }
 
 TEST(ctx, alloc_pool_int) {

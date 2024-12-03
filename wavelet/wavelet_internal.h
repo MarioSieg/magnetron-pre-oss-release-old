@@ -95,6 +95,7 @@ extern WL__NORET WL__COLDPROC WL_EXPORT void wl__panic(const char* msg, ...);
 extern WL_EXPORT bool wl__log_enabled;
 extern WL_EXPORT void* (*wl__alloc)(void* blk, size_t size);
 extern WL_EXPORT void* wl__alloc_aligned(size_t size, size_t align);
+extern WL_EXPORT void wl__free_aligned(void* blk);
 
 #define wl__swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
 #define wl__max(x, y) (((x) > (y)) ? (x) : (y))
