@@ -410,10 +410,9 @@ TEST(wl_tensor_t, fill) {
     wl_ctx_destroy(ctx);
 }
 
-TEST(wl_tensor_t, random_pcg) {
+TEST(wl_tensor_t, random_uniform_pcg) {
     constexpr float rmin = 0.0;
     constexpr float rmax = 1.0;
-    return; //TODO fix this test
 
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
     wl_ctx_set_prng_algorithm(ctx, WL_PRNG_PCG, std::bit_cast<std::uint64_t>(this));
@@ -422,30 +421,19 @@ TEST(wl_tensor_t, random_pcg) {
     wl_tensor_fill_random_uniform(tensor, rmin, rmax);
 
     auto* buf = wl_tensor_data_as_f32(tensor);
-    std::vector<float> set {};
-    set.reserve(wl_tensor_num_elements(tensor));
 
     for (int64_t i = 0; i < wl_tensor_num_elements(tensor); ++i) {
         float x = buf[i];
         ASSERT_GT(x, rmin);
         ASSERT_LT(x, rmax);
-        for (float y : set) {
-            bool is_ne = std::abs(x - y) > std::numeric_limits<float>::epsilon(); // |x-y| > eps
-            if (!is_ne) {
-                std::cout << "i:" << i << " x: " << x << " y: " << y << std::endl;
-            }
-            ASSERT_TRUE(is_ne);
-        }
-        set.emplace_back(x);
     }
 
     wl_ctx_destroy(ctx);
 }
 
-TEST(wl_tensor_t, random_mersenne) {
+TEST(wl_tensor_t, random_uniform_mersenne) {
     constexpr float rmin = 0.0;
     constexpr float rmax = 1.0;
-    return; //TODO fix this test
 
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
     wl_ctx_set_prng_algorithm(ctx, WL_PRNG_MERSENNE_TWISTER, std::bit_cast<std::uint64_t>(this));
@@ -454,22 +442,72 @@ TEST(wl_tensor_t, random_mersenne) {
     wl_tensor_fill_random_uniform(tensor, rmin, rmax);
 
     auto* buf = wl_tensor_data_as_f32(tensor);
-    std::vector<float> set {};
-    set.reserve(wl_tensor_num_elements(tensor));
 
     for (int64_t i = 0; i < wl_tensor_num_elements(tensor); ++i) {
         float x = buf[i];
         ASSERT_GT(x, rmin);
         ASSERT_LT(x, rmax);
-        for (float y : set) {
-            bool is_ne = std::abs(x - y) > std::numeric_limits<float>::epsilon(); // |x-y| > eps
-            if (!is_ne) {
-                std::cout << "i:" << i << " x: " << x << " y: " << y << std::endl;
-            }
-            ASSERT_TRUE(is_ne);
-        }
-        set.emplace_back(x);
     }
+
+    wl_ctx_destroy(ctx);
+}
+
+TEST(wl_tensor_t, random_normal_mersenne) {
+    constexpr float mean = 0.0;
+    constexpr float stddev = 1.0;
+
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    wl_ctx_set_prng_algorithm(ctx, WL_PRNG_MERSENNE_TWISTER, std::bit_cast<std::uint64_t>(this));
+
+    wl_tensor_t* tensor = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 128, 128, 128, 128);
+    wl_tensor_fill_random_normal(tensor, mean, stddev);
+
+    auto* buf = wl_tensor_data_as_f32(tensor);
+
+    double sum = 0.0;
+    double sum_sq = 0.0;
+    const int64_t num_elements = wl_tensor_num_elements(tensor);
+    for (int64_t i = 0; i < num_elements; ++i) {
+        float x = buf[i];
+        sum += x;
+        sum_sq += x * x;
+    }
+    double r_mean = sum / num_elements;
+    double r_variance = (sum_sq / num_elements) - (r_mean * r_mean);
+    double r_stddev = std::sqrt(r_variance);
+
+    ASSERT_NEAR(r_mean, mean, 0.01);
+    ASSERT_NEAR(r_stddev, stddev, 0.01);
+
+    wl_ctx_destroy(ctx);
+}
+
+TEST(wl_tensor_t, random_normal_pcg) {
+    constexpr float mean = 0.0;
+    constexpr float stddev = 1.0;
+
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    wl_ctx_set_prng_algorithm(ctx, WL_PRNG_PCG, std::bit_cast<std::uint64_t>(this));
+
+    wl_tensor_t* tensor = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 128, 128, 128, 128);
+    wl_tensor_fill_random_normal(tensor, mean, stddev);
+
+    auto* buf = wl_tensor_data_as_f32(tensor);
+
+    double sum = 0.0;
+    double sum_sq = 0.0;
+    const int64_t num_elements = wl_tensor_num_elements(tensor);
+    for (int64_t i = 0; i < num_elements; ++i) {
+        float x = buf[i];
+        sum += x;
+        sum_sq += x * x;
+    }
+    double r_mean = sum / num_elements;
+    double r_variance = (sum_sq / num_elements) - (r_mean * r_mean);
+    double r_stddev = std::sqrt(r_variance);
+
+    ASSERT_NEAR(r_mean, mean, 0.01);
+    ASSERT_NEAR(r_stddev, stddev, 0.01);
 
     wl_ctx_destroy(ctx);
 }

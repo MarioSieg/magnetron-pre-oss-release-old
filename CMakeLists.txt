@@ -59,7 +59,7 @@ else() # POSIX specific config
                 message(STATUS "Accelerate framework found")
                 target_compile_definitions(wavelet PRIVATE WL_USE_ACCELERATE)
                 target_compile_definitions(wavelet PRIVATE ACCELERATE_NEW_LAPACK)
-                target_compile_definitions(waveletwavelet_core PRIVATE ACCELERATE_LAPACK_ILP64)
+                target_compile_definitions(wavelet PRIVATE ACCELERATE_LAPACK_ILP64)
                 target_link_libraries(wavelet ${ACCELERATE_FRAMEWORK})
             else()
                 message(WARNING "Accelerate framework not found, using fallback")

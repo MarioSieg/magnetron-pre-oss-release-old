@@ -16,153 +16,157 @@ typedef struct wl__cpu_thread_local_ctx_t {
 } wl__cpu_thread_local_ctx_t;
 
 #if WL_INTRIN && defined(__aarch64__) && defined(__ARM_NEON)
-static float32x4_t wl__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
-        float32x4_t r = vdupq_n_f32(0x1.8p23f);
-        float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
-        float32x4_t n = vsubq_f32(z, r);
-        float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n, vdupq_n_f32(0x1.7f7d1cp-20f));
-        uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
-        float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
-        uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
-        float32x4_t u = vmulq_f32(b, b);
-        float32x4_t j = vfmaq_f32(
-            vmulq_f32(vdupq_n_f32(0x1.ffffecp-1f), b),
-            vfmaq_f32(vfmaq_f32(vdupq_n_f32(0x1.fffdb6p-2f), vdupq_n_f32(0x1.555e66p-3f), b),
-            vfmaq_f32(vdupq_n_f32(0x1.573e2ep-5f), vdupq_n_f32(0x1.0e4020p-7f), b), u), u);
-        if (!vpaddd_u64(vreinterpretq_u64_u32(c))) return vfmaq_f32(k, j, k);
-        uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
-        float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
-        float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
-        return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
-               vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
-    }
 
-    static float32x4_t wl__simd_tanh(float32x4_t x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        float32x4_t one = vdupq_n_f32(1.0f);
-        float32x4_t neg_one = vdupq_n_f32(-1.0f);
-        float32x4_t two = vdupq_n_f32(2.0f);
-        float32x4_t neg_two = vdupq_n_f32(-2.0f);
-        float32x4_t a = vmulq_f32(neg_two, x);
-        float32x4_t b = wl__simd_expf(a);
-        float32x4_t c = vaddq_f32(one, b);
-        float32x4_t inv = vrecpeq_f32(c);
-        inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
-        inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
-        return vaddq_f32(neg_one, vmulq_f32(two, inv));
-    }
+static float32x4_t wl__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
+    float32x4_t r = vdupq_n_f32(0x1.8p23f);
+    float32x4_t z = vfmaq_f32(r, x, vdupq_n_f32(0x1.715476p+0f));
+    float32x4_t n = vsubq_f32(z, r);
+    float32x4_t b = vfmsq_f32(vfmsq_f32(x, n, vdupq_n_f32(0x1.62e4p-1f)), n, vdupq_n_f32(0x1.7f7d1cp-20f));
+    uint32x4_t e = vshlq_n_u32(vreinterpretq_u32_f32(z), 23);
+    float32x4_t k = vreinterpretq_f32_u32(vaddq_u32(e, vreinterpretq_u32_f32(vdupq_n_f32(1))));
+    uint32x4_t c = vcagtq_f32(n, vdupq_n_f32(126));
+    float32x4_t u = vmulq_f32(b, b);
+    float32x4_t j = vfmaq_f32(
+        vmulq_f32(vdupq_n_f32(0x1.ffffecp-1f), b),
+        vfmaq_f32(vfmaq_f32(vdupq_n_f32(0x1.fffdb6p-2f), vdupq_n_f32(0x1.555e66p-3f), b),
+        vfmaq_f32(vdupq_n_f32(0x1.573e2ep-5f), vdupq_n_f32(0x1.0e4020p-7f), b), u), u);
+    if (!vpaddd_u64(vreinterpretq_u64_u32(c))) return vfmaq_f32(k, j, k);
+    uint32x4_t d = vandq_u32(vclezq_f32(n), vdupq_n_u32(0x82000000));
+    float32x4_t s1 = vreinterpretq_f32_u32(vaddq_u32(d, vdupq_n_u32(0x7f000000)));
+    float32x4_t s2 = vreinterpretq_f32_u32(vsubq_u32(e, d));
+    return vbslq_f32(vcagtq_f32(n, vdupq_n_f32(192)), vmulq_f32(s1, s1),
+           vbslq_f32(c, vmulq_f32(vfmaq_f32(s2, s2, j), s1), vfmaq_f32(k, k, j)));
+}
+
+static float32x4_t wl__simd_tanh(float32x4_t x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+    float32x4_t one = vdupq_n_f32(1.0f);
+    float32x4_t neg_one = vdupq_n_f32(-1.0f);
+    float32x4_t two = vdupq_n_f32(2.0f);
+    float32x4_t neg_two = vdupq_n_f32(-2.0f);
+    float32x4_t a = vmulq_f32(neg_two, x);
+    float32x4_t b = wl__simd_expf(a);
+    float32x4_t c = vaddq_f32(one, b);
+    float32x4_t inv = vrecpeq_f32(c);
+    inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
+    inv = vmulq_f32(vrecpsq_f32(c, inv), inv); /* Newton–Raphson method */
+    return vaddq_f32(neg_one, vmulq_f32(two, inv));
+}
+
 #elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
 
 static __m512 wl__simd_expf(const __m512 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        __m512 r = _mm512_set1_ps(0x1.8p23f);
-        __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
-        __m512 n = _mm512_sub_ps(z, r);
-        __m512 b = _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.7f7d1cp-20f), _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.62e4p-1f), x));
-        __mmask16 d = _mm512_cmp_ps_mask(_mm512_abs_ps(n), _mm512_set1_ps(192), _CMP_GT_OQ);
-        __m512 u = _mm512_mul_ps(b, b);
-        __m512 j = _mm512_fmadd_ps(
-            _mm512_fmadd_ps(_mm512_fmadd_ps(_mm512_set1_ps(0x1.0e4020p-7f), b, _mm512_set1_ps(0x1.573e2ep-5f)), u,
-            _mm512_fmadd_ps(_mm512_set1_ps(0x1.555e66p-3f), b, _mm512_set1_ps(0x1.fffdb6p-2f))), u, _mm512_fmadd_ps(_mm512_set1_ps(0x1.ffffecp-1f), b, _mm512_set1_ps(1.0F))
-        );
-        __m512 res = _mm512_scalef_ps(j, n);
-        if (_mm512_kortestz(d, d)) return res;
-        __m512 zero = _mm512_setzero_ps();
-        __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
-        return _mm512_mask_blend_ps(d, res, alt);
-    }
+    __m512 r = _mm512_set1_ps(0x1.8p23f);
+    __m512 z = _mm512_fmadd_ps(x, _mm512_set1_ps(0x1.715476p+0f), r);
+    __m512 n = _mm512_sub_ps(z, r);
+    __m512 b = _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.7f7d1cp-20f), _mm512_fnmadd_ps(n, _mm512_set1_ps(0x1.62e4p-1f), x));
+    __mmask16 d = _mm512_cmp_ps_mask(_mm512_abs_ps(n), _mm512_set1_ps(192), _CMP_GT_OQ);
+    __m512 u = _mm512_mul_ps(b, b);
+    __m512 j = _mm512_fmadd_ps(
+        _mm512_fmadd_ps(_mm512_fmadd_ps(_mm512_set1_ps(0x1.0e4020p-7f), b, _mm512_set1_ps(0x1.573e2ep-5f)), u,
+        _mm512_fmadd_ps(_mm512_set1_ps(0x1.555e66p-3f), b, _mm512_set1_ps(0x1.fffdb6p-2f))), u, _mm512_fmadd_ps(_mm512_set1_ps(0x1.ffffecp-1f), b, _mm512_set1_ps(1.0F))
+    );
+    __m512 res = _mm512_scalef_ps(j, n);
+    if (_mm512_kortestz(d, d)) return res;
+    __m512 zero = _mm512_setzero_ps();
+    __m512 alt = _mm512_mask_blend_ps(_mm512_cmp_ps_mask(n, zero, _CMP_LE_OQ), _mm512_set1_ps(INFINITY), zero);
+    return _mm512_mask_blend_ps(d, res, alt);
+}
 
-    static __m512 wl__simd_tanh(__m512 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        __m512 one = _mm512_set1_ps(1.0f);
-        __m512 neg_one = _mm512_set1_ps(-1.0f);
-        __m512 two = _mm512_set1_ps(2.0f);
-        __m512 neg_two = _mm512_set1_ps(-2.0f);
-        __m512 a = _mm512_mul_ps(neg_two, x);
-        __m512 b = wl__simd_expf(a);
-        __m512 c = _mm512_add_ps(one, b);
-        __m512 inv = _mm512_rcp14_ps(c);
-        inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
-        inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
-        return _mm512_fmadd_ps(two, inv, neg_one);
-    }
+static __m512 wl__simd_tanh(__m512 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+    __m512 one = _mm512_set1_ps(1.0f);
+    __m512 neg_one = _mm512_set1_ps(-1.0f);
+    __m512 two = _mm512_set1_ps(2.0f);
+    __m512 neg_two = _mm512_set1_ps(-2.0f);
+    __m512 a = _mm512_mul_ps(neg_two, x);
+    __m512 b = wl__simd_expf(a);
+    __m512 c = _mm512_add_ps(one, b);
+    __m512 inv = _mm512_rcp14_ps(c);
+    inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+    inv = _mm512_mul_ps(_mm512_rcp14_ps(_mm512_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+    return _mm512_fmadd_ps(two, inv, neg_one);
+}
 
 #elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
-static __m256 wl__simd_expf(const __m256 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        __m256 r = _mm256_set1_ps(0x1.8p23f);
-        __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
-        __m256 n = _mm256_sub_ps(z, r);
-        __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
-        __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
-        __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
-        __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(126), _CMP_GT_OQ));
-        __m256 u = _mm256_mul_ps(b, b);
-        __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
-        if (!_mm256_movemask_ps(_mm256_castsi256_ps(c))) return _mm256_fmadd_ps(j, k, k);
-        __m256i g = _mm256_and_si256(_mm256_castps_si256(_mm256_cmp_ps(n, _mm256_setzero_ps(), _CMP_LE_OQ)),_mm256_set1_epi32(0x82000000u));
-        __m256 s1 = _mm256_castsi256_ps(_mm256_add_epi32(g, _mm256_set1_epi32(0x7f000000u)));
-        __m256 s2 = _mm256_castsi256_ps(_mm256_sub_epi32(e, g));
-        __m256i d = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(192), _CMP_GT_OQ));
-        return _mm256_or_ps(
-            _mm256_and_ps(_mm256_castsi256_ps(d), _mm256_mul_ps(s1, s1)),
-            _mm256_andnot_ps(
-            _mm256_castsi256_ps(d),
-            _mm256_or_ps(
-            _mm256_and_ps(_mm256_castsi256_ps(c),
-            _mm256_mul_ps(_mm256_fmadd_ps(s2, j, s2), s1)),
-            _mm256_andnot_ps(_mm256_castsi256_ps(c), _mm256_fmadd_ps(k, j, k))))
-        );
-    }
 
-    static __m256 wl__simd_tanh(__m256 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        __m256 one = _mm256_set1_ps(1.0f);
-        __m256 neg_one = _mm256_set1_ps(-1.0f);
-        __m256 two = _mm256_set1_ps(2.0f);
-        __m256 neg_two = _mm256_set1_ps(-2.0f);
-        __m256 a = _mm256_mul_ps(neg_two, x);
-        __m256 b = wl__simd_expf(a);
-        __m256 c = _mm256_add_ps(one, b);
-        __m256 inv = _mm256_rcp_ps(c);
-        inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
-        inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
-        return _mm256_fmadd_ps(two, inv, neg_one);
-    }
+static __m256 wl__simd_expf(const __m256 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
+    __m256 r = _mm256_set1_ps(0x1.8p23f);
+    __m256 z = _mm256_fmadd_ps(x, _mm256_set1_ps(0x1.715476p+0f), r);
+    __m256 n = _mm256_sub_ps(z, r);
+    __m256 b = _mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.7f7d1cp-20f),_mm256_fnmadd_ps(n, _mm256_set1_ps(0x1.62e4p-1f), x));
+    __m256i e = _mm256_slli_epi32(_mm256_castps_si256(z), 23);
+    __m256 k = _mm256_castsi256_ps(_mm256_add_epi32(e, _mm256_castps_si256(_mm256_set1_ps(1))));
+    __m256i c = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(126), _CMP_GT_OQ));
+    __m256 u = _mm256_mul_ps(b, b);
+    __m256 j = _mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_fmadd_ps(_mm256_set1_ps(0x1.0e4020p-7f), b,_mm256_set1_ps(0x1.573e2ep-5f)), u,_mm256_fmadd_ps(_mm256_set1_ps(0x1.555e66p-3f), b,_mm256_set1_ps(0x1.fffdb6p-2f))),u, _mm256_mul_ps(_mm256_set1_ps(0x1.ffffecp-1f), b));
+    if (!_mm256_movemask_ps(_mm256_castsi256_ps(c))) return _mm256_fmadd_ps(j, k, k);
+    __m256i g = _mm256_and_si256(_mm256_castps_si256(_mm256_cmp_ps(n, _mm256_setzero_ps(), _CMP_LE_OQ)),_mm256_set1_epi32(0x82000000u));
+    __m256 s1 = _mm256_castsi256_ps(_mm256_add_epi32(g, _mm256_set1_epi32(0x7f000000u)));
+    __m256 s2 = _mm256_castsi256_ps(_mm256_sub_epi32(e, g));
+    __m256i d = _mm256_castps_si256(_mm256_cmp_ps(_mm256_andnot_ps(_mm256_set1_ps(-0.f), n), _mm256_set1_ps(192), _CMP_GT_OQ));
+    return _mm256_or_ps(
+        _mm256_and_ps(_mm256_castsi256_ps(d), _mm256_mul_ps(s1, s1)),
+        _mm256_andnot_ps(
+        _mm256_castsi256_ps(d),
+        _mm256_or_ps(
+        _mm256_and_ps(_mm256_castsi256_ps(c),
+        _mm256_mul_ps(_mm256_fmadd_ps(s2, j, s2), s1)),
+        _mm256_andnot_ps(_mm256_castsi256_ps(c), _mm256_fmadd_ps(k, j, k))))
+    );
+}
+
+static __m256 wl__simd_tanh(__m256 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+    __m256 one = _mm256_set1_ps(1.0f);
+    __m256 neg_one = _mm256_set1_ps(-1.0f);
+    __m256 two = _mm256_set1_ps(2.0f);
+    __m256 neg_two = _mm256_set1_ps(-2.0f);
+    __m256 a = _mm256_mul_ps(neg_two, x);
+    __m256 b = wl__simd_expf(a);
+    __m256 c = _mm256_add_ps(one, b);
+    __m256 inv = _mm256_rcp_ps(c);
+    inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+    inv = _mm256_mul_ps(_mm256_rcp_ps(_mm256_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+    return _mm256_fmadd_ps(two, inv, neg_one);
+}
+
 #elif WL_INTRIN && defined(__SSE2__)
 static __m128 wl__simd_expf(const __m128 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
-        __m128 r = _mm_set1_ps(0x1.8p23f);
-        __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
-        __m128 n = _mm_sub_ps(z, r);
-        __m128 b = _mm_sub_ps(_mm_sub_ps(x, _mm_mul_ps(n, _mm_set1_ps(0x1.62e4p-1f))), _mm_mul_ps(n, _mm_set1_ps(0x1.7f7d1cp-20f)));
-        __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
-        __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
-        __m128i c = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
-        __m128 u = _mm_mul_ps(b, b);
-        __m128 j = _mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.0e4020p-7f), b), _mm_set1_ps(0x1.573e2ep-5f)),u),
-        _mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.555e66p-3f), b), _mm_set1_ps(0x1.fffdb6p-2f))), u),
-        _mm_mul_ps(_mm_set1_ps(0x1.ffffecp-1f), b));
-        if (!_mm_movemask_epi8(c)) return _mm_add_ps(_mm_mul_ps(j, k), k);
-        __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),_mm_set1_epi32(0x82000000u));
-        __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
-        __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
-        __m128i d = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
-        return _mm_or_ps(
-            _mm_and_ps(_mm_castsi128_ps(d), _mm_mul_ps(s1, s1)),
-            _mm_andnot_ps(_mm_castsi128_ps(d),
-            _mm_or_ps(_mm_and_ps(_mm_castsi128_ps(c), _mm_mul_ps(_mm_add_ps(_mm_mul_ps(s2, j), s2), s1)),
-            _mm_andnot_ps(_mm_castsi128_ps(c), _mm_add_ps(_mm_mul_ps(k, j), k))))
-        );
-    }
+    __m128 r = _mm_set1_ps(0x1.8p23f);
+    __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
+    __m128 n = _mm_sub_ps(z, r);
+    __m128 b = _mm_sub_ps(_mm_sub_ps(x, _mm_mul_ps(n, _mm_set1_ps(0x1.62e4p-1f))), _mm_mul_ps(n, _mm_set1_ps(0x1.7f7d1cp-20f)));
+    __m128i e = _mm_slli_epi32(_mm_castps_si128(z), 23);
+    __m128 k = _mm_castsi128_ps(_mm_add_epi32(e, _mm_castps_si128(_mm_set1_ps(1))));
+    __m128i c = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(126)));
+    __m128 u = _mm_mul_ps(b, b);
+    __m128 j = _mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.0e4020p-7f), b), _mm_set1_ps(0x1.573e2ep-5f)),u),
+    _mm_add_ps(_mm_mul_ps(_mm_set1_ps(0x1.555e66p-3f), b), _mm_set1_ps(0x1.fffdb6p-2f))), u),
+    _mm_mul_ps(_mm_set1_ps(0x1.ffffecp-1f), b));
+    if (!_mm_movemask_epi8(c)) return _mm_add_ps(_mm_mul_ps(j, k), k);
+    __m128i g = _mm_and_si128(_mm_castps_si128(_mm_cmple_ps(n, _mm_setzero_ps())),_mm_set1_epi32(0x82000000u));
+    __m128 s1 = _mm_castsi128_ps(_mm_add_epi32(g, _mm_set1_epi32(0x7f000000u)));
+    __m128 s2 = _mm_castsi128_ps(_mm_sub_epi32(e, g));
+    __m128i d = _mm_castps_si128(_mm_cmpgt_ps(_mm_andnot_ps(_mm_set1_ps(-0.f), n), _mm_set1_ps(192)));
+    return _mm_or_ps(
+        _mm_and_ps(_mm_castsi128_ps(d), _mm_mul_ps(s1, s1)),
+        _mm_andnot_ps(_mm_castsi128_ps(d),
+        _mm_or_ps(_mm_and_ps(_mm_castsi128_ps(c), _mm_mul_ps(_mm_add_ps(_mm_mul_ps(s2, j), s2), s1)),
+        _mm_andnot_ps(_mm_castsi128_ps(c), _mm_add_ps(_mm_mul_ps(k, j), k))))
+    );
+}
 
-    static __m128 wl__simd_tanh(__m128 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
-        __m128 one = _mm_set1_ps(1.0f);
-        __m128 neg_one = _mm_set1_ps(-1.0f);
-        __m128 two = _mm_set1_ps(2.0f);
-        __m128 neg_two = _mm_set1_ps(-2.0f);
-        __m128 a = _mm_mul_ps(neg_two, x);
-        __m128 b = wl__simd_expf(a);
-        __m128 c = _mm_add_ps(one, b);
-        __m128 inv = _mm_rcp_ps(c);
-        inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
-        inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
-        return _mm_add_ps(neg_one, _mm_mul_ps(two, inv));
-    }
+static __m128 wl__simd_tanh(__m128 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((cosh x)^2) */
+    __m128 one = _mm_set1_ps(1.0f);
+    __m128 neg_one = _mm_set1_ps(-1.0f);
+    __m128 two = _mm_set1_ps(2.0f);
+    __m128 neg_two = _mm_set1_ps(-2.0f);
+    __m128 a = _mm_mul_ps(neg_two, x);
+    __m128 b = wl__simd_expf(a);
+    __m128 c = _mm_add_ps(one, b);
+    __m128 inv = _mm_rcp_ps(c);
+    inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+    inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
+    return _mm_add_ps(neg_one, _mm_mul_ps(two, inv));
+}
 #endif
 
 static void WL__HOTPROC wl__vadd_f32(
@@ -174,8 +178,9 @@ static void WL__HOTPROC wl__vadd_f32(
 #ifdef WL_USE_ACCELERATE
     vDSP_vadd(y, 1, x, 1, o, 1, n);
 #else
-    for (int64_t i=0; i < n; ++i)
-            o[i] = x[i] + y[i];
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = x[i] + y[i];
+    }
 #endif
 }
 
@@ -188,8 +193,9 @@ static void WL__HOTPROC wl__vsub_f32(
 #ifdef WL_USE_ACCELERATE
     vDSP_vsub(y, 1, x, 1, o, 1, n);
 #else
-    for (int64_t i=0; i < n; ++i)
-            o[i] = x[i] - y[i];
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = x[i] - y[i];
+    }
 #endif
 }
 
@@ -202,8 +208,9 @@ static void WL__HOTPROC wl__vmul_f32(
 #ifdef WL_USE_ACCELERATE
     vDSP_vmul(y, 1, x, 1, o, 1, n);
 #else
-    for (int64_t i=0; i < n; ++i)
-            o[i] = x[i] * y[i];
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = x[i] * y[i];
+    }
 #endif
 }
 
@@ -216,8 +223,9 @@ static void WL__HOTPROC wl__vdiv_f32(
 #ifdef WL_USE_ACCELERATE
     vDSP_vdiv(y, 1, x, 1, o, 1, n);
 #else
-    for (int64_t i=0; i < n; ++i)
-            o[i] = x[i] / y[i];
+    for (int64_t i=0; i < n; ++i) {
+        o[i] = x[i] / y[i];
+    }
 #endif
 }
 
@@ -227,8 +235,9 @@ static void WL__HOTPROC wl__vadds_f32(
     const float* const x,
     const float y
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = x[i] + y;
+    }
 }
 
 static void WL__HOTPROC wl__vsubs_f32(
@@ -237,8 +246,9 @@ static void WL__HOTPROC wl__vsubs_f32(
     const float* const x,
     const float y
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = x[i] - y;
+    }
 }
 
 static void WL__HOTPROC wl__vmuls_f32(
@@ -247,8 +257,9 @@ static void WL__HOTPROC wl__vmuls_f32(
     const float* const x,
     const float y
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = x[i] * y;
+    }
 }
 
 static void WL__HOTPROC wl__vdivs_f32(
@@ -257,8 +268,9 @@ static void WL__HOTPROC wl__vdivs_f32(
     const float* const x,
     const float y
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = x[i] / y;
+    }
 }
 
 static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
@@ -289,9 +301,7 @@ static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
     *acc = vaddq_f32(*acc, acc[2]);     /* Fold acc[0] += acc[2] */
     *acc = vaddq_f32(*acc, acc[1]);     /* Fold acc[0] += acc[1] */
     float sum = vaddvq_f32(*acc);       /* Reduce to scalar with horizontal sum. */
-    for (int64_t i=k; i < n; ++i) {     /* Process leftovers scalar-wise */
-        sum += x[i]*y[i];
-    }
+    for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
     return sum;
 #elif WL_INTRIN && defined(__AVX512F__) && defined(__FMA__)
     const int64_t k = n & -64;
@@ -398,8 +408,9 @@ static double WL__HOTPROC wl__vsum_f64_f32( /* Σx. */
     return (double)sum;
 #else
     double sum = 0.0;
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         sum += (double)x[i];
+    }
     return sum;
 #endif
 }
@@ -409,8 +420,9 @@ static float WL__HOTPROC wl__vmin_f32( /* min x */
     const float* const x
 ) {
     float min = INFINITY;
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         min = fminf(min, x[i]);
+    }
     return min;
 }
 
@@ -419,8 +431,9 @@ static float WL__HOTPROC wl__vmax_f32( /* max x */
     const float* const x
 ) {
     float min = -INFINITY;
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         min = fmaxf(min, x[i]);
+    }
     return min;
 }
 
@@ -429,8 +442,9 @@ static void WL__HOTPROC wl__vabs_f32( /* o = |x| */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = fabsf(x[i]);
+    }
 }
 
 static void WL__HOTPROC wl__vneg_f32( /* o = -x */
@@ -438,8 +452,9 @@ static void WL__HOTPROC wl__vneg_f32( /* o = -x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = -x[i];
+    }
 }
 
 static void WL__HOTPROC wl__vlog_f32( /* o = log x */
@@ -447,8 +462,9 @@ static void WL__HOTPROC wl__vlog_f32( /* o = log x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = logf(x[i]);
+    }
 }
 
 static void WL__HOTPROC wl__vsqr_f32( /* o = x² */
@@ -465,8 +481,9 @@ static void WL__HOTPROC wl__vsqrt_f32( /* o = √x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = sqrtf(x[i]);
+    }
 }
 
 static void WL__HOTPROC wl__vsin_f32( /* o = sin x */
@@ -474,8 +491,9 @@ static void WL__HOTPROC wl__vsin_f32( /* o = sin x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = sinf(x[i]);
+    }
 }
 
 static void WL__HOTPROC wl__vcos_f32( /* o = cos x */
@@ -483,8 +501,9 @@ static void WL__HOTPROC wl__vcos_f32( /* o = cos x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = cosf(x[i]);
+    }
 }
 
 static void WL__HOTPROC wl__vstep_f32( /* Heaviside step function. */
@@ -492,8 +511,9 @@ static void WL__HOTPROC wl__vstep_f32( /* Heaviside step function. */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i)
+    for (int64_t i=0; i < n; ++i) {
         o[i] = x[i] >= 0.0f ? 1.0f : 0.0f;
+    }
 }
 
 static void WL__HOTPROC wl__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^x */
@@ -504,20 +524,20 @@ static void WL__HOTPROC wl__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^
     int64_t i=0;
 #if WL_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
     for (; i+3 < n; i += 4) {
-            vst1q_f32(o+i, wl__simd_expf(vld1q_f32(x+i)));
-        }
+        vst1q_f32(o+i, wl__simd_expf(vld1q_f32(x+i)));
+    }
 #elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
     for (; i+15 < n; i += 16) {
-            _mm512_storeu_ps(o+i, wl__simd_expf(_mm512_loadu_ps(x+i)));
-        }
+        _mm512_storeu_ps(o+i, wl__simd_expf(_mm512_loadu_ps(x+i)));
+    }
 #elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
     for (; i+7 < n; i += 8) {
-            _mm256_storeu_ps(o+i, wl__simd_expf(_mm256_loadu_ps(x+i)));
-        }
+        _mm256_storeu_ps(o+i, wl__simd_expf(_mm256_loadu_ps(x+i)));
+    }
 #elif WL_INTRIN && defined(__SSE2__)
     for (; i+3 < n; i += 4) {
-            _mm_storeu_ps(o+i, wl__simd_expf(_mm_loadu_ps(x+i)));
-        }
+        _mm_storeu_ps(o+i, wl__simd_expf(_mm_loadu_ps(x+i)));
+    }
 #endif
     for (; i < n; ++i) o[i] = expf(x[i]); /* Process leftovers scalar-wise */
 }
