@@ -394,81 +394,6 @@ wl_static_assert(sizeof(wl__bitset_t) == 4);
 #define wl__bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&((4<<3)-1))))
 #define wl__bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&((4<<3)-1))))
 
-#ifdef __BYTE_ORDER
-#if defined(__BIG_ENDIAN) && (__BYTE_ORDER == __BIG_ENDIAN)
-#define WL__BE
-#elif defined(__LITTLE_ENDIAN) && (__BYTE_ORDER == __LITTLE_ENDIAN)
-#define WL__LE
-#endif
-#elif defined(_BYTE_ORDER)
-#if defined(_BIG_ENDIAN) && (_BYTE_ORDER == _BIG_ENDIAN)
-#define WL__BE
-#elif defined(_LITTLE_ENDIAN) && (_BYTE_ORDER == _LITTLE_ENDIAN)
-#define WL__LE
-#endif
-#elif defined(__BIG_ENDIAN__)
-#define WL__BE
-#elif defined(__LITTLE_ENDIAN__)
-#define WL__LE
-#else
-#if defined(__ARMEL__) || defined(__THUMBEL__) || defined(__AARCH64EL__) || \
-defined(_MIPSEL) || defined(__MIPSEL) || defined(__MIPSEL__) || \
-defined(__ia64__) || defined(_IA64) || defined(__IA64__) || defined(__ia64) || \
-defined(_M_IA64) || defined(__itanium__) || defined(i386) || defined(__i386__) || \
-defined(__i486__) || defined(__i586__) || defined(__i686__) || defined(__i386) || \
-defined(_M_IX86) || defined(_X86_) || defined(__THW_INTEL__) || defined(__I86__) || \
-defined(__INTEL__) || defined(__x86_64) || defined(__x86_64__) || \
-defined(__amd64__) || defined(__amd64) || defined(_M_X64) || \
-defined(__bfin__) || defined(__BFIN__) || defined(bfin) || defined(BFIN)
-#define WL__LE
-#elif defined(__m68k__) || defined(M68000) || defined(__hppa__) || defined(__hppa) || defined(__HPPA__) || \
-defined(__sparc__) || defined(__sparc) || defined(__370__) || defined(__THW_370__) || \
-defined(__s390__) || defined(__s390x__) || defined(__SYSC_ZARCH__)
-#define WL__BE
-#elif defined(__arm__) || defined(__arm64) || defined(__thumb__) || \
-defined(__TARGET_ARCH_ARM) || defined(__TARGET_ARCH_THUMB) || defined(__ARM_ARCH) || \
-defined(_M_ARM) || defined(_M_ARM64)
-#if defined(_WIN32) || defined(_WIN64) || \
-defined(__WIN32__) || defined(__TOS_WIN__) || defined(__WINDOWS__)
-#define WL__LE
-#else
-#error "Unknown endianness"
-#endif
-#endif
-#endif
-
-static uint32_t WL__AINLINE wl__bswap32(uint32_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
-    #ifdef WL__BE
-        #if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
-            x = (uint32_t)__builtin_bswap32((int32_t)x);
-        #else
-            x = (x & 0xff000000) >> 24 |
-            (x & 0xff0000) >> 8 |
-            (x & 0xff00) << 8 |
-            (x & 0xff) << 24;
-        #endif
-    #endif
-    return x;
-}
-
-static uint64_t WL__AINLINE wl__bswap64(uint64_t x) { /* Swap bytes for endianess switch. Should be optimized to a (bswap/rev) instruction on modern compilers. */
-    #ifdef WL__BE
-        #if (defined(__GNUC__) && ((__GNUC__ > 4) || (__GNUC__ == 4 && __GNUC_MINOR__ >= 3))) || defined(__clang__)
-            x = (uint64_t)__builtin_bswap64((int64_t)x);
-        #else
-            x = (x & 0xff00000000000000) >> 56 |
-            (x & 0xff000000000000) >> 40 |
-            (x & 0xff0000000000) >> 24 |
-            (x & 0xff00000000) >> 8 |
-            (x & 0xff000000) << 8 |
-            (x & 0xff0000) << 24 |
-            (x & 0xff00) << 40 |
-            (x & 0xff) << 56;
-        #endif
-    #endif
-    return x;
-}
-
 #if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
 static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
     register uint64x2_t r;
@@ -1036,12 +961,14 @@ wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device) {
 }
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {
+    wl__log_info("Tensors Created: %zu, Tensors Allocated: %zu", ctx->tensor_rc, ctx->tensor_alloc_rc);
+    if (wl__unlikely(ctx->tensor_alloc_rc > 0)) { /* Check for leaked tensors. */
+        wl__panic("Leaked tensors detected: %zu", ctx->tensor_rc);
+    }
     wl__compute_device_destroy(ctx);
-    size_t tensors_created = ctx->tensors_created;
     memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
     (*wl__alloc)(ctx, 0);
     ctx = NULL;
-    wl__log_info("Tensors Allocated: %zu", tensors_created);
     wl__log_info("WAVELET context destroyed.");
 }
 
@@ -1069,7 +996,7 @@ uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx) { return ctx->sys.cpu_socke
 uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_total; }
 uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 bool wl_ctx_is_numa_system(const wl_ctx_t* ctx) { return false; /* TODO */ }
-size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx) { return ctx->tensors_created; }
+size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx) { return ctx->tensor_rc; }
 
 void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     if (ctx->profiler_enabled) return;
@@ -1696,18 +1623,22 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     #pragma GCC unroll 5
     for (uint32_t i=1; i < WL_MAX_DIMS; ++i)  /* Calculate strides and check for overflow. */
         wl__assert2(!wl__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
-    ++ctx->tensors_created;
+    ++ctx->tensor_rc;
+    if (!view) ++ctx->tensor_alloc_rc;
     return t;
 }
 
 void wl_tensor_destroy(wl_tensor_t* t) {
     if (wl__unlikely(!t)) return;
+    wl_ctx_t* ctx = t->ctx;
     if (t->flags & WL__TFLAG_OWNER) { /* Free device memory if tensor owns it. */
         wl__icompute_device_t* dvc = t->ctx->device;
         void (*deallocator)(wl__icompute_device_t*, wl__itensor_storage_buffer*) = dvc->free_storage;
         (*deallocator)(dvc, t->storage);
+        --ctx->tensor_alloc_rc;
     }
     (*wl__alloc)(t, 0); /* Free tensor struct. */
+    --ctx->tensor_rc;
 }
 
 wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1) {
@@ -2783,11 +2714,13 @@ static bool wl__sto_read_tensor_header(
             uint64_t name_u64[sizeof(*name)/sizeof(uint64_t)];
             for (size_t i=0; i < sizeof(name_u64)/sizeof(*name_u64); ++i) /* Read name as multiple u64 */
                 name_u64[i] = wl__sto_read_u64_le(p);
+            memcpy(name, name_u64, sizeof(*name));
+            (*name)[sizeof(*name)-1] = '\0';
             uint32_t aux = wl__sto_read_u32_le(p); /* Read aux field */
             *flags = (wl__tensor_flags_t)((aux >> 16) & 0xff);
             *dtype = (wl_dtype_t)((aux >> 8) & 0xff);
             *rank = (int64_t)(aux & 0xff);
-            wl__sto_sanitize(*flags == 0 || (*flags <= 0xff && ((*flags & 1) == 0)), false); /* Check fields */
+            wl__sto_sanitize((*flags & ~(WL__TFLAG_MAX-1)) == 0, false); /* Check fields */
             wl__sto_sanitize(*dtype >= 0 && *dtype < WL_DTYPE_COUNT_, false);
             wl__sto_sanitize(*rank >= 1 && *rank <= WL_MAX_DIMS, false);
             for (size_t i=0; i < WL_MAX_DIMS; ++i) {  /* Read shape */
@@ -2898,7 +2831,7 @@ static uint8_t* wl__sto_write_buffered(const wl_tensor_t** tensors, size_t n_ten
         return NULL;
 }
 
-WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf, size_t size, size_t* out_n_tensors, uint32_t* out_version) { /* Load stored tensors from buffer. Function is exported for fuzzing test. */
+WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf, size_t size, uint32_t* out_n_tensors, uint32_t* out_version) { /* Load stored tensors from buffer. Function is exported for fuzzing test. */
     if (wl__unlikely(!ctx || !buf || !out_n_tensors || !out_version || size <= WL__STO_FILE_HEADER_SIZE + WL__STO_TENSOR_HEADER_SIZE + 1)) return NULL;    /* Check input */
     const uint8_t* needle = buf;
     const uint8_t* end = buf + size;
@@ -2970,8 +2903,7 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     uint8_t* buf = (uint8_t*)(*wl__alloc)(NULL, n_bytes);  /* Allocate buffer */
     wl__assert(fread(buf, 1, n_bytes, f) == n_bytes, "Failed to read %zu bytes from file: %s", n_bytes, file);    /* Read while file into buffer */
     fclose(f), f = NULL;    /* Close file */
-    size_t n_tensors = 0;
-    uint32_t version = 0;
+    uint32_t n_tensors = 0, version = 0;
     wl_tensor_t** tensors = wl__sto_read_buffered(ctx, buf, n_bytes, &n_tensors, &version);   /* Deserialize tensors */
     wl__assert(version > 0 && version <= WL_VERSION, "Unsupported storage version: %u", version);   /* Check version */
     wl__assert(tensors && n_tensors > 0, "Failed to load tensor from file: %s", file);
@@ -2981,7 +2913,7 @@ wl_tensor_t* wl_tensor_load(wl_ctx_t* ctx, const char* file) {
     double mem;
     const char* unit;
     wl__humanize_memory_size(n_bytes, &mem, &unit);
-    wl__log_info("Loaded %zu tensor%s from file: %s, %.03f %s read, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
+    wl__log_info("Loaded %u tensor%s from file: %s, %.03f %s read, storage v.%u", n_tensors, n_tensors > 1 ? "s" : "", file, mem, unit, version);
     return target;
 }
 

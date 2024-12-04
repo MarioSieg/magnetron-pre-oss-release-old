@@ -31,6 +31,8 @@ static constexpr std::int64_t k_lim_broadcast = 3;
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
             } \
+            wl_tensor_destroy(r); \
+            wl_tensor_destroy(x); \
         } \
         \
         wl_ctx_destroy(ctx); \
@@ -58,6 +60,8 @@ static constexpr std::int64_t k_lim_broadcast = 3;
                 for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                     ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
                 } \
+                wl_tensor_destroy(r); \
+                wl_tensor_destroy(x); \
             } \
             \
             wl_ctx_destroy(ctx); \
@@ -84,6 +88,8 @@ TEST(compute_cpu, neg_same_shape) {
         for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) {
             ASSERT_EQ(b_r[i], -b_x[i]);
         }
+        wl_tensor_destroy(x);
+        wl_tensor_destroy(r);
     }
     wl_ctx_destroy(ctx);
 }
@@ -189,7 +195,10 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
-        } \
+                wl_tensor_destroy(r); \
+                wl_tensor_destroy(x); \
+                wl_tensor_destroy(y); \
+            } \
         \
         wl_ctx_destroy(ctx); \
     } \
@@ -218,6 +227,9 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
+            wl_tensor_destroy(r); \
+            wl_tensor_destroy(x); \
+            wl_tensor_destroy(y); \
         } \
         \
         wl_ctx_destroy(ctx); \
@@ -251,6 +263,9 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]); \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
+            wl_tensor_destroy(r); \
+            wl_tensor_destroy(x); \
+            wl_tensor_destroy(y); \
         } \
         \
         wl_ctx_destroy(ctx); \
@@ -285,6 +300,9 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]);  \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
+            wl_tensor_destroy(r); \
+            wl_tensor_destroy(x); \
+            wl_tensor_destroy(y); \
         } \
         \
         wl_ctx_destroy(ctx); \
@@ -310,6 +328,8 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op wl_op_param_unpack_float(xi)); \
             } \
+            wl_tensor_destroy(r); \
+            wl_tensor_destroy(x); \
         } \
         \
         wl_ctx_destroy(ctx); \
@@ -388,6 +408,10 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
         ASSERT_FLOAT_EQ(buf[i], expected[i]);
     }
 
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(B);
+    wl_tensor_destroy(R);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -418,6 +442,10 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     ASSERT_FLOAT_EQ(C[1], -2.5f);
     ASSERT_FLOAT_EQ(C[2], -3.5f);
 
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(B);
+    wl_tensor_destroy(R);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -432,6 +460,8 @@ TEST(compute_cpu, arithmetic_mean) {
         a_mean += static_cast<double>(wl_tensor_data_as_f32(A)[i]);
     a_mean /= static_cast<double>(wl_tensor_num_elements(A));
     ASSERT_NEAR(static_cast<float>(a_mean), *wl_tensor_data_as_f32(R), 1e-9);
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(R);
     wl_ctx_destroy(ctx);
 }
 
@@ -443,6 +473,8 @@ TEST(compute_cpu, min) {
     ASSERT_NE(R, nullptr);
     float a_min = *std::min_element(wl_tensor_data_as_f32(A), wl_tensor_data_as_f32(A) + wl_tensor_num_elements(A));
     ASSERT_FLOAT_EQ(a_min, *wl_tensor_data_as_f32(R));
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(R);
     wl_ctx_destroy(ctx);
 }
 
@@ -454,6 +486,8 @@ TEST(compute_cpu, max) {
     ASSERT_NE(R, nullptr);
     float a_min = *std::max_element(wl_tensor_data_as_f32(A), wl_tensor_data_as_f32(A) + wl_tensor_num_elements(A));
     ASSERT_FLOAT_EQ(a_min, *wl_tensor_data_as_f32(R));
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(R);
     wl_ctx_destroy(ctx);
 }
 
@@ -467,6 +501,8 @@ TEST(compute_cpu, hsum) {
     for (std::int64_t i=0; i < wl_tensor_num_elements(A); ++i)
         a_sum += static_cast<double>(wl_tensor_data_as_f32(A)[i]);
     ASSERT_NEAR(static_cast<float>(a_sum), *wl_tensor_data_as_f32(R), 1e-9);
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(R);
     wl_ctx_destroy(ctx);
 }
 
@@ -477,6 +513,9 @@ TEST(compute_cpu, heavy_compute_single_op) {
     wl_tensor_fill(B, 3.0);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_ADD, A, B);
     ASSERT_NE(R, nullptr);
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(B);
+    wl_tensor_destroy(R);
     wl_ctx_destroy(ctx);
 }
 
@@ -487,5 +526,8 @@ TEST(compute_cpu, heavy_compute_single_op_scalar) {
     wl_tensor_fill(B, 3.0);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_ADD, A, B);
     ASSERT_NE(R, nullptr);
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(B);
+    wl_tensor_destroy(R);
     wl_ctx_destroy(ctx);
 }

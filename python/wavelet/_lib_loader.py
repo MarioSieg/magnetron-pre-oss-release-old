@@ -1,6 +1,6 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-from wavelet._ffi_cdecl import __WL_CDECLS
+from wavelet._ffi_cdecl_generated import __WL_CDECLS
 from ctypes.util import find_library
 from os.path import isfile
 

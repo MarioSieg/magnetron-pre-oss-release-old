@@ -32,5 +32,11 @@ TEST(graph_dynamic, simple) {
         ASSERT_EQ(buf[i], 0.6f*2.11f + 0.1f);
     }
 
+    wl_tensor_destroy(WXB);
+    wl_tensor_destroy(B);
+    wl_tensor_destroy(WX);
+    wl_tensor_destroy(W);
+    wl_tensor_destroy(X);
+
     wl_ctx_destroy(ctx);
 }

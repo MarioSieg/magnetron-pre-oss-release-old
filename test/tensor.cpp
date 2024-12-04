@@ -31,6 +31,8 @@ TEST(wl_tensor_t, init_1d) {
     ASSERT_TRUE(wl_tensor_is_matrix(tensor));
     ASSERT_TRUE(wl_tensor_is_volume(tensor));
 
+    wl_tensor_destroy(tensor);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -58,6 +60,8 @@ TEST(wl_tensor_t, init_2d) {
     ASSERT_FALSE(wl_tensor_is_vector(tensor));
     ASSERT_TRUE(wl_tensor_is_matrix(tensor));
     ASSERT_TRUE(wl_tensor_is_volume(tensor));
+
+    wl_tensor_destroy(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -87,6 +91,8 @@ TEST(wl_tensor_t, init_3d) {
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_TRUE(wl_tensor_is_volume(tensor));
 
+    wl_tensor_destroy(tensor);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -114,6 +120,8 @@ TEST(wl_tensor_t, init_4d) {
     ASSERT_FALSE(wl_tensor_is_vector(tensor));
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_FALSE(wl_tensor_is_volume(tensor));
+
+    wl_tensor_destroy(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -148,6 +156,8 @@ TEST(wl_tensor_t, init_5d) {
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_FALSE(wl_tensor_is_volume(tensor));
 
+    wl_tensor_destroy(tensor);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -181,6 +191,8 @@ TEST(wl_tensor_t, init_6d) {
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_FALSE(wl_tensor_is_volume(tensor));
 
+    wl_tensor_destroy(tensor);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -190,6 +202,8 @@ TEST(wl_tensor_t, print) {
     wl_tensor_t* tensor = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 2, 2, 2, 2);
     wl_tensor_fill_random_uniform(tensor, 0.0f, 1.0f);
     wl_tensor_print(tensor, false, true);
+
+    wl_tensor_destroy(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -201,6 +215,7 @@ TEST(wl_tensor_t, name) {
     wl_tensor_set_name(tensor, "Gradient Backup");
     ASSERT_STREQ(wl_tensor_get_name(tensor), "Gradient Backup");
 
+    wl_tensor_destroy(tensor);
     wl_ctx_destroy(ctx);
 }
 
@@ -232,6 +247,8 @@ TEST(wl_tensor_t, deep_clone) {
     ASSERT_NE(a, b);
     ASSERT_EQ(0, std::memcmp(a, b, wl_tensor_data_size(origin)));
 
+    wl_tensor_destroy(origin);
+    wl_tensor_destroy(clone);
     wl_ctx_destroy(ctx);
 }
 
@@ -247,6 +264,10 @@ TEST(wl_tensor_t, equals) {
     ASSERT_FALSE(wl_tensor_eq(origin, clone2));
     ASSERT_FALSE(wl_tensor_eq(clone, clone2));
 
+    wl_tensor_destroy(origin);
+    wl_tensor_destroy(clone);
+    wl_tensor_destroy(clone2);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -261,6 +282,8 @@ TEST(wl_tensor_t, buffer_linearly) {
         std::cout << wl_tensor_data_as_f32(origin)[i] << " ";
     }
     std::cout << std::endl;
+
+    wl_tensor_destroy(origin);
 
     wl_ctx_destroy(ctx);
 }
@@ -288,6 +311,11 @@ TEST(wl_tensor_t, view) {
         ASSERT_FLOAT_EQ(buf_slice2[i], 2.0f);
     }
 
+
+    wl_tensor_destroy(origin);
+    wl_tensor_destroy(slice1);
+    wl_tensor_destroy(slice2);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -307,6 +335,9 @@ TEST(wl_tensor_t, transpose) {
     ASSERT_EQ(wl_tensor_num_rows(origin), wl_tensor_num_cols(transposed));
     ASSERT_TRUE(wl_tensor_is_contiguous(origin));
     ASSERT_FALSE(wl_tensor_is_contiguous(transposed));
+
+    wl_tensor_destroy(origin);
+    wl_tensor_destroy(transposed);
 
     wl_ctx_destroy(ctx);
 }
@@ -341,6 +372,9 @@ TEST(wl_tensor_t, permute) {
     ASSERT_TRUE(wl_tensor_is_contiguous(origin));
     ASSERT_FALSE(wl_tensor_is_contiguous(permuted));
 
+    wl_tensor_destroy(origin);
+    wl_tensor_destroy(permuted);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -364,6 +398,10 @@ TEST(wl_tensor_t, isclose) {
     ASSERT_FALSE(wl_tensor_is_close(clone, clone2, FLT_EPSILON, & percent));
     ASSERT_DOUBLE_EQ(percent, 0.0);
 
+    wl_tensor_destroy(origin);
+    wl_tensor_destroy(clone);
+    wl_tensor_destroy(clone2);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -382,6 +420,8 @@ TEST(wl_tensor_t, copy_buffer_from) {
     const void* b = buf.data();
     ASSERT_NE(a, b);
     ASSERT_EQ(0, std::memcmp(a, b, wl_tensor_data_size(tensor)));
+
+    wl_tensor_destroy(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -407,6 +447,8 @@ TEST(wl_tensor_t, fill) {
         ASSERT_FLOAT_EQ(buf[0], -1.0f);
     }
 
+    wl_tensor_destroy(tensor);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -428,6 +470,8 @@ TEST(wl_tensor_t, random_uniform_pcg) {
         ASSERT_LT(x, rmax);
     }
 
+    wl_tensor_destroy(tensor);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -448,6 +492,8 @@ TEST(wl_tensor_t, random_uniform_mersenne) {
         ASSERT_GT(x, rmin);
         ASSERT_LT(x, rmax);
     }
+
+    wl_tensor_destroy(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -479,6 +525,8 @@ TEST(wl_tensor_t, random_normal_mersenne) {
     ASSERT_NEAR(r_mean, mean, 0.01);
     ASSERT_NEAR(r_stddev, stddev, 0.01);
 
+    wl_tensor_destroy(tensor);
+
     wl_ctx_destroy(ctx);
 }
 
@@ -508,6 +556,8 @@ TEST(wl_tensor_t, random_normal_pcg) {
 
     ASSERT_NEAR(r_mean, mean, 0.01);
     ASSERT_NEAR(r_stddev, stddev, 0.01);
+
+    wl_tensor_destroy(tensor);
 
     wl_ctx_destroy(ctx);
 }

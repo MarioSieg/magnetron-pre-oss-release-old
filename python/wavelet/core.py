@@ -312,10 +312,12 @@ class Tensor:
 
     def __init__(self, internal_instance: ffi.CData | None = None) -> None:
         """Internal constructor to create a tensor from a C pointer."""
+        self.context_ref = None
         self.tensor = internal_instance
 
     def __del__(self) -> None:
         """Destructor to release tensor resources."""
+        C.wl_tensor_destroy(self.tensor)
         self.tensor = ffi.NULL
 
     _DISPATCH = {

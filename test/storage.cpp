@@ -25,6 +25,9 @@ TEST(storage, load_store) {
     ASSERT_EQ(wl_tensor_shape(B)[5], 2);
     ASSERT_EQ(wl_tensor_data_size(B), 10 * 4 * 2 * 5 * 2 * 2 * sizeof(float));
     ASSERT_TRUE(wl_tensor_eq(A, B));
+
+    wl_tensor_destroy(A);
+    wl_tensor_destroy(B);
     wl_ctx_destroy(ctx);
     ASSERT_TRUE(std::filesystem::remove("test_data/test.wavelet"));
 }
@@ -44,6 +47,8 @@ TEST(storage, load_store_image) {
     ASSERT_EQ(wl_tensor_shape(B)[0], 3);
     ASSERT_TRUE(wl_tensor_eq(img, B));
     //wl_tensor_save_image(B, "test_data/car_from_wavelet.jpg");
+    wl_tensor_destroy(img);
+    wl_tensor_destroy(B);
     wl_ctx_destroy(ctx);
     ASSERT_TRUE(std::filesystem::remove("test_data/car.wavelet"));
 }
