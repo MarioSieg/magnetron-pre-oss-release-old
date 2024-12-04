@@ -1,7 +1,6 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
 #include "prelude.hpp"
-#include "wavelet_internal.h"
 
 TEST(ctx, create_destroy) {
     wl_ctx_t* ctx = wl_ctx_create(nullptr);
