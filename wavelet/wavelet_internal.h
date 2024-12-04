@@ -145,13 +145,32 @@ static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
     return pp;
 }
 
-/* Abstract interface to any compute backend device (CPU, GPU, TPU etc..) */
-typedef struct wl__compute_device_t {
-    char name[128]; /* Device name. */
-    void (*exec_forward)(struct wl__compute_device_t* dvc, wl_tensor_t* root); /* Execute a computation graph forward. */
-    void (*exec_backward)(struct wl__compute_device_t* dvc, wl_tensor_t* root); /* Execute a computation graph backwards. */
-    void* impl; /* Device specific implementation, if applicable. */
-} wl__compute_device_t;
+/* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
+typedef struct wl__icompute_device_t wl__icompute_device_t;
+
+/* Buffer interface on a compute device */
+typedef struct wl__itensor_storage_buffer wl__itensor_storage_buffer;
+struct wl__itensor_storage_buffer {
+    uintptr_t base;                                                                                     /* Pointer to buffer on device. Never access directly. */
+    size_t size;                                                                                        /* Size of buffer in bytes. */
+    size_t alignment;                                                                                   /* Alignment of buffer. */
+    wl__icompute_device_t* host;                                                                        /* Host device. */
+    void (*set)(wl__itensor_storage_buffer* sto, size_t offs, uint8_t x);                               /* Memset buffer. */
+    void (*cpy_host_device)(wl__itensor_storage_buffer* sto, size_t offs, const void* src, size_t n);   /* Copy data from host to device. */
+    void (*cpy_device_host)(wl__itensor_storage_buffer* sto, size_t offs, void* dst, size_t n);         /* Copy data from device to host. */
+};
+
+/* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
+struct wl__icompute_device_t {
+    char name[128];                                                         /* Device name. */
+    void* impl;                                                             /* Device specific implementation, if applicable. */
+    bool is_async;                                                          /* If device is async. */
+    wl_compute_device_type_t type;                                          /* Device type enum. */
+    void (*eager_exec_fwd)(wl__icompute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op forward. */
+    void (*eager_exec_bwd)(wl__icompute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op backwards. */
+    wl__itensor_storage_buffer* (*alloc_storage)(wl__icompute_device_t* dvc, size_t size, size_t align);
+    void (*free_storage)(wl__icompute_device_t* dvc, wl__itensor_storage_buffer* buf);
+};
 
 /* Profiling performance monitor per op. */
 typedef struct wl__perf_mon_t {
@@ -184,19 +203,7 @@ struct wl_ctx_t {
         uint32_t x86_64_cpu_features[8][4];     /* x86-64 CPU features. */
 #endif
     } sys;
-    struct {
-        size_t chunk_size;                          /* Size of new allocated memory pool chunk. Can grow if needed. */
-        size_t chunk_len;                           /* Length of each memory pool chunk. */
-        size_t chunk_cap;                           /* Maximum number of memory pool chunks. */
-        uint8_t** chunks;                           /* Stack of all allocated memory pool chunks. Active is top. */
-        uint8_t* delta;                             /* Position in active memory pool chunk. Growing downwards. */
-        size_t alloc_acc;                           /* Allocation counter. */
-        size_t mapped_total;                        /* Total memory allocated from OS/allocator. */
-        size_t alloc_total;                         /* Total memory allocated from memory pool. */
-        bool warmup_chunks;                         /* If true, fresh pool chunks are zeroed to allocate kernel pages, can improve or decrease performance depending on scenario. */
-    } pool;
     size_t tensors_created;
-    size_t tensors_alloced;
     wl_exec_mode_t exec_mode;
     bool profiler_enabled;
     wl__op_perf_info_t op_perf_mons_total[WL_OP__COUNT];
@@ -213,11 +220,10 @@ struct wl_ctx_t {
     } prng_state;
     wl_prng_algorithm_t prng_algorithm;     /* PRNG algorithm. */
     uintptr_t host_thread_id;               /* Host thread ID. */
-    void (**sh_hooks)(wl_ctx_t*);           /* Shutdown hooks are invoked when context is destroyed. */
     size_t sh_len;                          /* Number of shutdown hooks. */
     size_t sh_cap;                          /* Maximum number of shutdown hooks. */
     wl_compute_device_type_t device_type; /* Active compute device. */
-    wl__compute_device_t* device;   /* Active compute device. */
+    wl__icompute_device_t* device;   /* Active compute device. */
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
     void (*image_load_free_fn)(uint8_t*);
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
@@ -226,16 +232,11 @@ struct wl_ctx_t {
 
 typedef enum wl__tensor_flags_t {
     WL__TFLAG_NONE = 0,
-    WL__TFLAG_VIEW = 1<<0,          /* Tensor is a view. */
-    WL__TFLAG_OP_INPUT = 1<<1,      /* Tensor is an operation input. */
-    WL__TFLAG_OP_OUTPUT = 1<<2,     /* Tensor is an operation output. */
+    WL__TFLAG_OWNER = 1<<0,         /* Tensor is the owner of the buffer. */
+    WL__TFLAG_VIEW = 1<<1,          /* Tensor is a view. */
+    WL__FLAG_GRAD = 1<<2,           /* Tensor is a gradient. */
     WL__TFLAG_EXEC_EAGER = 1<<3,    /* Tensor is executed eagerly. */
-    WL__TFLAG_IMAGE = 1<<4,         /* Tensor was loaded from an image. */
-    WL__TFLAG_FROM_FS = 1<<5,       /* Tensor was loaded from the file system. Also true for WL__TFLAG_IMAGE. */
-    WL__TFLAG_RECORD_PERF = 1<<6,   /* Record performance data. */
-    WL__FLAG_GRA = 1<<7,            /* Tensor is a gradient. */
 } wl__tensor_flags_t;
-wl_static_assert(WL__TFLAG_FROM_FS <= 0xff); /* Must fit info 8-bits. */
 
 /*
 ** Tensor with up to 6 Dimensions.
@@ -246,15 +247,15 @@ struct wl_tensor_t {
     int64_t shape[WL_MAX_DIMS];                     /* Shape of the tensor. */
     int64_t strides[WL_MAX_DIMS];                   /* Strides of the tensor. We store the strides in element counts and NOT in bytes. */
     wl_dtype_t dtype;                               /* Data type of the tensor. */
-    void* buf;                                      /* Data buffer. */
+    wl__itensor_storage_buffer* storage;            /* Storage buffer. */
     int64_t num_elems;                              /* Number of elements in the tensor. */
     wl__tensor_flags_t flags;                       /* Tensor flags. */
     wl_op_t op;                                     /* Opcode for operators. */
     wl_tensor_t* op_inputs[WL_MAX_INPUT_TENSORS];   /* Input tensors for operators. */
     wl_op_param_t op_params[WL_MAX_OP_PARAMS];      /* Operator parameters. */
     wl_tensor_t* view;                              /* View tensor. */
-    wl_tensor_t* grad;                              /* ∇f - Gradient tensor. */
     size_t view_offs;                               /* Offset in view tensor. */
+    wl_tensor_t* grad;                              /* ∇f - Gradient tensor. */
     wl__perf_mon_t pmon;                            /* Performance monitor. */
     char name[WL_MAX_TENSOR_NAME_LEN];              /* Tensor debug name. */
     void* ud;                                       /* User data. */

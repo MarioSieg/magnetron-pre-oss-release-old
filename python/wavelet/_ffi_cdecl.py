@@ -80,7 +80,7 @@ extern   int64_t wl_tensor_rank(const wl_tensor_t* t);
 extern   const int64_t* wl_tensor_shape(const wl_tensor_t* t);
 extern   const int64_t* wl_tensor_strides(const wl_tensor_t* t);
 extern   wl_dtype_t wl_tensor_dtype(const wl_tensor_t* t);
-extern   void* wl_tensor_data(const wl_tensor_t* t);
+extern   void* wl_tensor_data_as_f32(const wl_tensor_t* t);
 extern   float* wl_tensor_data_as_f32(const wl_tensor_t* t);
 extern   int64_t wl_tensor_data_size(const wl_tensor_t* t);
 extern   int64_t wl_tensor_num_elements(const wl_tensor_t* t);

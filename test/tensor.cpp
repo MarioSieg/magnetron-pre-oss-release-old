@@ -227,8 +227,8 @@ TEST(wl_tensor_t, deep_clone) {
     ASSERT_TRUE(wl_tensor_is_shape_eq(origin, clone));
     ASSERT_TRUE(wl_tensor_are_strides_eq(origin, clone));
 
-    const void* a = wl_tensor_data(origin);
-    const void* b = wl_tensor_data(clone);
+    const void* a = wl_tensor_data_as_f32(origin);
+    const void* b = wl_tensor_data_as_f32(clone);
     ASSERT_NE(a, b);
     ASSERT_EQ(0, std::memcmp(a, b, wl_tensor_data_size(origin)));
 
@@ -272,7 +272,7 @@ TEST(wl_tensor_t, view) {
     wl_tensor_fill(origin, 2.0f);
     int64_t slice_dims[] = {10, 4, 2, 5};
     wl_tensor_t* slice1 = wl_tensor_emit_op_va(ctx, WL_OP_VIEW, origin);
-    ASSERT_EQ(wl_tensor_data(slice1), wl_tensor_data(origin));
+    ASSERT_EQ(wl_tensor_data_as_f32(slice1), wl_tensor_data_as_f32(origin));
     ASSERT_EQ(wl_tensor_data_size(slice1), wl_tensor_data_size(origin));
     ASSERT_EQ(wl_tensor_num_elements(slice1), wl_tensor_num_elements(origin));
     auto* buf = wl_tensor_data_as_f32(slice1);
@@ -280,7 +280,7 @@ TEST(wl_tensor_t, view) {
         ASSERT_FLOAT_EQ(buf[i], 2.0f);
     }
     wl_tensor_t* slice2 = wl_tensor_emit_op_va(ctx, WL_OP_VIEW, origin);
-    ASSERT_EQ(wl_tensor_data(slice2), static_cast<std::uint8_t*>(wl_tensor_data(origin)));
+    ASSERT_EQ(wl_tensor_data_as_f32(slice2), wl_tensor_data_as_f32(origin));
     ASSERT_EQ(wl_tensor_data_size(slice2), 10 * 4 * 2 * 5 * sizeof(float));
     ASSERT_EQ(wl_tensor_num_elements(slice2), 10 * 4 * 2 * 5);
     auto* buf_slice2 = wl_tensor_data_as_f32(slice2);
@@ -378,7 +378,7 @@ TEST(wl_tensor_t, copy_buffer_from) {
     ASSERT_EQ(wl_tensor_num_elements(tensor), buf.size());
     wl_tensor_copy_buffer_from(tensor, buf.data(), sizeof(buf));
 
-    const void* a = wl_tensor_data(tensor);
+    const void* a = wl_tensor_data_as_f32(tensor);
     const void* b = buf.data();
     ASSERT_NE(a, b);
     ASSERT_EQ(0, std::memcmp(a, b, wl_tensor_data_size(tensor)));

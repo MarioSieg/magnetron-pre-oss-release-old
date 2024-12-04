@@ -99,9 +99,6 @@ typedef struct wl_ctx_t wl_ctx_t; /* Opaque context type for managing memory poo
 
 extern WL_EXPORT wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info); /* Create context with configuration data. */
 extern WL_EXPORT wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device); /* Create context with default config, and only specificy device. */
-extern WL_EXPORT void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size); /* Allocate memory from pool */
-extern WL_EXPORT void* wl_ctx_pool_alloc_aligned(wl_ctx_t* ctx, size_t size, size_t align); /* Aligned memory allocation */
-extern WL_EXPORT size_t wl_ctx_total_allocated_pool_memory(const wl_ctx_t* ctx); /* Get total allocated pool memory */
 extern WL_EXPORT wl_exec_mode_t wl_ctx_get_exec_mode(const wl_ctx_t* ctx); /* Get execution mode */
 extern WL_EXPORT void wl_ctx_set_exec_mode(wl_ctx_t* ctx, wl_exec_mode_t mode); /* Set execution mode */
 extern WL_EXPORT wl_prng_algorithm_t wl_ctx_get_prng_algorithm(const wl_ctx_t* ctx); /* Get PRNG algorithm */
@@ -117,7 +114,6 @@ extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx);
 extern WL_EXPORT uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx); /* Get the free physical memory in bytes */
 extern WL_EXPORT bool wl_ctx_is_numa_system(const wl_ctx_t* ctx); /* Check if the system is NUMA */
 extern WL_EXPORT size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx); /* Get total tensors created. (Including views) */
-extern WL_EXPORT size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx); /* Get total tensors created. (Allocations only) */
 extern WL_EXPORT void wl_ctx_profile_start_recording(wl_ctx_t* ctx); /* Start profiling */
 extern WL_EXPORT void wl_ctx_profile_stop_recording(wl_ctx_t* ctx, const char* export_csv_file); /* Reset profiling data */
 extern WL_EXPORT void wl_ctx_destroy(wl_ctx_t* ctx); /* Destroy context and free memory */
@@ -231,6 +227,8 @@ extern WL_EXPORT wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type
 
 extern WL_EXPORT wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]); /* Set opcode and arguments for tensor, and return result computation node. Returns NULL on failure. */
 
+extern WL_EXPORT void wl_tensor_destroy(wl_tensor_t* t); /* Destroy tensor and free memory */
+
 extern WL_EXPORT void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size); /* Copy data into tensor buffer */
 extern WL_EXPORT void wl_tensor_fill(wl_tensor_t* t, float x); /* Set all tensor elements to a specific value */
 extern WL_EXPORT void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max); /* Fill tensor with random values from uniform distribution within [min, max] */
@@ -245,7 +243,6 @@ extern WL_EXPORT int64_t wl_tensor_rank(const wl_tensor_t* t); /* Get the rank (
 extern WL_EXPORT const int64_t* wl_tensor_shape(const wl_tensor_t* t); /* Get the dimensions of the tensor */
 extern WL_EXPORT const int64_t* wl_tensor_strides(const wl_tensor_t* t); /* Get the strides of the tensor */
 extern WL_EXPORT wl_dtype_t wl_tensor_dtype(const wl_tensor_t* t); /* Get the data type of the tensor */
-extern WL_EXPORT void* wl_tensor_data(const wl_tensor_t* t); /* Get the tensor buffer pointer */
 extern WL_EXPORT float* wl_tensor_data_as_f32(const wl_tensor_t* t); /* Get the tensor buffer pointer as float pointer. Only valid if tensor's dtype is f32, else panics. */
 extern WL_EXPORT int64_t wl_tensor_data_size(const wl_tensor_t* t); /* Get the size of the tensor buffer in bytes. */
 extern WL_EXPORT int64_t wl_tensor_num_elements(const wl_tensor_t* t); /* Get the total amount of elements in the tensor. */
@@ -279,21 +276,6 @@ extern WL_EXPORT void wl_tensor_save_image(const wl_tensor_t* t, const char* fil
 #define wl_tensor_image_width(tensor) (wl_tensor_shape(tensor)[2]) /* Get image width from tensor */
 #define wl_tensor_image_height(tensor) (wl_tensor_shape(tensor)[1]) /* Get image height from tensor */
 #define wl_tensor_image_channels(tensor) (wl_tensor_shape(tensor)[0]) /* Get image channels from tensor */
-
-typedef struct wl_compute_graph_t wl_compute_graph_t; /* Opaque type representing a compute graph */
-extern WL_EXPORT wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, wl_graph_eval_order_t order, const char* name); /* Compile computation graph from root tensor. */
-extern WL_EXPORT wl_tensor_t* wl_compute_graph_execute(wl_compute_graph_t* gra); /* Execute computation graph. */
-extern WL_EXPORT bool wl_compute_graph_contains(const wl_compute_graph_t* gra, const wl_tensor_t* t); /* Check if the tensor is in the compute graph */
-extern WL_EXPORT void wl_compute_graph_dump_to_dot(const wl_compute_graph_t* gra, const char* file_name); /* Dump computation graph to DOT file. */
-extern WL_EXPORT wl_ctx_t* wl_compute_graph_get_ctx(const wl_compute_graph_t* gra); /* Get the context of the compute graph */
-extern WL_EXPORT const char* wl_compute_graph_get_name(const wl_compute_graph_t* gra); /* Get the name of the compute graph */
-extern WL_EXPORT const wl_tensor_t** wl_compute_graph_get_internal_nodes(const wl_compute_graph_t* gra, size_t* n_nodes); /* Get the nodes of the compute graph */
-extern WL_EXPORT const wl_tensor_t** wl_compute_graph_get_leaf_nodes(const wl_compute_graph_t* gra, size_t* n_leaves); /* Get the leaves of the compute graph */
-extern WL_EXPORT size_t wl_compute_graph_get_num_total_nodes(const wl_compute_graph_t* gra); /* Get the total number of nodes in the compute graph */
-extern WL_EXPORT size_t wl_compute_graph_get_num_internal_nodes(const wl_compute_graph_t* graph); /* Get the number of internal nodes (non-leaf) in the compute graph */
-extern WL_EXPORT size_t wl_compute_graph_get_num_leaf_nodes(const wl_compute_graph_t* gra); /* Get the total number of leaf in the compute graph */
-extern WL_EXPORT size_t wl_compute_graph_get_order(const wl_compute_graph_t* gra); /* Get the evaluation order of the compute graph */
-extern WL_EXPORT size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra); /* Get the memory usage of the compute graph */
 
 #ifdef __cplusplus
 }

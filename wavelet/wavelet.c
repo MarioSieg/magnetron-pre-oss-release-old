@@ -751,18 +751,6 @@ static wl__hashset_t wl__hashset_create(size_t size) {
     return set;
 }
 
-static wl__hashset_t wl__hashset_create_pooled(wl_ctx_t* ctx, size_t size) {
-    size = wl__hashset_compute_hash_size(size);
-    wl__hashset_t set = {
-        .len = size,
-        .used = (wl__bitset_t*)wl_ctx_pool_alloc_aligned(ctx, wl__bitset_size(size)*sizeof(*set.used), __alignof__(wl__bitset_t)),
-        .keys = (const wl_tensor_t**)wl_ctx_pool_alloc_aligned(ctx, size*sizeof(*set.keys), __alignof__(wl__bitset_t)),
-        .is_pool = true
-    };
-    memset(set.used, 0, wl__bitset_size(size)*sizeof(*set.used));
-    return set;
-}
-
 static size_t wl__hashset_lookup(wl__hashset_t* set, const wl_tensor_t* key) {
     size_t k = wl__hashset_hash_fn(key) % set->len, i = k;
     while (wl__bitset_get(set->used, i) && set->keys[i] != key) { /* Linear probing. */
@@ -884,16 +872,6 @@ static void wl__prng_init(wl_ctx_t* ctx, uint64_t seed) {
         default:
             wl__panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
     }
-}
-
-static void wl__ctx_push_chunk(wl_ctx_t* ctx) {
-    uint8_t* chunk = (uint8_t*)(*wl__alloc)(NULL, ctx->pool.chunk_size);
-    if (ctx->pool.warmup_chunks) memset(chunk, 0, ctx->pool.chunk_size);
-    ctx->pool.mapped_total += ctx->pool.chunk_size;
-    ctx->pool.delta = chunk + ctx->pool.chunk_size;
-    if (ctx->pool.chunk_len == ctx->pool.chunk_cap)
-        ctx->pool.chunks = (uint8_t**)(*wl__alloc)(ctx->pool.chunks, (ctx->pool.chunk_cap<<=1) * sizeof(*ctx->pool.chunks));
-    ctx->pool.chunks[ctx->pool.chunk_len++] = chunk;
 }
 
 #if defined(__x86_64__) || defined(_M_X64)
@@ -1020,21 +998,10 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl_ctx_t* ctx = (wl_ctx_t*)(*wl__alloc)(NULL, sizeof(*ctx)); /* Allocate context. */
     memset(ctx, 0, sizeof(*ctx));
     ctx->ud = ctx_info.user_data;
-    ctx->pool.chunk_size = ctx_info.pool_chunk_size ? wl__max(ctx_info.pool_chunk_size, 8) : WL_DEFAULT_CHUNK_SIZE;
-    ctx->pool.chunk_cap = ctx_info.pool_chunks_cap ? wl__max(ctx_info.pool_chunks_cap, 1) : WL_DEFAULT_CHUNK_CAP;
-    ctx->pool.warmup_chunks = ctx_info.warmup_chunks;
-    double chunk_size_mem;
-    const char* chunk_size_unit;
-    wl__humanize_memory_size(ctx->pool.chunk_size, &chunk_size_mem, &chunk_size_unit);
-    wl__log_info("Pool Chunk Size: %.03f %s, Warmup Chunks: %s", chunk_size_mem, chunk_size_unit, ctx->pool.warmup_chunks ? "Y" : "N");
 
     /* Query and print host system information. */
     wl__system_host_info_query(ctx);
     wl__system_host_info_dump(ctx);
-
-    /* Prepare memory pool. */
-    ctx->pool.chunks = (uint8_t**)(*wl__alloc)(NULL, ctx->pool.chunk_cap * sizeof(*ctx->pool.chunks)); /* Allocate chunk pointers. */
-    wl__ctx_push_chunk(ctx); /* Allocate the first chunk. */
 
     /* Configure configureable media processors */
     #if WL_ENABLE_IMAGE_SUPPORT
@@ -1069,67 +1036,13 @@ wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device) {
 }
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {
-    if (ctx->sh_hooks) {
-        for (size_t i=0; i < ctx->sh_len; ++i)
-            if (ctx->sh_hooks[i]) (*ctx->sh_hooks[i])(ctx);
-        (*wl__alloc)(ctx->sh_hooks, 0);
-    }
     wl__compute_device_destroy(ctx);
-    size_t mem_total = wl_ctx_total_allocated_pool_memory(ctx);
-    size_t mem_mapped = ctx->pool.mapped_total;
     size_t tensors_created = ctx->tensors_created;
-    size_t tensors_alloced = ctx->tensors_alloced;
-    for (size_t i=0; i < ctx->pool.chunk_len; ++i) /* Free individual chunks */
-        (*wl__alloc)(ctx->pool.chunks[i], 0);
-    (*wl__alloc)(ctx->pool.chunks, 0);
     memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
     (*wl__alloc)(ctx, 0);
     ctx = NULL;
-    double alloc_total, mapped_total;
-    const char* alloc_unit, *mapped_unit;
-    wl__humanize_memory_size(mem_total, &alloc_total, &alloc_unit);
-    wl__humanize_memory_size(mem_mapped, &mapped_total, &mapped_unit);
-    wl__log_info("Allocated in pool: %.03f %s, Mapped memory: %.03f %s, Tensors Created: %zu, Tensors Allocated: %zu", alloc_total, alloc_unit, mapped_total, mapped_unit, tensors_created, tensors_alloced);
+    wl__log_info("Tensors Allocated: %zu", tensors_created);
     wl__log_info("WAVELET context destroyed.");
-}
-
-static void wl_ctx_register_shutdown_hook(wl_ctx_t* ctx, void(*fn)(wl_ctx_t*)) {
-    for (size_t i=0; i < ctx->sh_len; ++i) /* Linear search to check if the hook is already registered. */
-        if (ctx->sh_hooks[i] == fn) return;
-    if (ctx->sh_len == ctx->sh_cap) { /* Resize */
-        ctx->sh_cap = ctx->sh_cap ? ctx->sh_cap<<1 : 4;
-        ctx->sh_hooks = (*wl__alloc)(ctx->sh_hooks, ctx->sh_cap*sizeof(*ctx->sh_hooks));
-    }
-    ctx->sh_hooks[ctx->sh_len++] = fn;
-}
-
-void* wl_ctx_pool_alloc(wl_ctx_t* ctx, size_t size) {
-    wl__assert(size > 0 && size < (size_t)PTRDIFF_MAX, "Allocation size must be within (0, %zu), but is: %zu", PTRDIFF_MAX, size);
-    if (ctx->pool.delta - ctx->pool.chunks[ctx->pool.chunk_len-1] < (ptrdiff_t)size) {
-        if (ctx->pool.chunk_size < size) { /* Increase the chunk size if it's too small to accommodate the requested length */
-            size_t lim = (size_t)PTRDIFF_MAX >> 1;
-            do ctx->pool.chunk_size <<= 1;
-            while (ctx->pool.chunk_size < size && (ctx->pool.chunk_size <= lim));
-        }
-        wl__ctx_push_chunk(ctx);
-        wl__log_info("Allocated pool chunk: %.03f MiB", (double)ctx->pool.chunk_size/(double)(1<<20));
-    }
-    ctx->pool.delta -= size;
-    ++ctx->pool.alloc_acc;
-    ctx->pool.alloc_total += size;
-    return ctx->pool.delta;
-}
-
-void* wl_ctx_pool_alloc_aligned(wl_ctx_t* ctx, size_t size, size_t align) {
-    wl__assert(align && !(align&(align-1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
-    return (void*)(((uintptr_t)wl_ctx_pool_alloc(ctx, size+align-1)+align-1)&-align);
-}
-
-size_t wl_ctx_total_allocated_pool_memory(const wl_ctx_t* ctx) {
-    size_t mem = sizeof(*ctx);
-    mem += sizeof(*ctx->pool.chunks) * ctx->pool.chunk_cap;
-    mem += ctx->pool.alloc_total;
-    return mem;
 }
 
 wl_exec_mode_t wl_ctx_get_exec_mode(const wl_ctx_t* ctx) { return ctx->exec_mode; }
@@ -1157,7 +1070,6 @@ uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx) { return ctx->sys
 uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 bool wl_ctx_is_numa_system(const wl_ctx_t* ctx) { return false; /* TODO */ }
 size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx) { return ctx->tensors_created; }
-size_t wl_ctx_get_total_tensors_allocated(const wl_ctx_t* ctx) { return ctx->tensors_alloced; }
 
 void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     if (ctx->profiler_enabled) return;
@@ -1742,6 +1654,7 @@ int64_t wl_tensor_num_cols(const wl_tensor_t* t) { return *t->shape; }
 
 static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int64_t* dims, int64_t rank, wl_tensor_t* view, size_t view_offs) {
     wl__assert(dims != NULL && rank >= 0 && rank <= WL_MAX_DIMS, "Rank must be within (0, %d]", WL_MAX_DIMS);
+    wl__assert2(view_offs == 0); /* Not respected at the moment. */
     if (view && view->view) { /* Accumulate relative view offset. */
         view_offs += view->view_offs;
         view = view->view;
@@ -1751,19 +1664,30 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     for (int64_t i=0; i < rank; ++i) /* Calculate buffer size and check for overflow. */
         wl__assert2(dims[i] > 0 && !wl__imull64_ov(dims[i], elems_total, &elems_total)); /* Overflow in buffer size. Max: INT64_MAX. Reduce dimensions. */
     int64_t bytes_total = elems_total*scalar_size;
-    wl__assert2(!view || !bytes_total || bytes_total + view_offs <= wl_tensor_data_size(view)); /* Slice must be within viewed tensor data range. */
-    wl_tensor_t* t = (wl_tensor_t*)wl_ctx_pool_alloc(ctx, sizeof(*t) + (view ? 0 : bytes_total)); /* Allocate memory for tensor struct and data */
+    wl__assert2(!view || !bytes_total || bytes_total + view_offs <= wl_tensor_data_size(view)); /* Slice must be within viewed tensor data range. *//* Allocate memory for tensor struct on CPU RAM. */
+    wl__icompute_device_t* dvc = ctx->device;
+    wl__itensor_storage_buffer* (*allocator)(wl__icompute_device_t*, size_t, size_t) = dvc->alloc_storage;
+    wl__itensor_storage_buffer* sto = view ? view->storage : (*allocator)(dvc, bytes_total, scalar_size);  /* Allocate or reference memory for tensor data on compute device */
+    wl_tensor_t* t = (*wl__alloc)(NULL, sizeof(*t));
     memset(t, 0, sizeof(*t));
-    wl__tensor_flags_t flags = (view ? WL__TFLAG_VIEW : 0) | (ctx->profiler_enabled ? WL__TFLAG_RECORD_PERF : 0);
     *t = (wl_tensor_t) {
-        .name = "tensor",
         .ctx = ctx,
         .rank = rank,
+        .shape = {0},
+        .strides = {0},
         .dtype = type,
+        .storage = sto,
         .num_elems = elems_total,
-        .flags = flags,
+        .flags = view ? WL__TFLAG_VIEW : WL__TFLAG_OWNER,
+        .op = WL_OP_NOP,
+        .op_inputs = {0},
+        .op_params = {0},
         .view = view,
         .view_offs = view_offs,
+        .grad = NULL,
+        .pmon = {0},
+        .name = "",
+        .ud = NULL
     };
     #pragma GCC unroll 6
     for (uint32_t i=0; i < WL_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
@@ -1772,10 +1696,18 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     #pragma GCC unroll 5
     for (uint32_t i=1; i < WL_MAX_DIMS; ++i)  /* Calculate strides and check for overflow. */
         wl__assert2(!wl__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
-    t->buf = view ? (uint8_t*)view->buf + view_offs : (uint8_t*)(t + 1); /* Set buffer pointer to the end of the tensor struct, where data follows */
     ++ctx->tensors_created;
-    if (!view) ++ctx->tensors_alloced;
     return t;
+}
+
+void wl_tensor_destroy(wl_tensor_t* t) {
+    if (wl__unlikely(!t)) return;
+    if (t->flags & WL__TFLAG_OWNER) { /* Free device memory if tensor owns it. */
+        wl__icompute_device_t* dvc = t->ctx->device;
+        void (*deallocator)(wl__icompute_device_t*, wl__itensor_storage_buffer*) = dvc->free_storage;
+        (*deallocator)(dvc, t->storage);
+    }
+    (*wl__alloc)(t, 0); /* Free tensor struct. */
 }
 
 wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1) {
@@ -1802,14 +1734,14 @@ wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int
     return wl__tensor_create(ctx, type, (int64_t[]) {d1, d2, d3, d4, d5, d6}, 6, NULL, 0);
 }
 
-static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl__compute_device_t* dvc, wl_graph_eval_order_t ord) {
+static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl__icompute_device_t* dvc, wl_graph_eval_order_t ord) {
     wl__perf_mon_t* pmon = &R->pmon;
     wl__op_perf_info_t (*pmon_ops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
     wl__op_perf_info_t* pmon_op = (*pmon_ops)+R->op;
-    uint64_t start = ((R->flags & WL__TFLAG_RECORD_PERF) == 0) ? 0 : wl__hpc_clock_ns();    /* Profiling monitoring */
-    void (*exec)(wl__compute_device_t*, wl_tensor_t*) = ord == WL_GRAPH_EVAL_ORDER_FORWARD ? dvc->exec_forward : dvc->exec_backward;
+    uint64_t start = R->ctx->profiler_enabled ? wl__hpc_clock_ns() : 0;    /* Profiling monitoring */
+    void (*exec)(wl__icompute_device_t*, wl_tensor_t*) = ord == WL_GRAPH_EVAL_ORDER_FORWARD ? dvc->eager_exec_fwd : dvc->eager_exec_bwd;
     (*exec)(dvc, R); /* Dispatch to backend. */
-    if ((R->flags & WL__TFLAG_RECORD_PERF) == 0) return; /* Profiling disabled. */
+    if (!R->ctx->profiler_enabled) return; /* Profiling disabled. */
     pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
     pmon->elapsed_ns_acc += pmon->elapsed_ns;
     pmon_op->elapsed_ns_acc += pmon->elapsed_ns;
@@ -1833,18 +1765,15 @@ wl_tensor_t* WL__HOTPROC wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inpl
         R->grad = R->grad                                                                                           /* ∇ₐL = ∑ᵢ (∂L/∂Bᵢ) ⋅ (∂Bᵢ/∂A) - Chain rule accumulate. */
             ? wl_tensor_operator(R->ctx, WL_OP_ADD, false, (wl_tensor_t*[]){R->grad, grad}, 2, NULL)
             : wl_tensor_operator(R->ctx, WL_OP_CLONE, false, &grad, 1, NULL);                        /* ∇ₐL <- ∇ᵦL - Init from upper gradient. */
-        R->grad->flags |= WL__TFLAG_OP_OUTPUT;
     }
-    R->flags |= WL__TFLAG_OP_OUTPUT;
     wl__assert2(R->op == WL_OP_NOP);
-    R->op = op;                                     /* Set operation for deferred execution mode. */
-    for (uint32_t i=0; i < n_inputs; ++i) {         /* Set input tensors and flags. */
-        inputs[i]->flags |= WL__TFLAG_OP_INPUT;     /* Mark and copy inputs. */
+    R->op = op;                                                         /* Set operation for deferred execution mode. */
+    for (uint32_t i=0; i < n_inputs; ++i) {                             /* Set input tensors and flags. */
         R->op_inputs[i] = inputs[i];
     }
     if (params) memcpy(R->op_params, *params, sizeof(*params));         /* Copy operation parameters */
     if (ctx->exec_mode == WL_EXEC_MODE_EAGER) {                         /* In eager execution mode, we execute immediately. */
-        wl__op_exec(R, ctx->device, gra);                       /* Execute the operation immediately. */
+        wl__op_exec(R, ctx->device, gra);                               /* Execute the operation immediately. */
     }
     return R;
 }
@@ -1880,18 +1809,22 @@ void wl_tensor_set_arg(wl_tensor_t* t, size_t slot, wl_tensor_t* arg) {
 
 void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size) {
     wl__assert(size == (size_t) wl_tensor_data_size(t), "Buffer size mismatch: %zu != %lld", size, wl_tensor_data_size(t));
-    memcpy(t->buf, data, size);
+    wl__itensor_storage_buffer* sto = t->storage;
+    (*sto->cpy_host_device)(sto, 0, data, size);
 }
 
 void wl_tensor_fill(wl_tensor_t* t, float x) {
     if (x == 0.0f) {
-        memset(t->buf, 0, wl_tensor_data_size(t));
+        wl__itensor_storage_buffer* sto = t->storage;
+        (*sto->set)(sto, 0, 0); /* Zero out the buffer. */
         return;
     }
+    wl__assert2(t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU);
+
     switch (t->dtype) {
         case WL_DTYPE_F32: {
             int64_t n = wl_tensor_num_elements(t);
-            float* buf = (float*)t->buf;
+            float* buf = (float*)t->storage->base;
             for (int64_t i=0; i < n; ++i) buf[i] = x;
         } break;
         default: wl__panic("Unsupported DType: %d", t->dtype);
@@ -1899,10 +1832,11 @@ void wl_tensor_fill(wl_tensor_t* t, float x) {
 }
 
 void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max) {
+    wl__assert2(t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU);
     switch (t->dtype) {
         case WL_DTYPE_F32: {
             int64_t n = wl_tensor_num_elements(t);
-            float* buf = (float*)t->buf;
+            float* buf = (float*)t->storage->base;
             wl__prng_generate_n(t->ctx, buf, n, min, max); /* Generate uniform random numbers. */
         } break;
         default: wl__panic("Unsupported DType: %d", t->dtype);
@@ -1910,11 +1844,12 @@ void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max) {
 }
 
 void wl_tensor_fill_random_normal(wl_tensor_t* t, float mean, float stddev) {
+    wl__assert2(t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU);
     switch (t->dtype) {
         case WL_DTYPE_F32: {
             int64_t n = wl_tensor_num_elements(t);
             wl__assert((n & 1) == 0, "Number of elements must be even");
-            float* buf = (float*)t->buf;
+            float* buf = (float*)t->storage->base;
             wl__prng_generate_n(t->ctx, buf, n, 0.0f, 1.0f); /* Generate uniform random numbers. */
             for (int64_t i=0; i < n; i += 2) { /* Map uniform to normal distribution using Box-Muller transform. */
                 float* u1 = buf+i;
@@ -1935,6 +1870,7 @@ size_t wl_tensor_get_memory_usage(const wl_tensor_t* t) {
 }
 
 static void wl__print_tensor_recursive(FILE* f, const wl_tensor_t* t, int64_t (*idx)[WL_MAX_DIMS], const int64_t (*stri)[WL_MAX_DIMS], int64_t curr_dim, int64_t total_dims, int indent) {
+    wl__assert2(t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU);
     int64_t dim_size = t->shape[curr_dim];
     wl__load_local_storage_group_arr(*stri, s);
     if (curr_dim == total_dims - 1) {
@@ -1942,7 +1878,7 @@ static void wl__print_tensor_recursive(FILE* f, const wl_tensor_t* t, int64_t (*
         for (int64_t i = 0; i < dim_size; ++i) {
             (*idx)[curr_dim] = i;
             wl__load_local_storage_group_arr(*idx, i);
-            float val = *((const float*)t->buf + i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5);
+            float val = *((const float*)t->storage->base + i0*s0 + i1*s1 + i2*s2 + i3*s3 + i4*s4 + i5*s5);
             char fmt_buf[128];
             *wl__fmt_f64(WL__FMT_G14, (double)val, fmt_buf) = '\0';
             fprintf(f, "%s", fmt_buf);
@@ -2022,11 +1958,10 @@ int64_t wl_tensor_rank(const wl_tensor_t* t) { return t->rank; }
 const int64_t* wl_tensor_shape(const wl_tensor_t* t) { return t->shape; }
 const int64_t* wl_tensor_strides(const wl_tensor_t* t) { return t->strides; }
 wl_dtype_t wl_tensor_dtype(const wl_tensor_t* t) { return t->dtype; }
-void* wl_tensor_data(const wl_tensor_t* t) { return t->buf; }
 
 float* wl_tensor_data_as_f32(const wl_tensor_t* t) {
-    wl__assert(t->dtype == WL_DTYPE_F32, "Tensor data type must be F32, not %s", wl_dtype_info_of(t->dtype)->name);
-    return (float*)t->buf;
+    wl__assert(t->dtype == WL_DTYPE_F32 && t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU, "Tensor data type must be F32, not %s", wl_dtype_info_of(t->dtype)->name);
+    return (float*)t->storage->base;
 }
 
 bool wl_tensor_is_scalar(const wl_tensor_t* t) {
@@ -2095,7 +2030,12 @@ float wl_tensor_get_scalar_physical_index(const wl_tensor_t* t, int64_t d0, int6
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, s, strides);
     switch (t->dtype) {
-        case WL_DTYPE_F32: return *((const float*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5);
+        case WL_DTYPE_F32: {
+            float r;
+            wl__itensor_storage_buffer* sto = t->storage;
+            (*sto->cpy_device_host)(sto, sizeof(r)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &r, sizeof(r));
+            return r;
+        }
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
 }
@@ -2104,7 +2044,11 @@ void wl_tensor_set_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1,
     wl_static_assert(WL_MAX_DIMS == 6);
     wl__load_local_storage_group(t, s, strides);
     switch (t->dtype) {
-        case WL_DTYPE_F32: *((float*)t->buf + d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5) = x; break;
+        case WL_DTYPE_F32: {
+            float r;
+            wl__itensor_storage_buffer* sto = t->storage;
+            (*sto->cpy_host_device)(sto, sizeof(r)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &r, sizeof(r));
+        } break;
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
 }
@@ -2116,8 +2060,12 @@ float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t v_idx) {
         return wl_tensor_get_scalar_physical_index(t, pidx[0], pidx[1], pidx[2], pidx[3], pidx[4], pidx[5]);
     }
     switch (t->dtype) {
-        case WL_DTYPE_F32:
-            return *((const float*)t->buf + v_idx);
+        case WL_DTYPE_F32: {
+            float r;
+            wl__itensor_storage_buffer* sto = t->storage;
+            (*sto->cpy_device_host)(sto, sizeof(r)*v_idx, &r, sizeof(r));
+            return r;
+        }
         default:
             wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
@@ -2131,7 +2079,11 @@ void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x) 
         return;
     }
     switch (t->dtype) {
-        case WL_DTYPE_F32: *((float*)t->buf + v_idx) = x; break;
+        case WL_DTYPE_F32: {
+            float r;
+            wl__itensor_storage_buffer* sto = t->storage;
+            (*sto->cpy_host_device)(sto, sizeof(r)*v_idx, &r, sizeof(r));
+        } break;
         default:
             wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
@@ -2142,7 +2094,7 @@ bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b) {
     if (a->rank != b->rank) return false;
     if (memcmp(a->shape, b->shape, sizeof(a->shape)) != 0) return false;
     if (a->num_elems != b->num_elems) return false;
-    int64_t n = wl_tensor_num_elements(a);
+    /*int64_t n = wl_tensor_num_elements(a); TODO
     switch (a->dtype) {
         case WL_DTYPE_F32: {
             const float* buf_a = (const float*)a->buf;
@@ -2154,8 +2106,8 @@ bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b) {
             }
         } break;
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(a->dtype)->name);
-    }
-    return true;
+    }*/
+    return false;
 }
 
 bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, double* percent_eq) {
@@ -2163,20 +2115,21 @@ bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, d
     if (a->rank != b->rank) return false;
     if (memcmp(a->shape, b->shape, sizeof(a->shape)) != 0) return false;
     if (a->num_elems != b->num_elems) return false;
-    eps = eps < 0.0f ? FLT_EPSILON : eps;
+    /*eps = eps < 0.0f ? FLT_EPSILON : eps; TODO
     int64_t n = wl_tensor_num_elements(a);
     int64_t n_eq = 0;
     switch (a->dtype) {
         case WL_DTYPE_F32: {
             const float* buf_a = (const float*)a->buf;
             const float* buf_b = (const float*)b->buf;
-            for (int64_t i = 0; i < n; ++i)  /* |x - y| <= ε     ∀ x, y ∈ A, B */
+            for (int64_t i = 0; i < n; ++i)   |x - y| <= ε     ∀ x, y ∈ A, B
                 if (fabsf(buf_a[i] - buf_b[i]) <= eps) ++n_eq;
         } break;
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(a->dtype)->name);
     }
     if (percent_eq) *percent_eq = (double)n_eq / (double)n * 100.0;
-    return n_eq == n;
+    return n_eq == n;*/
+    return false;
 }
 
 void wl_tensor_img_draw_box(wl_tensor_t* t, int32_t x1, int32_t y1, int32_t x2, int32_t y2, int32_t wi, uint32_t rgb) {
@@ -2266,7 +2219,8 @@ static bool wl__glyph(uint32_t c, uint32_t x, uint32_t y) {
 void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size, uint32_t rgb, const char* txt) { /* TODO: Implement font scaling, size is ignored currently */
     wl__assert(t->rank == 3, "Tensor must be a 3D image tensor");
     wl__assert2(x >= 0 && y >= 0 && size >= 8 && txt && *txt);
-    float* buf = (float*)wl_tensor_data(t);
+    wl__assert2(t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU);
+    float* buf = (float*)t->storage->base;
     int32_t w = (int32_t)wl_tensor_image_width(t);
     int32_t h = (int32_t)wl_tensor_image_height(t);
     int32_t c = (int32_t)wl_tensor_image_channels(t);
@@ -2298,226 +2252,6 @@ void wl_tensor_img_draw_text(wl_tensor_t* t, int32_t x, int32_t y, int32_t size,
 wl_ctx_t* wl_tensor_get_ctx(const wl_tensor_t* t) { return t->ctx; }
 void* wl_tensor_get_user_data(const wl_tensor_t* t) { return t->ud; }
 void wl_tensor_set_user_data(wl_tensor_t* t, void* ud) { t->ud = ud; }
-
-static void wl__tensor_graph_visit_node(wl_tensor_t* node, void (*visitor)(wl_tensor_t*, void*), bool forward, void* ud) {
-    if (wl__unlikely(!node)) return;
-    wl_tensor_t** parent_nodes = node->op_inputs;
-    uint32_t n = wl_op_get_argcount(node->op);
-    for (uint32_t i=0; i < n; ++i) {
-        uint32_t j = forward ? i : n-i-1; /* Left-to-right or right-to-left */
-        if (wl__likely(parent_nodes[j])) {
-            wl__tensor_graph_visit_node(parent_nodes[j], visitor, forward, ud);
-        }
-    }
-    (*visitor)(node, ud); /* Dispatch visitor hook */
-}
-
-struct wl_compute_graph_t {
-    wl_ctx_t* ctx;
-    wl_tensor_t** internal_nodes;
-    wl_tensor_t** leaf_nodes;
-    size_t num_nodes_total;
-    size_t num_internal_nodes;
-    size_t num_leaf_nodes;
-    size_t mem_size_total;
-    wl__hashset_t visited_hs;
-    wl_graph_eval_order_t order;
-    char name[WL_MAX_TENSOR_NAME_LEN];
-};
-
-static void WL__HOTPROC wl__compute_graph_accumulate_visitor(wl_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
-    ++*(size_t*)ud;
-}
-
-static void WL__HOTPROC wl__compute_graph_coalescence_nodes_visitor(wl_tensor_t* node, void* ud) { /* Count number of tensors in graph. */
-    wl__assert(!(node->flags & WL__TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode.");
-    wl_compute_graph_t* gra = (wl_compute_graph_t*)ud;
-    size_t hz = wl__hashset_insert(&gra->visited_hs, node);
-    wl__assert2(hz != WL__HASHSET_FULL);
-    if (wl__unlikely(hz == WL__HASHSET_DUPLICATE)) return; /* Already visited */
-    if (node->op == WL_OP_NOP) { /* Leaf node (constant, out of gradient flow) */
-        gra->leaf_nodes[gra->num_leaf_nodes++] = node;
-        for (uint32_t i=0; i < WL_MAX_INPUT_TENSORS; ++i) { /* All inputs must be NULL for NOP node. */
-            wl__assert2(!node->op_inputs[i]);
-        }
-    } else { /* Non-leaf node */
-        gra->internal_nodes[gra->num_internal_nodes++] = node;
-        for (uint32_t i=0; i < wl_op_get_argcount(node->op); ++i) { /* All required inputs must be not NULL for operation node. */
-            wl__assert2(i < sizeof(node->op_inputs)/sizeof(*node->op_inputs) && node->op_inputs[i]);
-        }
-    }
-}
-
-wl_compute_graph_t* wl_compute_graph_compile(wl_ctx_t* ctx, wl_tensor_t* root, wl_graph_eval_order_t order, const char* name) {
-    wl__assert(root->ctx == ctx && !(root->flags & WL__TFLAG_EXEC_EAGER), "Tensor must be in deferred execution mode, to be used with static graphs.");
-    size_t total_nodes = 0;
-    wl__tensor_graph_visit_node(root, &wl__compute_graph_accumulate_visitor, order == WL__GRA_FWD, &total_nodes);
-    wl__assert2(total_nodes > 0);
-    uintptr_t mem_req = 0; /* Memory required for compute graph. */
-    wl__pincr((void**)&mem_req, sizeof(wl_compute_graph_t), __alignof__(wl_compute_graph_t)); /* Graph struct itself */
-    wl__pincr((void**)&mem_req, total_nodes*sizeof(*((wl_compute_graph_t*)0)->internal_nodes), __alignof__(wl_tensor_t*)); /* Nodes. */
-    wl__pincr((void**)&mem_req, total_nodes*sizeof(*((wl_compute_graph_t*)0)->leaf_nodes), __alignof__(wl_tensor_t*)); /* Leafs. */
-    wl_compute_graph_t* gra = (wl_compute_graph_t*)wl_ctx_pool_alloc_aligned(ctx, mem_req, __alignof__(wl_compute_graph_t));
-    void* data = gra+1; /* Start of data, end of header */
-    memset(gra, 0, mem_req);
-    gra->ctx = ctx;
-    gra->num_nodes_total = total_nodes;
-    gra->internal_nodes = wl__pincr(&data, total_nodes*sizeof(*gra->internal_nodes), __alignof__(wl_tensor_t*)); /* Fetch nodes. */
-    gra->leaf_nodes = wl__pincr(&data, total_nodes*sizeof(*gra->leaf_nodes), __alignof__(wl_tensor_t*)); /* Fetch leafs. */
-    gra->mem_size_total = mem_req;
-    gra->order = order;
-    gra->visited_hs = wl__hashset_create_pooled(ctx, total_nodes);
-    wl__hashset_reset(&gra->visited_hs);
-    size_t n_nodes = gra->num_internal_nodes;
-    wl__tensor_graph_visit_node(root, &wl__compute_graph_coalescence_nodes_visitor, order == WL__GRA_FWD, gra);
-    size_t new_nodes = gra->num_internal_nodes - n_nodes;
-    if (new_nodes > 0) /* Latest node must be starting point. */
-        wl__assert2(gra->internal_nodes[gra->num_internal_nodes - 1] == root);
-    wl__assert2(gra->num_internal_nodes + gra->num_leaf_nodes <= total_nodes);
-    if (name && *name) snprintf(gra->name, sizeof(gra->name), "%s", name);
-    return gra;
-}
-
-wl_tensor_t* WL__HOTPROC wl_compute_graph_execute(wl_compute_graph_t* gra) {
-    wl__assert2(gra->num_internal_nodes <= INT64_MAX);
-    wl_tensor_t** nodes = gra->internal_nodes;
-    size_t n = gra->num_internal_nodes;
-    wl__assert2(gra->num_nodes_total && nodes[n-1]);
-    wl_tensor_t* root = nodes[n-1]; /* Evaluation root node */
-    for (size_t i=0; i < n; ++i) { /* Execute all folded internal operation nodes in order. */
-        wl_tensor_t* R = nodes[i];
-        wl__op_exec(R, gra->ctx->device, gra->order);
-    }
-    return root;
-}
-
-bool wl_compute_graph_contains(const wl_compute_graph_t* gra, const wl_tensor_t* t) {
-    for (size_t i = 0; i < gra->num_internal_nodes; ++i) /* Linear search for internal nodes. */
-        if (gra->internal_nodes[i] == t) return true;
-    for (size_t i = 0; i < gra->num_leaf_nodes; ++i) /* Linear search for leaf nodes. */
-        if (gra->leaf_nodes[i] == t) return true;
-    return false;
-}
-
-void WL__COLDPROC wl_compute_graph_dump_to_dot(const wl_compute_graph_t* gra, const char* file_name) {
-    FILE* f = wl__fopen(file_name, "wt");
-    if (wl__unlikely(!f)) {
-        wl__log_error("Failed to open file for writing: %s", file_name);
-        return;
-    }
-    fprintf(f, "digraph G {\n");
-    fprintf(f, "\tnewrank = true;\n");
-    fprintf(f, "\trankdir = LR;\n");
-    char color[32];
-    for (size_t i=0; i < gra->num_internal_nodes; ++i) {
-        const wl_tensor_t* node = gra->internal_nodes[i];
-        snprintf(color, sizeof(color), "paleturquoise1");
-        fprintf(
-            f,
-            "  \"%p\" [ "
-            "style = filled; fillcolor = %s; shape = Mrecord; "
-            "label=\"",
-            (void*)node,
-            color
-        );
-        if (*node->name) fprintf(f, "%s (%s)|", node->name, wl_dtype_info_of(node->dtype)->name);
-        else fprintf(f, "(%s)|", wl_dtype_info_of(node->dtype)->name);
-        if (wl_tensor_is_matrix(node)) fprintf(f, "OP #%zu [%zu, %zu] | <x>%s", i, (size_t)node->shape[0], (size_t)node->shape[1], wl_op_get_name(node->op));
-        else fprintf(f, "OP #%zu [%zu, %zu, %zu] | <x>%s", i, (size_t)node->shape[0], (size_t)node->shape[1], (size_t)node->shape[2], wl_op_get_name(node->op));
-        fprintf(f, "\"; ]\n");
-    }
-    for (size_t i=0; i < gra->num_leaf_nodes; ++i) {
-        const wl_tensor_t* node = gra->leaf_nodes[i];
-        snprintf(color, sizeof(color), "palegreen1");
-        fprintf(
-            f,
-            "  \"%p\" [ "
-            "style = filled; fillcolor = %s; shape = Mrecord; "
-            "label=\"<x>",
-            (void*)node,
-            color
-        );
-        if (*node->name) fprintf(f, "%s (%s)|", node->name, wl_dtype_info_of(node->dtype)->name);
-        else fprintf(f, "(%s)|", wl_dtype_info_of(node->dtype)->name);
-        fprintf(f, "IN #%zu [%zu, %zu]", i, (size_t)node->shape[0], (size_t)node->shape[1]);
-        size_t n = wl_tensor_num_elements(node);
-        if (n < 4) {
-            fprintf(f, " | (");
-            for (size_t j=0; j < n; ++j) {
-                switch (node->dtype) {
-                    case WL_DTYPE_F32: {
-                        char fmt_buf[128];
-                        *wl__fmt_f64(WL__FMT_G14, (double)wl_tensor_get_scalar_virtual_index(node, (int64_t)j), fmt_buf) = '\0';
-                        fprintf(f, "%s", fmt_buf);
-                    } break;
-                    default: wl__log_error("Invalid DType for format"); continue;
-                }
-                if (j < n-1) fprintf(f, ", ");
-            }
-            fprintf(f, ")");
-        }
-        fprintf(f, "\"; ]\n");
-    }
-    for (size_t i=0; i < gra->num_internal_nodes; ++i) {
-        const wl_tensor_t* node = gra->internal_nodes[i];
-        for (size_t j=0; j < WL_MAX_INPUT_TENSORS; ++j) {
-            if (node->op_inputs[j]) {
-                char label[16];
-                snprintf(label, sizeof(label), "IN #%zu", j);
-                fprintf(
-                    f,
-                    "  \"%p\":x -> \"%p\":x [ arrowhead = none; style = solid; label = \"%s\"; ]\n",
-                    (void*)node->op_inputs[j],
-                    (void*)node,
-                    label
-                );
-            }
-        }
-    }
-    for (size_t i=0; i < gra->num_leaf_nodes; ++i) {
-        const wl_tensor_t* node = gra->leaf_nodes[i];
-        for (size_t j=0; j < WL_MAX_INPUT_TENSORS; ++j) {
-            if (node->op_inputs[j]) {
-                char label[16];
-                snprintf(label, sizeof(label), "IN #%zu", j);
-                fprintf(
-                        f,
-                        "  \"%p\":%s -> \"%p\":%s [ label = \"%s\"; ]\n",
-                        (void*)node->op_inputs[j], "x",
-                        (void*)node, "x",
-                        label
-                );
-            }
-        }
-    }
-    fprintf(f, "}\n");
-    wl__log_info("dot -Tpng %s -o %s.png && open %s.png\n", file_name, file_name, file_name);
-    fclose(f);
-}
-
-wl_ctx_t* wl_compute_graph_get_ctx(const wl_compute_graph_t* gra) { return gra->ctx; }
-
-const char* wl_compute_graph_get_name(const wl_compute_graph_t* gra) { return gra->name; }
-
-const wl_tensor_t** wl_compute_graph_get_internal_nodes(const wl_compute_graph_t* gra, size_t* n_nodes) {
-    if (n_nodes) *n_nodes = gra->num_internal_nodes;
-    return (const wl_tensor_t**)gra->internal_nodes;
-}
-
-const wl_tensor_t** wl_compute_graph_get_leaf_nodes(const wl_compute_graph_t* gra, size_t* n_leaves) {
-    if (n_leaves) *n_leaves = gra->num_leaf_nodes;
-    return (const wl_tensor_t**)gra->leaf_nodes;
-}
-
-size_t wl_compute_graph_get_num_total_nodes(const wl_compute_graph_t* gra) { return gra->num_nodes_total; }
-
-size_t wl_compute_graph_get_num_internal_nodes(const wl_compute_graph_t* graph) { return graph->num_internal_nodes; }
-
-size_t wl_compute_graph_get_num_leaf_nodes(const wl_compute_graph_t* gra) { return gra->num_leaf_nodes; }
-
-size_t wl_compute_graph_get_order(const wl_compute_graph_t* gra) { return gra->order; }
-
-size_t wl_compute_graph_get_memory_usage(const wl_compute_graph_t* gra) { return gra->mem_size_total; }
 
 #ifdef __APPLE__
     static bool wl__sysctl_mib01(uint8_t (*out)[256], size_t* o_len, int mib0, int mib1) { /* Get sysctl data */
@@ -3155,7 +2889,8 @@ static uint8_t* wl__sto_write_buffered(const wl_tensor_t** tensors, size_t n_ten
     wl__assert2(needle - base == WL__STO_FILE_HEADER_SIZE + n_tensors*WL__STO_TENSOR_HEADER_SIZE);    /* Check written data size */
     for (size_t i=0; i < n_tensors; ++i) {  /* Write tensor data */
         const wl_tensor_t* t = tensors[i];
-        if (wl__unlikely(!wl__sto_write_tensor_data(&needle, end, version, t->dtype, t->buf, wl_tensor_data_size(t)))) goto error;     /* Write data */
+        wl__assert2(t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU);
+        if (wl__unlikely(!wl__sto_write_tensor_data(&needle, end, version, t->dtype, (const void*)t->storage->base, wl_tensor_data_size(t)))) goto error;     /* Write data */
     }
     return base;
     error: /* Error handling */
@@ -3182,14 +2917,15 @@ WL_EXPORT wl_tensor_t** wl__sto_read_buffered(wl_ctx_t* ctx, const uint8_t* buf,
         if (wl__unlikely(!wl__sto_read_tensor_header(&needle, end, *out_version, &name, &flags, &dtype, &rank, &shape))) goto error;   /* Read tensor header */
         wl_tensor_t* t = wl__tensor_create(ctx, dtype, shape, rank, NULL, 0);   /* Create placeholder tensor */
         wl_tensor_fmt_name(t, "%s", name);
-        t->flags = flags | WL__TFLAG_FROM_FS;
+        t->flags = flags;
         tensors[i] = t;
     }
     for (size_t i=0; i < n_tensors; ++i) {  /* Read tensor data */
         wl_tensor_t* t = tensors[i];
+        wl__assert2(t->ctx->device_type == WL_COMPUTE_DEVICE_TYPE_CPU);
         size_t data_size = wl__accumulate_data_size(t->dtype, &t->shape);
         wl__assert2(needle + data_size <= end && data_size == wl_tensor_data_size(t));
-        if (wl__unlikely(!wl__sto_read_tensor_data(&needle, end, *out_version, t->dtype, t->buf, data_size))) goto error;  /* Read data into tensor's buffer */
+        if (wl__unlikely(!wl__sto_read_tensor_data(&needle, end, *out_version, t->dtype, (void*)t->storage->base, data_size))) goto error;  /* Read data into tensor's buffer */
     }
     *out_n_tensors = n_tensors;
     return tensors;
@@ -3310,7 +3046,6 @@ wl_tensor_t* wl_tensor_load_image(wl_ctx_t* ctx, const char* file, wl_color_chan
         return t;
     } else {
         wl_tensor_t* t = wl_tensor_create_3d(ctx, WL_DTYPE_F32, whc[2], whc[1], whc[0]);
-        t->flags |= WL__TFLAG_FROM_FS | WL__TFLAG_IMAGE;
         float* dst = wl_tensor_data_as_f32(t);
         for (int64_t k = 0; k < whc[2]; ++k) { /* Convert from interleaved to planar representation. */
             for (int64_t j = 0; j < whc[1]; ++j) {

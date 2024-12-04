@@ -27,7 +27,7 @@ static constexpr std::int64_t k_lim_broadcast = 3;
             const auto* b_x = wl_tensor_data_as_f32(x); \
             const auto* b_r = wl_tensor_data_as_f32(r); \
             ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r)); \
-            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
+            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
             } \
@@ -54,7 +54,7 @@ static constexpr std::int64_t k_lim_broadcast = 3;
                 const auto* b_x = x_origin.data(); \
                 const auto* b_r = wl_tensor_data_as_f32(r); \
                 ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r)); \
-                ASSERT_EQ(wl_tensor_data(x), wl_tensor_data(r)); \
+                ASSERT_EQ(wl_tensor_data_as_f32(x), wl_tensor_data_as_f32(r)); \
                 for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                     ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
                 } \
@@ -183,7 +183,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             const auto* b_x = wl_tensor_data_as_f32(x); \
             const auto* b_y = wl_tensor_data_as_f32(y); \
             const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
+            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
             ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
             ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(y)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
@@ -214,7 +214,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             const auto* b_r = wl_tensor_data_as_f32(r); \
             ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(x)); \
             ASSERT_NE(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
-            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
+            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
@@ -246,7 +246,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             const auto* b_r = wl_tensor_data_as_f32(r); \
             ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
             ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(y)); \
-            ASSERT_EQ(wl_tensor_data(r), wl_tensor_data(x)); \
+            ASSERT_EQ(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]); \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
@@ -280,7 +280,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             const auto* b_r = wl_tensor_data_as_f32(r); \
             ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(x)); \
             ASSERT_NE(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
-            ASSERT_EQ(wl_tensor_data(r), wl_tensor_data(x)); \
+            ASSERT_EQ(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]);  \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
@@ -306,7 +306,7 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             \
             const auto* b_x = wl_tensor_data_as_f32(x); \
             const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_NE(wl_tensor_data(r), wl_tensor_data(x)); \
+            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
             for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op wl_op_param_unpack_float(xi)); \
             } \
