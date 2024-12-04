@@ -294,15 +294,15 @@ struct wl_ctx_t {
             uint32_t state[624];
         } mersenne;
     } prng_state;
-    wl_prng_algorithm_t prng_algorithm;     /* PRNG algorithm. */
-    uintptr_t host_thread_id;               /* Host thread ID. */
-    size_t sh_len;                          /* Number of shutdown hooks. */
-    size_t sh_cap;                          /* Maximum number of shutdown hooks. */
-    wl_compute_device_type_t device_type; /* Active compute device. */
-    wl__icompute_device_t* device;   /* Active compute device. */
-    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);
-    void (*image_load_free_fn)(uint8_t*);
-    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);
+    wl_prng_algorithm_t prng_algorithm;             /* PRNG algorithm. */
+    uintptr_t host_thread_id;                       /* Host thread ID. */
+    size_t sh_len;                                  /* Number of shutdown hooks. */
+    size_t sh_cap;                                  /* Maximum number of shutdown hooks. */
+    wl_compute_device_type_t device_type;           /* Active compute device. */
+    wl__icompute_device_t* device;                  /* Active compute device. */
+    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);    /* Image loader. stb_image by default, you can plug-in your own. */
+    void (*image_load_free_fn)(uint8_t*);                                           /* Image loader free function.  stb_image by default, you can plug-in your own. */
+    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);       /* Image saver. stb_image by default, you can plug-in your own. */
     void* ud; /* User data. */
 };
 

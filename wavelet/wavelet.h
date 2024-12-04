@@ -82,16 +82,16 @@ extern WL_EXPORT void wl_set_set_log_mode(bool enabled); /* Enable/disable loggi
 typedef uint32_t wl_char32_t;
 
 typedef struct wl_ctx_info_t {
-    wl_compute_device_type_t device; /* Compute device */
-    size_t pool_chunk_size; /* Size of each memory pool chunk */
-    size_t pool_chunks_cap; /* Maximum chunks in the pool */
-    uint64_t prng_seed; /* Seed for PRNG if prng_init_seed == true */
-    bool warmup_chunks; /* If true, fresh pool chunks are filled to allocate kernel pages, can improve performance depending on scenario. */
-    wl_prng_algorithm_t prng_algorithm; /* PRNG algorithm */
-    wl_exec_mode_t exec_mode; /* Default context execution mode */
-    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t); /* Image raw data loader. */
-    void (*image_load_free_fn)(uint8_t*); /* Free function for buffer returned by image_load_fn(). */
-    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]); /* Image raw data saver. */
+    wl_compute_device_type_t device;        /* Compute device */
+    size_t pool_chunk_size;                 /* Size of each memory pool chunk */
+    size_t pool_chunks_cap;                 /* Maximum chunks in the pool */
+    uint64_t prng_seed;                     /* Seed for PRNG if prng_init_seed == true */
+    bool warmup_chunks;                     /* If true, fresh pool chunks are filled to allocate kernel pages, can improve performance depending on scenario. */
+    wl_prng_algorithm_t prng_algorithm;     /* PRNG algorithm */
+    wl_exec_mode_t exec_mode;               /* Default context execution mode */
+    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);    /* Image raw data loader. stb_image by default, you can plug-in your own. */
+    void (*image_load_free_fn)(uint8_t*);                                           /* Image raw data loader free function. stb_image by default, you can plug-in your own. */
+    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);       /* Image raw data saver. stb_image by default, you can plug-in your own. */
     void* user_data; /* User-defined data */
 } wl_ctx_info_t;
 

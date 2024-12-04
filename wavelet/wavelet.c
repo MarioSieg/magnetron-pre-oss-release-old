@@ -102,7 +102,7 @@ void wl__free_aligned(void* blk) {
     (*wl__alloc)(((void**)blk)[-1], 0);
 }
 
-#ifdef WL_ENABLE_IMAGE_SUPPORT
+/* Include STB libraries and override their allocator with ours. */
 #define STBI_STATIC
 #define STBI_MALLOC(sz) ((*wl__alloc)(NULL, (sz)))
 #define STBI_FREE(ptr) ((*wl__alloc)((ptr), 0))
@@ -114,7 +114,6 @@ void wl__free_aligned(void* blk) {
 #include <stb_image.h>
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
-#endif
 
 #if defined(__x86_64__) || defined(_M_X64)
 #define WL__X86_64_CPUID_0H 0
@@ -842,11 +841,10 @@ static void wl__system_host_info_dump(wl_ctx_t* ctx) {
     wl__log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 }
 
-#if WL_ENABLE_IMAGE_SUPPORT
+/* Default image loader/saver implementation. */
 static uint8_t* wl__default_image_load_impl(const char*, uint32_t(*)[3], wl_color_channels_t);
 static void wl__default_image_load_free_fn_impl(uint8_t*);
 static bool wl__default_image_save_impl(const char*, const uint8_t*, const uint32_t(*)[3]);
-#endif
 
 static WL__COLDPROC void wl__ctx_dump_compiler_info(void) {
     const char* compiler_name = "Unknown";
@@ -929,14 +927,9 @@ wl_ctx_t* wl_ctx_create(const wl_ctx_info_t* info) {
     wl__system_host_info_dump(ctx);
 
     /* Configure configureable media processors */
-    #if WL_ENABLE_IMAGE_SUPPORT
-        ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &wl__default_image_load_impl;
-        ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &wl__default_image_load_free_fn_impl;
-        ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &wl__default_image_save_impl;
-    #else
-        ctx->image_load_fn = ctx_info.image_load_fn;
-        ctx->image_save_fn = ctx_info.image_save_fn;
-    #endif
+    ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &wl__default_image_load_impl;
+    ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &wl__default_image_load_free_fn_impl;
+    ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &wl__default_image_save_impl;
 
     /* Initialize PRNG state. */
     uint64_t host_tid = wl__thread_id();
@@ -3581,7 +3574,6 @@ static char* wl__fmt_f64(wl__format_flags sf, double n, char* p) {
     return p;
 }
 
-#if WL_ENABLE_IMAGE_SUPPORT
 static uint8_t* wl__default_image_load_impl(const char* file, uint32_t(*whc)[3], wl_color_channels_t channels) {
     wl__assert2(file && *file && whc);
     int w, h, c, dc;
@@ -3608,4 +3600,3 @@ static bool wl__default_image_save_impl(const char* file, const uint8_t* buf, co
     wl__assert2(file && *file && buf && whc);
     return stbi_write_jpg(file, (int)(*whc)[0], (int)(*whc)[1], (int)(*whc)[2], buf, 100) != 0;
 }
-#endif
