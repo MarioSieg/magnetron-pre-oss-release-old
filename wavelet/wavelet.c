@@ -26,7 +26,6 @@
 **  Result is a view tensor of shape of A and contains element-wise result of A ⊕= B, where A and B are tensors. (Safes 1 allocation)
 */
 
-#define WL_EXPORT_DLL
 #include "wavelet.h"
 #include "wavelet_internal.h"
 #include "wavelet_cpu.h"
