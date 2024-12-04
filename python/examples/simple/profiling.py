@@ -4,7 +4,7 @@ import os
 # Enable logging from the wavelet runtime, must be before importing and loading wavelet
 os.environ['WAVELET_LOG'] = '1'
 
-import wavelet.core as wl
+import wavelet as wl
 import time
 
 # Constants

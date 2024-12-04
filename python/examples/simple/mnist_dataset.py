@@ -3,7 +3,7 @@
 import gzip
 import struct
 import numpy as np
-import wavelet.core as wl
+import wavelet as wl
 
 
 def ubyte_load_data(src: str, num_samples: int) -> np.ndarray:
@@ -29,7 +29,7 @@ def ubyte_load_labels(src: str, num_samples: int) -> np.ndarray:
     return res.reshape(num_samples)
 
 
-data = ubyte_load_data('../../datasets/mnist/images-idx3-ubyte.gz', 60000)
+data = ubyte_load_data('../../../datasets/mnist/images-idx3-ubyte.gz', 60000)
 mnist = wl.Tensor.const(data=data.tolist())
 mnist.print(True, False)
 mnist.save('mnist_images.wavelet')

@@ -11,13 +11,13 @@ import weakref
 from os import getenv
 
 from os.path import isfile
-from wavelet._lib_loader import load_native_wl_lib
+from wavelet._lib_loader import load_native_module
 from enum import Enum, auto
 
 # Enable faulthandler for debugging
 faulthandler.enable()
 
-ffi, C = load_native_wl_lib()  # Load the native WAVELET shared library
+ffi, C = load_native_module()  # Load the native WAVELET shared library
 
 # Define Python wrapper classes
 MAX_DIMS: int = 6

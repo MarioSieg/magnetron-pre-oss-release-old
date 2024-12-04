@@ -3,7 +3,7 @@
 import approx
 import math
 
-import wavelet.core as wl
+import wavelet as wl
 
 
 def silu(x: float) -> float:

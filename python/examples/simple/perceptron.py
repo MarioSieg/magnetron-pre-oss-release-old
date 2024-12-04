@@ -1,6 +1,6 @@
 # (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
 
-import wavelet.core as wl
+import wavelet as wl
 
 
 # Define the perceptron function (McCulloch–Pitts neuron)

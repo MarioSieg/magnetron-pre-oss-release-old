@@ -3,6 +3,6 @@
 import approx
 import math
 
-import wavelet.core as wl
+import wavelet as wl
 
 approx.plot_approximation_error('tanh', math.tanh, wl.Operator.TANH, domain=(-2, 2))

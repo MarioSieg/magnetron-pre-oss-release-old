@@ -2,7 +2,7 @@ from math import ceil
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request
-import wavelet.core as wl
+import wavelet as wl
 from wavelet.models import *
 
 load_dotenv()

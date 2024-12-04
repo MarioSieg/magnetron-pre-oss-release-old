@@ -4,7 +4,7 @@
 import time
 from abc import ABC
 
-import wavelet.core as wl
+import wavelet as wl
 
 
 class Layer(ABC):

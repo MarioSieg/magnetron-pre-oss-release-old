@@ -3,6 +3,6 @@
 import approx
 import math
 
-import wavelet.core as wl
+import wavelet as wl
 
 approx.plot_approximation_error('softmax', math.exp, wl.Operator.SOFTMAX, domain=(-10, 10))
