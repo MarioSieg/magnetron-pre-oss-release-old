@@ -3,7 +3,7 @@
 #include "prelude.hpp"
 #include <array>
 #include <cstring>
-#include <unordered_set>
+#include <cmath>
 #include <filesystem>
 
 TEST(wl_tensor_t, init_1d) {

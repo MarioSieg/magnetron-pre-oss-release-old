@@ -36,7 +36,7 @@ namespace wl::cuda {
     static constinit std::array<physical_device, max_devices> s_devices {};
     static constinit std::int32_t s_num_devices {};
 
-    auto wl__init_device_cuda([[maybe_unused]] wl_ctx_t* ctx) -> wl__compute_device_t* {
+    auto wl__init_device_cuda([[maybe_unused]] wl_ctx_t* ctx) -> wl__icompute_device_t* {
         std::int32_t active_device_id {0}; // TODO: Implement device selection.
         std::span<const physical_device> devices {cuda_init()};
         if (devices.empty()) { /* No devices available or initialization failed, let runtime fallback to other compute device. */
@@ -47,14 +47,14 @@ namespace wl::cuda {
             wl__log_error("Invalid device ID %d, using device 0", active_device_id);
             active_device_id = 0;
         }
-        auto* dvc {static_cast<wl__compute_device_t*>((*wl__alloc)(nullptr, sizeof(wl__compute_device_t)))};
+        auto* dvc {static_cast<wl__icompute_device_t*>((*wl__alloc)(nullptr, sizeof(wl__icompute_device_t)))};
         set_active_device_by_id(active_device_id);
         const auto& active_dvc {get_active_device()};
         std::snprintf(dvc->name, sizeof(dvc->name), "%s", active_dvc.name.data());
         return dvc;
     }
 
-    void wl__destroy_device_cuda(wl__compute_device_t* dvc) {
+    void wl__destroy_device_cuda(wl__icompute_device_t* dvc) {
         (*wl__alloc)(dvc, 0);
     }
 

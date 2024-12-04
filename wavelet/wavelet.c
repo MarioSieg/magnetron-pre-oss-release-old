@@ -31,8 +31,8 @@
 #include "wavelet_internal.h"
 #include "wavelet_cpu.h"
 #ifdef WL_ENABLE_CUDA
-extern wl__compute_device_t* wl__init_device_cuda(wl_ctx_t* ctx); /* Initialize GPU compute device. */
-extern void wl__destroy_device_cuda(wl__compute_device_t* dvc); /* Destroy GPU compute device. */
+extern wl__icompute_device_t* wl__init_device_cuda(wl_ctx_t* ctx); /* Initialize GPU compute device. */
+extern void wl__destroy_device_cuda(wl__icompute_device_t* dvc); /* Destroy GPU compute device. */
 #endif
 
 #include <stdio.h>
@@ -1969,9 +1969,8 @@ void wl_tensor_set_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1,
     wl__load_local_storage_group(t, s, strides);
     switch (t->dtype) {
         case WL_DTYPE_F32: {
-            float r;
             wl__itensor_storage_buffer* sto = t->storage;
-            (*sto->cpy_host_device)(sto, sizeof(r)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &r, sizeof(r));
+            (*sto->cpy_host_device)(sto, sizeof(x)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &x, sizeof(x));
         } break;
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
     }
@@ -2004,9 +2003,8 @@ void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x) 
     }
     switch (t->dtype) {
         case WL_DTYPE_F32: {
-            float r;
             wl__itensor_storage_buffer* sto = t->storage;
-            (*sto->cpy_host_device)(sto, sizeof(r)*v_idx, &r, sizeof(r));
+            (*sto->cpy_host_device)(sto, sizeof(x)*v_idx, &x, sizeof(x));
         } break;
         default:
             wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
