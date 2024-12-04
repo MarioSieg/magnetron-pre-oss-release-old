@@ -37,6 +37,9 @@ extern void wl__destroy_device_cuda(wl__icompute_device_t* dvc); /* Destroy GPU 
 
 #include <stdio.h>
 #include <stdarg.h>
+#ifdef _MSC_VER
+#define _USE_MATH_DEFINES
+#endif
 #include <math.h>
 #include <time.h>
 #include <float.h>
