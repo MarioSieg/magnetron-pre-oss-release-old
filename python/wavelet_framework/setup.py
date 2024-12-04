@@ -37,7 +37,8 @@ class CMakeBuildExecutor(build_ext):
         if not os.path.exists(self.build_temp):
             os.makedirs(self.build_temp)
         cmake_args = [
-            f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={os.path.abspath(os.path.join(self.build_lib, 'wavelet'))}',
+            '-DWAVELET_ENABLE_CUDA=OFF', # TODO: Fix cuda compilation
+            f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={os.path.abspath(os.path.join(self.build_lib, "wavelet"))}',
             '-DCMAKE_BUILD_TYPE=Release',
         ]
         build_args = [
