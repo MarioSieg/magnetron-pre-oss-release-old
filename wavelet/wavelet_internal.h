@@ -8,12 +8,12 @@
 #ifdef _MSC_VER
 #include <intrin.h>
 #else
-#include <cpuid.h>
 #ifdef __aarch64__
 #include <arm_neon.h>
 #include <arm_acle.h>
 #elif defined(__x86_64__) || defined(_M_X64)
 #include <immintrin.h>
+#include <cpuid.h>
 #endif
 #endif
 

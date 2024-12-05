@@ -18,13 +18,16 @@ else()
 endif()
 
 set(CMAKE_C_STANDARD 99)
+
 option(WAVELET_BUILD_TESTS "Build tests" ON)
 option(WAVELET_BUILD_BENCHMARKS "Build benchmarks" ON)
-option(WAVELET_ENABLE_CUDA "Enable CUDA support" ON)
 option(WAVELET_BUILD_FUZZERS "Build fuzzers" OFF)
 
+# (CPU only) Enable SIMD math function approximations. Greatly increases performance. Try disabling if you encounter numerical instability. Does NOT enable -ffast-math or similar compiler flags.
+option(WAVELET_CPU_APPROX_MATH "Use faster but less precise math functions" ON)
+option(WAVELET_ENABLE_CUDA "Enable CUDA support" ON) # Enable CUDA support
 if (APPLE)
-    option(WAVELET_USE_ACCELERATE "Use Apple's Accelerate framework" ON)
+    option(WAVELET_ENABLE_ACCELERATE "Use Apple's Accelerate framework" ON)
 endif()
 
 set(WAVELET_CUDA_COMPILER "/usr/local/cuda-12.6/bin/nvcc" CACHE STRING "Path to the CUDA compiler") # Set to your CUDA compiler path
@@ -53,11 +56,11 @@ else() # POSIX specific config
         -std=gnu99
     )
     if (APPLE) # Apple specific configuration
-        if (${WAVELET_USE_ACCELERATE})
+        if (${WAVELET_ENABLE_ACCELERATE})
             find_library(ACCELERATE_FRAMEWORK Accelerate)
             if (ACCELERATE_FRAMEWORK)
                 message(STATUS "Accelerate framework found")
-                target_compile_definitions(wavelet PRIVATE WL_USE_ACCELERATE)
+                target_compile_definitions(wavelet PRIVATE WL_ACCELERATE)
                 target_compile_definitions(wavelet PRIVATE ACCELERATE_NEW_LAPACK)
                 target_compile_definitions(wavelet PRIVATE ACCELERATE_LAPACK_ILP64)
                 target_link_libraries(wavelet ${ACCELERATE_FRAMEWORK})
@@ -65,6 +68,9 @@ else() # POSIX specific config
                 message(WARNING "Accelerate framework not found, using fallback")
             endif()
         endif()
+    endif()
+    if (${WAVELET_CPU_APPROX_MATH})
+        target_compile_definitions(wavelet PRIVATE WL_APPROXMATH)
     endif()
     if(${IS_AMD64}) # x86-64 specific compilation options
         target_compile_options(wavelet PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)

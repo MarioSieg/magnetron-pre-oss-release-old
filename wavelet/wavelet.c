@@ -395,7 +395,7 @@ wl_static_assert(sizeof(wl__bitset_t) == 4);
 #define wl__bitset_clear(sets, i) (sets[(i)>>5]&=~(1u<<((i)&((4<<3)-1))))
 #define wl__bitset_toggle(sets, i) (sets[(i)>>5]^=(1u<<((i)&((4<<3)-1))))
 
-#if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
+#if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
 static uint64x2_t WL__AINLINE wl__clmul_lo_e(uint64x2_t a, uint64x2_t b, uint64x2_t c) {
     register uint64x2_t r;
     __asm__ __volatile__(
@@ -414,7 +414,7 @@ static uint64x2_t WL__AINLINE wl__clmul_hi_e(uint64x2_t a, uint64x2_t b, uint64x
     );
     return r;
 }
-#elif WL_INTRIN && defined(__x86_64__) || defined(_M_X64)
+#elif defined(__x86_64__) || defined(_M_X64)
 static uint32_t wl__xnmodp(uint64_t n) { /* x^n mod P, in log(n) time */
     uint64_t stack = ~(uint64_t)1;
     uint32_t low;
@@ -440,7 +440,7 @@ static __m128i WL__AINLINE wl__crc_shift(uint32_t crc, size_t sz) {
 static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 checksum with CRC32c polynomial. */
     if (wl__unlikely(!buffer || !size)) return 0;
     const uint8_t* buf = (const uint8_t*)buffer;
-    #if WL_INTRIN && defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
+    #if defined(__aarch64__) && defined(__ARM_FEATURE_CRC32) && defined(__ARM_FEATURE_CRYPTO)
         uint32_t crc = ~0;
         for (; size && ((uintptr_t)buf & 7); --size) crc = __crc32cb(crc, *buf++);
         if (((uintptr_t)buf & 8) && size >= 8) {
@@ -505,7 +505,7 @@ static uint32_t wl__crc32c(const void* buffer, size_t size) { /* Compute CRC32 c
         for (; size >= 8; buf += 8, size -= 8) crc = __crc32cd(crc, *(const uint64_t*)buf);
         for (; size; --size) crc = __crc32cb(crc, *buf++);
         return ~crc;
-    #elif WL_INTRIN && (defined(__x86_64__) || defined(_M_X64))
+    #elif defined(__x86_64__) || defined(_M_X64)
         uint32_t crc = ~0;
         for (; size && ((uintptr_t)buf & 7); --size) crc = _mm_crc32_u8(crc, *buf++);
         if (size >= 32) {

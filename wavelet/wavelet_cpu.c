@@ -5,7 +5,7 @@
 #include <math.h>
 #include <stdio.h>
 
-#if defined(__APPLE__) && defined(WL_USE_ACCELERATE)
+#if defined(__APPLE__) && defined(WL_ACCELERATE)
 #include <Accelerate/Accelerate.h>
 #endif
 
@@ -18,7 +18,7 @@ typedef struct wl__cpu_thread_local_ctx_t {
 #define wl__f32p(t) ((const float*)(t)->storage->base)
 #define wl__f32p_mut(t) ((float*)(t)->storage->base)
 
-#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
 
 static float32x4_t wl__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
     float32x4_t r = vdupq_n_f32(0x1.8p23f);
@@ -55,7 +55,39 @@ static float32x4_t wl__simd_tanh(float32x4_t x) { /* tanh' : ℝ -> (-1, 1), x |
     return vaddq_f32(neg_one, vmulq_f32(two, inv));
 }
 
-#elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+static void wl__simd_sincos(float32x4_t x, float32x4_t *osin, float32x4_t *ocos) {
+    uint32x4_t sign_mask_sin = vcltq_f32(x, vdupq_n_f32(0));
+    x = vabsq_f32(x);
+    float32x4_t y = vmulq_f32(x, vdupq_n_f32(1.27323954473516f));
+    uint32x4_t emm2 = vcvtq_u32_f32(y);
+    emm2 = vaddq_u32(emm2, vdupq_n_u32(1));
+    emm2 = vandq_u32(emm2, vdupq_n_u32(~1));
+    y = vcvtq_f32_u32(emm2);
+    uint32x4_t poly_mask = vtstq_u32(emm2, vdupq_n_u32(2));
+    x = vmlaq_f32(x, y, vdupq_n_f32(-0.78515625f));
+    x = vmlaq_f32(x, y, vdupq_n_f32(-2.4187564849853515625e-4f));
+    x = vmlaq_f32(x, y, vdupq_n_f32(-3.77489497744594108e-8f));
+    sign_mask_sin = veorq_u32(sign_mask_sin, vtstq_u32(emm2, vdupq_n_u32(4)));
+    uint32x4_t sign_mask_cos = vtstq_u32(vsubq_u32(emm2, vdupq_n_u32(2)), vdupq_n_u32(4));
+    float32x4_t z = vmulq_f32(x, x);
+    float32x4_t y1, y2;
+    y1 = vmlaq_f32(vdupq_n_f32(-1.388731625493765e-003f), z, vdupq_n_f32(2.443315711809948e-005f));
+    y2 = vmlaq_f32(vdupq_n_f32(8.3321608736e-3f), z, vdupq_n_f32(-1.9515295891e-4f));
+    y1 = vmlaq_f32(vdupq_n_f32(4.166664568298827e-002f), y1, z);
+    y2 = vmlaq_f32(vdupq_n_f32(-1.6666654611e-1f), y2, z);
+    y1 = vmulq_f32(y1, z);
+    y2 = vmulq_f32(y2, z);
+    y1 = vmulq_f32(y1, z);
+    y1 = vmlsq_f32(y1, z, vdupq_n_f32(0.5f));
+    y2 = vmlaq_f32(x, y2, x);
+    y1 = vaddq_f32(y1, vdupq_n_f32(1));
+    float32x4_t ys = vbslq_f32(poly_mask, y1, y2);
+    float32x4_t yc = vbslq_f32(poly_mask, y2, y1);
+    *osin = vbslq_f32(sign_mask_sin, vnegq_f32(ys), ys);
+    *ocos = vbslq_f32(sign_mask_cos, yc, vnegq_f32(yc));
+}
+
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
 
 static __m512 wl__simd_expf(const __m512 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
     __m512 r = _mm512_set1_ps(0x1.8p23f);
@@ -89,7 +121,7 @@ static __m512 wl__simd_tanh(__m512 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((c
     return _mm512_fmadd_ps(two, inv, neg_one);
 }
 
-#elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
 
 static __m256 wl__simd_expf(const __m256 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
     __m256 r = _mm256_set1_ps(0x1.8p23f);
@@ -131,7 +163,7 @@ static __m256 wl__simd_tanh(__m256 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((c
     return _mm256_fmadd_ps(two, inv, neg_one);
 }
 
-#elif WL_INTRIN && defined(__SSE2__)
+#elif WL_APPROXMATH && defined(__SSE2__)
 static __m128 wl__simd_expf(const __m128 x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0 */
     __m128 r = _mm_set1_ps(0x1.8p23f);
     __m128 z = _mm_add_ps(_mm_mul_ps(x, _mm_set1_ps(0x1.715476p+0f)), r);
@@ -178,7 +210,7 @@ static void WL__HOTPROC wl__vadd_f32(
     const float* const x,
     const float* const y
 ) {
-#ifdef WL_USE_ACCELERATE
+#ifdef WL_ACCELERATE
     vDSP_vadd(y, 1, x, 1, o, 1, n);
 #else
     for (int64_t i=0; i < n; ++i) {
@@ -193,7 +225,7 @@ static void WL__HOTPROC wl__vsub_f32(
     const float* const x,
     const float* const y
 ) {
-#ifdef WL_USE_ACCELERATE
+#ifdef WL_ACCELERATE
     vDSP_vsub(y, 1, x, 1, o, 1, n);
 #else
     for (int64_t i=0; i < n; ++i) {
@@ -208,7 +240,7 @@ static void WL__HOTPROC wl__vmul_f32(
     const float* const x,
     const float* const y
 ) {
-#ifdef WL_USE_ACCELERATE
+#ifdef WL_ACCELERATE
     vDSP_vmul(y, 1, x, 1, o, 1, n);
 #else
     for (int64_t i=0; i < n; ++i) {
@@ -223,7 +255,7 @@ static void WL__HOTPROC wl__vdiv_f32(
     const float* const x,
     const float* const y
 ) {
-#ifdef WL_USE_ACCELERATE
+#ifdef WL_ACCELERATE
     vDSP_vdiv(y, 1, x, 1, o, 1, n);
 #else
     for (int64_t i=0; i < n; ++i) {
@@ -281,7 +313,7 @@ static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
     const float* const x,
     const float* const y
 ) {
-#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+#if (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     const int64_t k = n & -16;
     float32x4_t acc[4] = {vdupq_n_f32(0)};
     float32x4_t vx[4];
@@ -306,7 +338,7 @@ static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
     float sum = vaddvq_f32(*acc);       /* Reduce to scalar with horizontal sum. */
     for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
     return sum;
-#elif WL_INTRIN && defined(__AVX512F__) && defined(__FMA__)
+#elif defined(__AVX512F__) && defined(__FMA__)
     const int64_t k = n & -64;
     __m512 acc[4] = {_mm512_setzero_ps()};
     __m512 vx[4];
@@ -331,7 +363,7 @@ static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
     float sum = _mm512_reduce_add_ps(*acc);
     for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
     return sum;
-#elif WL_INTRIN && defined(__AVX__) && defined(__FMA__)
+#elif defined(__AVX__) && defined(__FMA__)
     const int64_t k = n & -32;
     __m256 acc[4] = {_mm256_setzero_ps()};
     __m256 vx[4];
@@ -359,7 +391,7 @@ static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
     float sum = _mm_cvtss_f32(v0);
     for (int64_t i=k; i < n; ++i) sum += x[i]*y[i]; /* Process leftovers scalar-wise */
     return sum;
-#elif WL_INTRIN && defined(__SSE2__)
+#elif defined(__SSE2__)
     const int64_t k = n & -16;
     __m128 acc[4] = {_mm_setzero_ps()};
     __m128 vx[4];
@@ -405,7 +437,7 @@ static double WL__HOTPROC wl__vsum_f64_f32( /* Σx. */
     const int64_t n,
     const float* const x
 ) {
-#ifdef WL_USE_ACCELERATE
+#ifdef WL_ACCELERATE
     float sum;
     vDSP_sve(x, 1, &sum, n);
     return (double)sum;
@@ -465,7 +497,53 @@ static void WL__HOTPROC wl__vlog_f32( /* o = log x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
+    int64_t i=0;
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    const float32x4_t one = vdupq_n_f32(1);
+    for (; i+3 < n; i += 4) {
+        float32x4_t xi = vld1q_f32(x+i);
+        xi = vmaxq_f32(xi, vdupq_n_f32(0));
+        uint32x4_t invalid_mask = vcleq_f32(xi, vdupq_n_f32(0));
+        int32x4_t ux = vreinterpretq_s32_f32(xi);
+        int32x4_t emm0 = vshrq_n_s32(ux, 23);
+        ux = vandq_s32(ux, vdupq_n_s32(~0x7f800000u));
+        ux = vorrq_s32(ux, vreinterpretq_s32_f32(vdupq_n_f32(0.5f)));
+        xi = vreinterpretq_f32_s32(ux);
+        emm0 = vsubq_s32(emm0, vdupq_n_s32(0x7f));
+        float32x4_t e = vcvtq_f32_s32(emm0);
+        e = vaddq_f32(e, one);
+        uint32x4_t mask = vcltq_f32(xi, vdupq_n_f32(0.707106781186547524f));
+        float32x4_t tmp = vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(xi), mask));
+        xi = vsubq_f32(xi, one);
+        e = vsubq_f32(e, vreinterpretq_f32_u32(vandq_u32(vreinterpretq_u32_f32(one), mask)));
+        xi = vaddq_f32(xi, tmp);
+        float32x4_t z = vmulq_f32(xi, xi);
+        float32x4_t y = vdupq_n_f32(7.0376836292e-2f);
+        y = vmlaq_f32(vdupq_n_f32(-1.1514610310e-1f), y, xi);
+        y = vmlaq_f32(vdupq_n_f32(1.1676998740e-1f), y, xi);
+        y = vmlaq_f32(vdupq_n_f32(-1.2420140846e-1f), y, xi);
+        y = vmlaq_f32(vdupq_n_f32(1.4249322787e-1f), y, xi);
+        y = vmlaq_f32(vdupq_n_f32(-1.6668057665e-1f), y, xi);
+        y = vmlaq_f32(vdupq_n_f32(2.0000714765e-1f), y, xi);
+        y = vmlaq_f32(vdupq_n_f32(-2.4999993993e-1f), y, xi);
+        y = vmlaq_f32(vdupq_n_f32(3.3333331174e-1f), y, xi);
+        y = vmulq_f32(y, xi);
+        y = vmulq_f32(y, z);
+        y = vmlaq_f32(y, e, vdupq_n_f32(-2.12194440e-4f));
+        y = vmlsq_f32(y, z, vdupq_n_f32(0.5f));
+        xi = vaddq_f32(xi, y);
+        xi = vmlaq_f32(xi, e, vdupq_n_f32(0.693359375f));
+        xi = vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(xi), invalid_mask));
+        vst1q_f32(o+i, xi);
+    }
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
+#error TODO
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
+#error TODO
+#elif WL_APPROXMATH && defined(__SSE2__)
+#error TODO
+#endif
+    for (; i < n; ++i) { /* Process leftovers scalar-wise */
         o[i] = logf(x[i]);
     }
 }
@@ -494,7 +572,22 @@ static void WL__HOTPROC wl__vsin_f32( /* o = sin x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
+       int64_t i=0;
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    for (; i+3 < n; i += 4) {
+        float32x4_t xi = vld1q_f32(x+i);
+        float32x4_t ocos;
+        wl__simd_sincos(xi, &xi, &ocos);
+        vst1q_f32(o+i, xi);
+    }
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
+#error TODO
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
+#error TODO
+#elif WL_APPROXMATH && defined(__SSE2__)
+#error TODO
+#endif
+    for (; i < n; ++i) { /* Process leftovers scalar-wise */
         o[i] = sinf(x[i]);
     }
 }
@@ -504,7 +597,22 @@ static void WL__HOTPROC wl__vcos_f32( /* o = cos x */
     float* const o,
     const float* const x
 ) {
-    for (int64_t i=0; i < n; ++i) {
+    int64_t i=0;
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+    for (; i+3 < n; i += 4) {
+        float32x4_t xi = vld1q_f32(x+i);
+        float32x4_t osin;
+        wl__simd_sincos(xi, &osin, &xi);
+        vst1q_f32(o+i, xi);
+    }
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
+#error TODO
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
+#error TODO
+#elif WL_APPROXMATH && defined(__SSE2__)
+#error TODO
+#endif
+    for (; i < n; ++i) { /* Process leftovers scalar-wise */
         o[i] = cosf(x[i]);
     }
 }
@@ -525,19 +633,19 @@ static void WL__HOTPROC wl__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     for (; i+3 < n; i += 4) {
         vst1q_f32(o+i, wl__simd_expf(vld1q_f32(x+i)));
     }
-#elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
     for (; i+15 < n; i += 16) {
         _mm512_storeu_ps(o+i, wl__simd_expf(_mm512_loadu_ps(x+i)));
     }
-#elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
     for (; i+7 < n; i += 8) {
         _mm256_storeu_ps(o+i, wl__simd_expf(_mm256_loadu_ps(x+i)));
     }
-#elif WL_INTRIN && defined(__SSE2__)
+#elif WL_APPROXMATH && defined(__SSE2__)
     for (; i+3 < n; i += 4) {
         _mm_storeu_ps(o+i, wl__simd_expf(_mm_loadu_ps(x+i)));
     }
@@ -559,7 +667,7 @@ static void WL__HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     const float32x4_t one = vdupq_n_f32(1.0f);
     const float32x4_t zero = vdupq_n_f32(0.0f);
     for (; i+3 < n; i += 4) {
@@ -569,7 +677,7 @@ static void WL__HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^
         float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
         vst1q_f32(o+i, vdivq_f32(one, one_plus_exp_neg_x));
     }
-#elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
     __m512 one = _mm512_set1_ps(1.0f);
     __m512 zero = _mm512_setzero_ps();
     for (; i+15 < n; i += 16) {
@@ -579,7 +687,7 @@ static void WL__HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^
         __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
         _mm512_storeu_ps(o+i, _mm512_div_ps(one, one_plus_exp_neg_x));
     }
-#elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
     __m256 one = _mm256_set1_ps(1.0f);
     __m256 zero = _mm256_setzero_ps();
     for (; i+7 < n; i += 8) {
@@ -589,7 +697,7 @@ static void WL__HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^
         __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
         _mm256_storeu_ps(o+i, _mm256_div_ps(one, one_plus_exp_neg_x));
     }
-#elif WL_INTRIN && defined(__SSE2__)
+#elif WL_APPROXMATH && defined(__SSE2__)
     __m128 one = _mm_set1_ps(1.0f);
     __m128 zero = _mm_setzero_ps();
     for (; i+3 < n; i += 4) {
@@ -629,7 +737,7 @@ static void WL__HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     float32x4_t one = vdupq_n_f32(1.0f);
     float32x4_t zero = vdupq_n_f32(0.0f);
     for (; i+3 < n; i += 4) {
@@ -639,7 +747,7 @@ static void WL__HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)
         float32x4_t one_plus_exp_neg_x = vaddq_f32(one, exp_neg_x);
         vst1q_f32(o+i, vdivq_f32(xx, one_plus_exp_neg_x));
     }
-#elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
     __m512 one = _mm512_set1_ps(1);
     __m512 zero = _mm512_setzero_ps();
     for (; i+15 < n; i += 16) {
@@ -649,7 +757,7 @@ static void WL__HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)
         __m512 one_plus_exp_neg_x = _mm512_add_ps(one, exp_neg_x);
         _mm512_storeu_ps(o+i, _mm512_div_ps(xx, one_plus_exp_neg_x));
     }
-#elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
     __m256 one = _mm256_set1_ps(1);
     __m256 zero = _mm256_setzero_ps();
     for (; i+7 < n; i += 8) {
@@ -659,7 +767,7 @@ static void WL__HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)
         __m256 one_plus_exp_neg_x = _mm256_add_ps(one, exp_neg_x);
         _mm256_storeu_ps(o+i, _mm256_div_ps(xx, one_plus_exp_neg_x));
     }
-#elif WL_INTRIN && defined(__SSE2__)
+#elif WL_APPROXMATH && defined(__SSE2__)
     __m128 one = _mm_set1_ps(1);
     __m128 zero = _mm_setzero_ps();
     for (; i+3 < n; i += 4) {
@@ -691,19 +799,19 @@ static void WL__HOTPROC wl__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x */
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     for (; i+3 < n; i += 4) {
         vst1q_f32(o+i, wl__simd_tanh(vld1q_f32(x+i)));
     }
-#elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
     for (; i+15 < n; i += 16) {
         _mm512_storeu_ps(o+i, wl__simd_tanh(_mm512_loadu_ps(x+i)));
     }
-#elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
     for (; i+7 < n; i += 8) {
         _mm256_storeu_ps(o+i, wl__simd_tanh(_mm256_loadu_ps(x+i)));
     }
-#elif WL_INTRIN && defined(__SSE2__)
+#elif WL_APPROXMATH && defined(__SSE2__)
     for (; i+3 < n; i += 4) {
         _mm_storeu_ps(o+i, wl__simd_tanh(_mm_loadu_ps(x+i)));
     }
@@ -750,7 +858,7 @@ static void WL__HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
+#if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     float32x4_t half = vdupq_n_f32(0.5f);
     float32x4_t one = vdupq_n_f32(1.0f);
     float32x4_t coeff1 = vdupq_n_f32(0.79788456080286535587989211986876f);
@@ -762,7 +870,7 @@ static void WL__HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
         float32x4_t c = vmulq_f32(half, vmulq_f32(xx, b));
         vst1q_f32(o+i, c);
     }
-#elif WL_INTRIN && defined(__AVX512F__) && defined(__AVX512DQ__)
+#elif WL_APPROXMATH && defined(__AVX512F__) && defined(__AVX512DQ__)
     __m512 half = _mm512_set1_ps(0.5f);
     __m512 one = _mm512_set1_ps(1.0f);
     __m512 coeff1 = _mm512_set1_ps(0.79788456080286535587989211986876f);
@@ -774,7 +882,7 @@ static void WL__HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
         __m512 c = _mm512_mul_ps(half, _mm512_mul_ps(xx, b));
         _mm512_storeu_ps(o+i, c);
     }
-#elif WL_INTRIN && defined(__AVX2__) && defined(__FMA__)
+#elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
     __m256 half = _mm256_set1_ps(0.5f);
     __m256 one = _mm256_set1_ps(1.0f);
     __m256 coeff1 = _mm256_set1_ps(0.79788456080286535587989211986876f);
@@ -786,7 +894,7 @@ static void WL__HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
         __m256 c = _mm256_mul_ps(half, _mm256_mul_ps(xx, b));
         _mm256_storeu_ps(o+i, c);
     }
-#elif WL_INTRIN && defined(__SSE2__)
+#elif WL_APPROXMATH && defined(__SSE2__)
     __m128 half = _mm_set1_ps(0.5f);
     __m128 one = _mm_set1_ps(1.0f);
     __m128 coeff1 = _mm_set1_ps(0.79788456080286535587989211986876f);

@@ -94,7 +94,7 @@ TEST(compute_cpu, neg_same_shape) {
     wl_ctx_destroy(ctx);
 }
 
-impl_test_unary_op(log, 1e-9, LOG, [](float x) -> float {
+impl_test_unary_op(log, 1e-6, LOG, [](float x) -> float {
     return std::log(x);
 })
 
@@ -106,11 +106,11 @@ impl_test_unary_op(sqrt, 1e-9, SQRT, [](float x) -> float {
     return std::sqrt(x);
 })
 
-impl_test_unary_op(sin, 1e-9, SIN, [](float x) -> float {
+impl_test_unary_op(sin, 1e-6, SIN, [](float x) -> float {
     return std::sin(x);
 })
 
-impl_test_unary_op(cos, 1e-9, COS, [](float x) -> float {
+impl_test_unary_op(cos, 1e-6, COS, [](float x) -> float {
     return std::cos(x);
 })
 
