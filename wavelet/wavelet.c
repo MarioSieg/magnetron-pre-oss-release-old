@@ -717,11 +717,17 @@ static void wl_hashset_destroy(wl__hashset_t* set) {
 
 static bool WL__AINLINE wl__imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
     #ifdef _MSC_VER
+    #ifdef _M_ARM64
+        uint64_t high = __umulh(a, b);
+        *out = a*b;
+        return high != (*out>>63);
+    #else
         int64_t high;
         int64_t low = _mul128(a, b, &high);
         int64_t sign = low >> 63;
         *out = low;
         return high != sign;
+    #endif
     #else
     #if __SIZEOF_LONG_LONG__ == 8 && __SIZEOF_LONG__ == 8
         return __builtin_smulll_overflow(a, b, (long long*)out);
@@ -816,7 +822,7 @@ static void wl__system_host_info_dump(wl_ctx_t* ctx) {
     const char* cpu_arch = "?";
     #if defined(__x86_64__) || defined(_M_X64)
         cpu_arch = "x86-64";
-    #elif defined(__aarch64__)
+    #elif defined(__aarch64__) || defined(_M_ARM64)
         cpu_arch = "aarch64";
     #else
     #error "Unknwon CPU arch"
