@@ -18,7 +18,7 @@ typedef struct wl__cpu_thread_local_ctx_t {
 #define wl__f32p(t) ((const float*)(t)->storage->base)
 #define wl__f32p_mut(t) ((float*)(t)->storage->base)
 
-#if WL_INTRIN && defined(__aarch64__) && defined(__ARM_NEON)
+#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
 
 static float32x4_t wl__simd_expf(float32x4_t x) { /* exp(x) : ℝ -> (0, ∞), x |-> e^x. Error = 1.45358 + 0.5 ulps. x > 88.38 -> INF, x < -103.97 -> 0  */
     float32x4_t r = vdupq_n_f32(0x1.8p23f);
@@ -281,7 +281,7 @@ static float WL__UNUSED WL__HOTPROC wl__vdot_f32(
     const float* const x,
     const float* const y
 ) {
-#if WL_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     const int64_t k = n & -16;
     float32x4_t acc[4] = {vdupq_n_f32(0)};
     float32x4_t vx[4];
@@ -525,7 +525,7 @@ static void WL__HOTPROC wl__vsoftmax_f32( /* softmax : ℝ -> (0, ∞), x |-> e^
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     for (; i+3 < n; i += 4) {
         vst1q_f32(o+i, wl__simd_expf(vld1q_f32(x+i)));
     }
@@ -559,7 +559,7 @@ static void WL__HOTPROC wl__vsigmoid_f32( /* σ : ℝ -> (0, 1), x |-> 1/(1 + e^
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     const float32x4_t one = vdupq_n_f32(1.0f);
     const float32x4_t zero = vdupq_n_f32(0.0f);
     for (; i+3 < n; i += 4) {
@@ -629,7 +629,7 @@ static void WL__HOTPROC wl__vsilu_f32( /* silu : ℝ -> ℝ, x |-> x/(1 + e^(-x)
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     float32x4_t one = vdupq_n_f32(1.0f);
     float32x4_t zero = vdupq_n_f32(0.0f);
     for (; i+3 < n; i += 4) {
@@ -691,7 +691,7 @@ static void WL__HOTPROC wl__vtanh_f32( /* tanh : ℝ -> (-1, 1), x |-> tanh x */
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     for (; i+3 < n; i += 4) {
         vst1q_f32(o+i, wl__simd_tanh(vld1q_f32(x+i)));
     }
@@ -750,7 +750,7 @@ static void WL__HOTPROC wl__vgelu_f32( /* gelu : ℝ -> ℝ, x |-> TODO */
     const float* const x
 ) {
     int64_t i=0;
-#if WL_INTRIN && defined(__ARM_NEON) && defined(__aarch64__)
+#if WL_INTRIN && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
     float32x4_t half = vdupq_n_f32(0.5f);
     float32x4_t one = vdupq_n_f32(1.0f);
     float32x4_t coeff1 = vdupq_n_f32(0.79788456080286535587989211986876f);
