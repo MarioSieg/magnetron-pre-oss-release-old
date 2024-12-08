@@ -131,7 +131,7 @@ static WL__AINLINE uint32_t wl__fls64(const uint64_t x) {
 }
 #define __alignof__ __alignof
 
-typedef LONG wl__atomic_t;       /* Atomic integer type */
+typedef long wl__atomic_t;       /* Atomic integer type */
 typedef enum wl__mo_t {             /* Atomic memory order */
     WL__MO_RELAXED,
     WL__MO_CONSUME,
@@ -152,35 +152,35 @@ static WL__AINLINE wl__atomic_t neo_atomic_load(volatile wl__atomic_t* o, wl__mo
 }
 static WL__AINLINE wl__atomic_t neo_atomic_fetch_add(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
-    return _InterlockedExchangeAdd(ptr, x);
+    return _InterlockedExchangeAdd(o, x);
 }
 static WL__AINLINE wl__atomic_t neo_atomic_fetch_sub(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
-    return _InterlockedExchangeAdd(ptr, -x);
+    return _InterlockedExchangeAdd(o, -x);
 }
 static WL__AINLINE wl__atomic_t neo_atomic_fetch_and(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
-    return _InterlockedAnd(ptr, x);
+    return _InterlockedAnd(o, x);
 }
 static WL__AINLINE wl__atomic_t neo_atomic_fetch_or(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
-    return _InterlockedOr(ptr, x);
+    return _InterlockedOr(o, x);
 }
 static WL__AINLINE wl__atomic_t neo_atomic_fetch_xor(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
-    return _InterlockedXor(ptr, x);
+    return _InterlockedXor(o, x);
 }
 static WL__AINLINE wl__atomic_t neo_atomic_exchange(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
-    return _InterlockedExchange(ptr, x);
+    return _InterlockedExchange(o, x);
 }
 static WL__AINLINE bool neo_atomic_compare_exchange_weak(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
     (void)order_succ; (void)order_fail;
-    return _InterlockedCompareExchange(ptr, *des, *exp) == *exp;
+    return _InterlockedCompareExchange(o, *des, *exp) == *exp;
 }
 static WL__AINLINE bool neo_atomic_compare_exchange_strong(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
     (void)order_succ; (void)order_fail;
-    return _InterlockedCompareExchange(ptr, *des, *exp) == *exp;
+    return _InterlockedCompareExchange(o, *des, *exp) == *exp;
 }
 
 #endif
