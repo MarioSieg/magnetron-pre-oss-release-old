@@ -37,11 +37,12 @@ extern "C" {
 #define WL__GRA_FWD WL_GRAPH_EVAL_ORDER_FORWARD
 #define WL__GRA_BWD WL_GRAPH_EVAL_ORDER_REVERSE
 #define WL__GRA_LEN 2
-
 #define WL__MAX_CPUS 8192
 #define WL__MAX_NUMA_NODES 64
 #define WL__STORAGE_EXT ".wavelet"
+
 #if defined(__GNUC__) || defined(__clang__) || defined(__INTEL_COMPILER)
+
 #define WL__NORET __attribute__((noreturn))
 #define WL__ALIGN(x) __attribute__((aligned(x)))
 #define WL__AINLINE inline __attribute__((always_inline))
@@ -57,7 +58,50 @@ extern "C" {
 #define wl__fls(x) ((uint32_t)(__builtin_clz(x)^31))
 #define wl__ffs64(x) ((uint32_t)__builtin_ctzll(x))
 #define wl__fls64(x) ((uint32_t)(__builtin_clzll(x)^63))
+
+typedef int32_t wl__atomic_t;       /* Atomic integer type */
+typedef enum wl__mo_t {             /* Atomic memory order */
+    WL__MO_RELAXED = __ATOMIC_RELAXED,
+    WL__MO_CONSUME = __ATOMIC_CONSUME,
+    WL__MO_ACQUIRE = __ATOMIC_ACQUIRE,
+    WL__MO_RELEASE = __ATOMIC_RELEASE,
+    WL__MO_ACQ_REL = __ATOMIC_ACQ_REL,
+    WL__MO_SEQ_CST = __ATOMIC_SEQ_CST
+} wl__mo_t;
+
+static WL__AINLINE void neo_atomic_store(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    __atomic_store_n(o, x, order);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_load(volatile wl__atomic_t* o, wl__mo_t order) {
+    return __atomic_load_n(o, order);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_add(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    return __atomic_fetch_add(o, x, order);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_sub(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    return __atomic_fetch_sub(o, x, order);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_and(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    return __atomic_fetch_and(o, x, order);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_or(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    return __atomic_fetch_or(o, x, order);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_xor(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    return __atomic_fetch_xor(o, x, order);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_exchange(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    return __atomic_exchange_n(o, x, order);
+}
+static WL__AINLINE bool neo_atomic_compare_exchange_weak(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+    return __atomic_compare_exchange(o, exp, des, true, order_succ, order_fail);
+}
+static WL__AINLINE bool neo_atomic_compare_exchange_strong(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+    return __atomic_compare_exchange(o, exp, des, false, order_succ, order_fail);
+}
+
 #else
+
 unsigned char _BitScanForward64(unsigned long*, unsigned __int64);
 unsigned char _BitScanReverse64(unsigned long*, unsigned __int64);
 #pragma intrinsic(_BitScanForward64)
@@ -73,24 +117,78 @@ unsigned char _BitScanReverse64(unsigned long*, unsigned __int64);
 #define WL__UNUSED
 #define wl__likely(x) (x)
 #define wl__unlikely(x) (x)
-static __forceinline uint32_t wl__ffs(const uint32_t x) {
+static WL__AINLINE uint32_t wl__ffs(const uint32_t x) {
     unsigned long r; _BitScanForward(&r, x); return (uint32_t)r;
 }
-static __forceinline uint32_t wl__fls(const uint32_t x) {
+static WL__AINLINE uint32_t wl__fls(const uint32_t x) {
     unsigned long r; _BitScanReverse(&r, x); return (uint32_t)r;
 }
-static __forceinline uint32_t wl__ffs64(const uint64_t x) {
+static WL__AINLINE uint32_t wl__ffs64(const uint64_t x) {
   unsigned long r; _BitScanForward64(&r, x); return (uint32_t)r;
 }
-static __forceinline uint32_t wl__fls64(const uint64_t x) {
+static WL__AINLINE uint32_t wl__fls64(const uint64_t x) {
   unsigned long r; _BitScanReverse64(&r, x); return (uint32_t)r;
 }
 #define __alignof__ __alignof
+
+typedef LONG wl__atomic_t;       /* Atomic integer type */
+typedef enum wl__mo_t {             /* Atomic memory order */
+    WL__MO_RELAXED,
+    WL__MO_CONSUME,
+    WL__MO_ACQUIRE,
+    WL__MO_RELEASE,
+    WL__MO_ACQ_REL,
+    WL__MO_SEQ_CST
+} wl__mo_t;
+
+static WL__AINLINE void neo_atomic_store(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    (void)order; _InterlockedExchange(o, x);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_load(volatile wl__atomic_t* o, wl__mo_t order) {
+    (void)order;
+    wl__atomic_t r;
+    _InterlockedExchange(&r, *o);
+    return r;
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_add(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    (void)order;
+    return _InterlockedExchangeAdd(ptr, x);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_sub(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    (void)order;
+    return _InterlockedExchangeAdd(ptr, -x);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_and(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    (void)order;
+    return _InterlockedAnd(ptr, x);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_or(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    (void)order;
+    return _InterlockedOr(ptr, x);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_fetch_xor(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    (void)order;
+    return _InterlockedXor(ptr, x);
+}
+static WL__AINLINE wl__atomic_t neo_atomic_exchange(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+    (void)order;
+    return _InterlockedExchange(ptr, x);
+}
+static WL__AINLINE bool neo_atomic_compare_exchange_weak(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+    (void)order_succ; (void)order_fail;
+    return _InterlockedCompareExchange(ptr, *des, *exp) == *exp;
+}
+static WL__AINLINE bool neo_atomic_compare_exchange_strong(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+    (void)order_succ; (void)order_fail;
+    return _InterlockedCompareExchange(ptr, *des, *exp) == *exp;
+}
+
 #endif
+
 wl_static_assert(sizeof(0u) == 4);
 wl_static_assert(sizeof(0ull) == 8);
 
-    #ifdef __BYTE_ORDER
+#ifdef __BYTE_ORDER
 #if defined(__BIG_ENDIAN) && (__BYTE_ORDER == __BIG_ENDIAN)
 #define WL__BE
 #elif defined(__LITTLE_ENDIAN) && (__BYTE_ORDER == __LITTLE_ENDIAN)
