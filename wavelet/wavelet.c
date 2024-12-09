@@ -974,7 +974,7 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
     wl__tensor_node_t* curr = *head;
     uint32_t nleaked = 0;
     for (; curr; curr = curr->next, ++nleaked) {
-        wl__log_error("Leaked tensor detected: %p", curr->tensor);
+        wl__log_error("Leaked tensor detected: %p, RCS: %u, RCW: %u, CTOR: %s", curr->tensor, curr->tensor->rcb.rc_strong, curr->tensor->rcb.rc_weak, curr->tensor->rcb.dtor ? "Y" : "N");
         wl_tensor_print(curr->tensor, true, false);
     }
     if (nleaked) wl__log_error("Leaked tensors detected: %u", nleaked);
