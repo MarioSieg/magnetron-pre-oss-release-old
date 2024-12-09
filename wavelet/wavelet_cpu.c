@@ -202,6 +202,47 @@ static __m128 wl__simd_tanh(__m128 x) { /* tanh' : ℝ -> (-1, 1), x |-> 1 / ((c
     inv = _mm_mul_ps(_mm_rcp_ps(_mm_mul_ps(c, inv)), inv); /* Newton–Raphson method */
     return _mm_add_ps(neg_one, _mm_mul_ps(two, inv));
 }
+
+static void wl__simd_sincos(__m128 x, __m128 *osin, __m128 *ocos) {
+    __m128 sign_mask_sin_ps = _mm_cmplt_ps(x, _mm_set1_ps(0.0f));
+    __m128i sign_mask_sin = _mm_castps_si128(sign_mask_sin_ps);
+    x = _mm_and_ps(x, _mm_castsi128_ps(_mm_set1_epi32(0x7fffffff)));
+    __m128 y = _mm_mul_ps(x, _mm_set1_ps(1.27323954473516f));
+    __m128i emm2 = _mm_cvtps_epi32(y);
+    emm2 = _mm_add_epi32(emm2, _mm_set1_epi32(1));
+    emm2 = _mm_and_si128(emm2, _mm_set1_epi32(~1));
+    y = _mm_cvtepi32_ps(emm2);
+    __m128i poly_mask = _mm_cmpeq_epi32(emm2, _mm_set1_epi32(2));
+    x = _mm_add_ps(x, _mm_mul_ps(y, _mm_set1_ps(-0.78515625f)));
+    x = _mm_add_ps(x, _mm_mul_ps(y, _mm_set1_ps(-2.4187564849853515625e-4f)));
+    x = _mm_add_ps(x, _mm_mul_ps(y, _mm_set1_ps(-3.77489497744594108e-8f)));
+    __m128i tmp = _mm_cmpeq_epi32(emm2, _mm_set1_epi32(4));
+    sign_mask_sin = _mm_xor_si128(sign_mask_sin, tmp);
+    __m128i sign_mask_cos = _mm_cmpeq_epi32(_mm_sub_epi32(emm2, _mm_set1_epi32(2)), _mm_set1_epi32(4));
+    __m128 z = _mm_mul_ps(x, x);
+    __m128 y1 = _mm_add_ps(_mm_set1_ps(-1.388731625493765e-003f), _mm_mul_ps(z, _mm_set1_ps(2.443315711809948e-005f)));
+    __m128 y2 = _mm_add_ps(_mm_set1_ps(8.3321608736e-3f), _mm_mul_ps(z, _mm_set1_ps(-1.9515295891e-4f)));
+    y1 = _mm_add_ps(_mm_set1_ps(4.166664568298827e-002f), _mm_mul_ps(y1, z));
+    y2 = _mm_add_ps(_mm_set1_ps(-1.6666654611e-1f), _mm_mul_ps(y2, z));
+    y1 = _mm_mul_ps(y1, z);
+    y2 = _mm_mul_ps(y2, z);
+    y1 = _mm_mul_ps(y1, z);
+    y1 = _mm_sub_ps(y1, _mm_mul_ps(z, _mm_set1_ps(0.5f)));
+    y2 = _mm_add_ps(x, _mm_mul_ps(y2, x));
+    y1 = _mm_add_ps(y1, _mm_set1_ps(1.0f));
+    __m128 poly_mask_ps = _mm_castsi128_ps(poly_mask);
+    __m128 ys = _mm_or_ps(_mm_and_ps(poly_mask_ps, y1), _mm_andnot_ps(poly_mask_ps, y2));
+    __m128 yc = _mm_or_ps(_mm_and_ps(poly_mask_ps, y2), _mm_andnot_ps(poly_mask_ps, y1));
+    __m128 sign_mask_sin_ps2 = _mm_castsi128_ps(sign_mask_sin);
+    __m128 neg_ys = _mm_sub_ps(_mm_setzero_ps(), ys);
+    __m128 osin_ps = _mm_or_ps(_mm_and_ps(sign_mask_sin_ps2, neg_ys), _mm_andnot_ps(sign_mask_sin_ps2, ys));
+    __m128 sign_mask_cos_ps = _mm_castsi128_ps(sign_mask_cos);
+    __m128 neg_yc = _mm_sub_ps(_mm_setzero_ps(), yc);
+    __m128 ocos_ps = _mm_or_ps(_mm_and_ps(sign_mask_cos_ps, yc), _mm_andnot_ps(sign_mask_cos_ps, neg_yc));
+    *osin = osin_ps;
+    *ocos = ocos_ps;
+}
+
 #endif
 
 static void WL__HOTPROC wl__vadd_f32(
@@ -541,7 +582,43 @@ static void WL__HOTPROC wl__vlog_f32( /* o = log x */
 #elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
 #error TODO
 #elif WL_APPROXMATH && defined(__SSE2__)
-#error TODO
+    const __m128 one = _mm_set1_ps(1.0f);
+    for (; i+3 < n; i += 4) {
+        __m128 xi = _mm_loadu_ps(x+i);
+        xi = _mm_max_ps(xi, _mm_set1_ps(0.0f));
+        __m128 invalid_mask = _mm_cmple_ps(xi, _mm_set1_ps(0.0f));
+        __m128i ux = _mm_castps_si128(xi);
+        __m128i emm0 = _mm_srli_epi32(ux, 23);
+        ux = _mm_and_si128(ux, _mm_set1_epi32(~0x7f800000u));
+        ux = _mm_or_si128(ux, _mm_castps_si128(_mm_set1_ps(0.5f)));
+        xi = _mm_castsi128_ps(ux);
+        emm0 = _mm_sub_epi32(emm0, _mm_set1_epi32(0x7f));
+        __m128 e = _mm_cvtepi32_ps(emm0);
+        e = _mm_add_ps(e, one);
+        __m128 mask = _mm_cmplt_ps(xi, _mm_set1_ps(0.707106781186547524f));
+        __m128 tmp = _mm_and_ps(xi, mask);
+        xi = _mm_sub_ps(xi, one);
+        e = _mm_sub_ps(e, _mm_and_ps(one, mask));
+        xi = _mm_add_ps(xi, tmp);
+        __m128 z = _mm_mul_ps(xi, xi);
+        __m128 y = _mm_set1_ps(7.0376836292e-2f);
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(-1.1514610310e-1f));
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(1.1676998740e-1f));
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(-1.2420140846e-1f));
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(1.4249322787e-1f));
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(-1.6668057665e-1f));
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(2.0000714765e-1f));
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(-2.4999993993e-1f));
+        y = _mm_add_ps(_mm_mul_ps(y, xi), _mm_set1_ps(3.3333331174e-1f));
+        y = _mm_mul_ps(y, xi);
+        y = _mm_mul_ps(y, z);
+        y = _mm_add_ps(_mm_mul_ps(e, _mm_set1_ps(-2.12194440e-4f)), y);
+        y = _mm_sub_ps(y, _mm_mul_ps(z, _mm_set1_ps(0.5f)));
+        xi = _mm_add_ps(xi, y);
+        xi = _mm_add_ps(_mm_mul_ps(e, _mm_set1_ps(0.693359375f)), xi);
+        xi = _mm_or_ps(xi, invalid_mask);
+        _mm_storeu_ps(o+i, xi);
+    }
 #endif
     for (; i < n; ++i) { /* Process leftovers scalar-wise */
         o[i] = logf(x[i]);
@@ -585,7 +662,12 @@ static void WL__HOTPROC wl__vsin_f32( /* o = sin x */
 #elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
 #error TODO
 #elif WL_APPROXMATH && defined(__SSE2__)
-#error TODO
+    for (; i+3 < n; i += 4) {
+        __m128 xi = _mm_loadu_ps(x+i);
+        __m128 ocos;
+        wl__simd_sincos(xi, &xi, &ocos);
+        _mm_storeu_ps(o+i, xi);
+    }
 #endif
     for (; i < n; ++i) { /* Process leftovers scalar-wise */
         o[i] = sinf(x[i]);
@@ -610,7 +692,12 @@ static void WL__HOTPROC wl__vcos_f32( /* o = cos x */
 #elif WL_APPROXMATH && defined(__AVX2__) && defined(__FMA__)
 #error TODO
 #elif WL_APPROXMATH && defined(__SSE2__)
-#error TODO
+    for (; i+3 < n; i += 4) {
+        __m128 xi = _mm_loadu_ps(x+i);
+        __m128 osin;
+        wl__simd_sincos(xi, &osin, &xi);
+        _mm_storeu_ps(o+i, xi);
+    }
 #endif
     for (; i < n; ++i) { /* Process leftovers scalar-wise */
         o[i] = cosf(x[i]);
