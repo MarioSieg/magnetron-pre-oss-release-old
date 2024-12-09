@@ -5,8 +5,6 @@
 
 #include "wavelet.h"
 
-#define WL__SANITIZE_RC 1 /* Enable runtime checks for debugging of reference counted tensors. */
-
 #ifdef _MSC_VER
 #include <intrin.h>
 #else
@@ -424,9 +422,9 @@ typedef enum wl__tensor_flags_t {
     WL__FLAG_GRAD = 1<<2,           /* Tensor is a gradient. */
     WL__TFLAG_EXEC_EAGER = 1<<3,    /* Tensor is executed eagerly. */
 
-    WL__TFLAG_MAX = 1<<4
+    WL__TFLAG_LEN = 4
 } wl__tensor_flags_t;
-wl_static_assert(WL__TFLAG_MAX <= 0xff);
+wl_static_assert(WL__TFLAG_LEN <= 0xff);
 
 /*
 ** Tensor with up to 6 Dimensions.

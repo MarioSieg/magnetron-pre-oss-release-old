@@ -4,7 +4,7 @@ import datetime
 import re
 
 C_HDR_FILE: str = '../../wavelet/wavelet.h'
-OUTPUT_FILE: str = '_ffi_cdecl_generated.py'
+OUTPUT_FILE: str = 'wavelet/_ffi_cdecl_generated.py'
 
 print(f'Generating {OUTPUT_FILE} from {C_HDR_FILE}...')
 

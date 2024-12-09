@@ -974,7 +974,8 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
     wl__tensor_node_t* curr = *head;
     uint32_t nleaked = 0;
     for (; curr; curr = curr->next, ++nleaked) {
-        wl__log_error("Leaked tensor detected: %p, %s", curr->tensor, curr->tensor->name);
+        wl__log_error("Leaked tensor detected: %p", curr->tensor);
+        wl_tensor_print(curr->tensor, true, false);
     }
     if (nleaked) wl__log_error("Leaked tensors detected: %u", nleaked);
     else wl__log_info("No leaked tensors detected.");
@@ -1928,7 +1929,14 @@ void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
         char strides[WL__FMT_DIM_BUF_SIZE];
         wl__fmt_dims(&shape, &t->shape, t->rank);
         wl__fmt_dims(&strides, &t->strides, WL_MAX_DIMS);
-        fprintf(f, "Tensor '%s', DType: %s, Rank: %" PRIi64 ", Elements: %" PRIi64 ", Shape: %s, Strides: %s, Mem: %.03f %s\n",
+        static const char* flag_abbrs = "OVGE";
+        wl__assert2(strlen(flag_abbrs) == WL__TFLAG_LEN);
+        char flags[WL__TFLAG_LEN+1] = {0};
+        for (uint32_t i=0, k=0; i < WL__TFLAG_LEN; ++i)
+            if (t->flags & (1 << i))
+                flags[k++] = flag_abbrs[i];
+        flags[WL__TFLAG_LEN] = '\0';
+        fprintf(f, "Tensor '%s', DType: %s, Rank: %" PRIi64 ", Elements: %" PRIi64 ", Shape: %s, Strides: %s, Mem: %.03f %s, Flags: %s (%x)\n",
             t->name,
             wl_dtype_info_of(t->dtype)->name,
             t->rank,
@@ -1936,7 +1944,9 @@ void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data) {
             shape,
             strides,
             buf_size_cvt,
-            buf_size_unit
+            buf_size_unit,
+            flags,
+            t->flags
         );
     }
     if (with_data) {
@@ -2798,7 +2808,7 @@ static bool wl__sto_read_tensor_header(
             *flags = (wl__tensor_flags_t)((aux >> 16) & 0xff);
             *dtype = (wl_dtype_t)((aux >> 8) & 0xff);
             *rank = (int64_t)(aux & 0xff);
-            wl__sto_sanitize((*flags & ~(WL__TFLAG_MAX-1)) == 0, false); /* Check fields */
+            wl__sto_sanitize((*flags & ~((1u<<WL__TFLAG_LEN)-1)) == 0, false); /* Check fields */
             wl__sto_sanitize(*dtype >= 0 && *dtype < WL_DTYPE_COUNT_, false);
             wl__sto_sanitize(*rank >= 1 && *rank <= WL_MAX_DIMS, false);
             for (size_t i=0; i < WL_MAX_DIMS; ++i) {  /* Read shape */
