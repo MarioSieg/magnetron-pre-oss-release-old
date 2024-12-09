@@ -561,3 +561,57 @@ TEST(wl_tensor_t, random_normal_pcg) {
 
     wl_ctx_destroy(ctx);
 }
+
+TEST(wl_tensor_t, rc_init_strong) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+
+    wl_tensor_t* a = wl_tensor_create_1d(ctx, WL_DTYPE_F32, 10);
+    ASSERT_EQ(a->rcb.rc_strong, 1);
+    ASSERT_EQ(a->rcb.rc_weak, 0);
+
+    ASSERT_TRUE(wl_tensor_destroy(a));
+
+    wl_ctx_destroy(ctx);
+}
+
+TEST(wl_tensor_t, rc_refs) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+
+    wl_tensor_t* a = wl_tensor_create_1d(ctx, WL_DTYPE_F32, 10);
+    ASSERT_EQ(a->rcb.rc_strong, 1);
+    ASSERT_EQ(a->rcb.rc_weak, 0);
+
+    wl_tensor_t* b = wl_tensor_emit_op_va(ctx, WL_OP_VIEW, a); // okay so view references original tensor
+    ASSERT_EQ(b->rcb.rc_strong, 1);
+    ASSERT_EQ(b->rcb.rc_weak, 0);
+    ASSERT_EQ(a->rcb.rc_strong, 2); // a is now referenced by b
+    ASSERT_EQ(a->rcb.rc_weak, 0);
+    ASSERT_FALSE(wl_tensor_destroy(a)); // a is still referenced by b
+
+    ASSERT_TRUE(wl_tensor_destroy(b)); // b is the last reference to a
+    ASSERT_EQ(a->rcb.rc_strong, 1);
+    ASSERT_EQ(a->rcb.rc_weak, 0);
+
+    ASSERT_TRUE(wl_tensor_destroy(a)); // no more references here
+
+    wl_ctx_destroy(ctx);
+}
+
+TEST(wl_tensor_t, rc_ref_leak) {
+    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+
+    wl_tensor_t* a = wl_tensor_create_1d(ctx, WL_DTYPE_F32, 10);
+    ASSERT_EQ(a->rcb.rc_strong, 1);
+    ASSERT_EQ(a->rcb.rc_weak, 0);
+
+    wl_tensor_t* b = wl_tensor_emit_op_va(ctx, WL_OP_VIEW, a); // okay so view references original tensor
+    ASSERT_EQ(b->rcb.rc_strong, 1);
+    ASSERT_EQ(b->rcb.rc_weak, 0);
+    ASSERT_EQ(a->rcb.rc_strong, 2); // a is now referenced by b
+    ASSERT_EQ(a->rcb.rc_weak, 0);
+    ASSERT_FALSE(wl_tensor_destroy(a)); // a is still referenced by b
+
+    ASSERT_TRUE(wl_tensor_destroy(a)); // no more references here
+
+    wl_ctx_destroy(ctx);
+}

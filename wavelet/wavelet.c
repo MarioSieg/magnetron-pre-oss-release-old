@@ -58,7 +58,14 @@ extern void wl__destroy_device_cuda(wl__icompute_device_t* dvc); /* Destroy GPU 
 #include <unistd.h>
 #endif
 
-bool wl__log_enabled = false; /* Read from multiple threads, allowed to be written from main thread once at start. */
+#ifdef NDEBUG
+#define WL__LOG_DEFAULT_ENABLE 0
+#else
+#define WL__LOG_DEFAULT_ENABLE 1
+#endif
+bool wl__log_enabled = WL__LOG_DEFAULT_ENABLE; /* Read from multiple threads, allowed to be written from main thread once at start. */
+#undef WL__LOG_DEFAULT_ENABLE
+
 void wl_set_set_log_mode(bool enabled) {
     wl__log_enabled = enabled;
 }
@@ -962,6 +969,24 @@ wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device) {
 }
 
 void wl_ctx_destroy(wl_ctx_t* ctx) {
+#if WL__SANITIZE_RC /* Check for leaked tensors in RC tracking list and print them */
+    wl__tensor_node_t** head = &ctx->rc_tracked;
+    wl__tensor_node_t* curr = *head;
+    uint32_t nleaked = 0;
+    for (; curr; curr = curr->next, ++nleaked) {
+        wl__log_error("Leaked tensor detected: %p, %s", curr->tensor, curr->tensor->name);
+    }
+    if (nleaked) wl__log_error("Leaked tensors detected: %u", nleaked);
+    else wl__log_info("No leaked tensors detected.");
+    curr = *head;
+    while (curr) { /* Free tracking list */
+        wl__tensor_node_t* tmp = curr;
+        curr = curr->next;
+        /* wl_tensor_destroy(tmp->tensor); TODO: free tensor  */
+        (*wl__alloc)(tmp, 0);
+    }
+    *head = NULL;
+#endif
     wl__log_info("Tensors Created: %zu, Tensors Allocated: %zu", ctx->tensor_rc, ctx->tensor_alloc_rc);
     if (wl__unlikely(ctx->tensor_alloc_rc > 0)) { /* Check for leaked tensors. */
         wl__panic("Leaked tensors detected: %zu", ctx->tensor_rc);
@@ -1580,12 +1605,21 @@ int64_t wl_tensor_num_rows(const wl_tensor_t* t) {
 static WL__AINLINE int64_t wl__tensor_num_cols(const wl_tensor_t* t) { return *t->shape; }
 int64_t wl_tensor_num_cols(const wl_tensor_t* t) { return *t->shape; }
 
+#if WL__SANITIZE_RC
+    static void wl__tensor_sanitize_dtor(wl_tensor_t* t) {
+        wl__log_info_force("Freeing tensor %p '%s'", t, t->name);
+    }
+#endif
+
 static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int64_t* dims, int64_t rank, wl_tensor_t* view, size_t view_offs) {
     wl__assert(dims != NULL && rank >= 0 && rank <= WL_MAX_DIMS, "Rank must be within (0, %d]", WL_MAX_DIMS);
     wl__assert2(view_offs == 0); /* Not respected at the moment. */
-    if (view && view->view) { /* Accumulate relative view offset. */
-        view_offs += view->view_offs;
-        view = view->view;
+    if (view) {
+        if (view->view) { /* Traverse view chain and accumulate offset */
+            view_offs += view->view_offs;
+            view = view->view;
+        }
+        ++view->rcb.rc_strong; /* Increment view refcount */
     }
     int64_t scalar_size = wl_dtype_info_of(type)->size;
     int64_t elems_total = 1;
@@ -1599,6 +1633,13 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     wl_tensor_t* t = (*wl__alloc)(NULL, sizeof(*t));
     memset(t, 0, sizeof(*t));
     *t = (wl_tensor_t) {
+        .rcb = {
+            .rc_strong = 1,
+            .rc_weak = 0,
+            #if WL__SANITIZE_RC
+                .dtor = &wl__tensor_sanitize_dtor
+            #endif
+        },
         .ctx = ctx,
         .rank = rank,
         .shape = {0},
@@ -1618,20 +1659,57 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
         .ud = NULL
     };
     #pragma GCC unroll 6
-    for (uint32_t i=0; i < WL_MAX_DIMS; ++i) /* Copy dimensions and set unused to identity. */
+    for (uint32_t i=0; i < WL_MAX_DIMS; ++i)    /* Copy dimensions and set unused to identity. */
         t->shape[i] = i < rank ? dims[i] : 1;
     *t->strides = 1;
     #pragma GCC unroll 5
-    for (uint32_t i=1; i < WL_MAX_DIMS; ++i)  /* Calculate strides and check for overflow. */
+    for (uint32_t i=1; i < WL_MAX_DIMS; ++i)    /* Calculate strides and check for overflow. */
         wl__assert2(!wl__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
     ++ctx->tensor_rc;
     if (!view) ++ctx->tensor_alloc_rc;
+#if WL__SANITIZE_RC /* If tensor RC sanitize is enabled, insert into tracking list */
+    wl__tensor_node_t** head = &ctx->rc_tracked;
+    wl__tensor_node_t* node = (*wl__alloc)(NULL, sizeof(*node));
+    *node = (wl__tensor_node_t) {
+        .tensor = t,
+        .next = NULL
+    };
+    if (!*head) *head = node;                   /* Insert at head */
+    else {
+        wl__tensor_node_t* curr = *head;
+        while (curr->next) curr = curr->next;   /* Traverse to end */
+        curr->next = node;                      /* Append */
+    }
+#endif
     return t;
 }
 
-void wl_tensor_destroy(wl_tensor_t* t) {
-    if (wl__unlikely(!t)) return;
+bool wl_tensor_destroy(wl_tensor_t* t) {
+    if (wl__unlikely(!t)) return false;
     wl_ctx_t* ctx = t->ctx;
+    --t->rcb.rc_strong;             /* Decrement strong refcount */
+    if (t->rcb.rc_strong) return false;   /* References still exist, dont destroy */
+#if WL__SANITIZE_RC  /* If tensor RC sanitize is enabled, invoke destructor and erase from tracking list */
+    void (*dtor)(wl_tensor_t*) = t->rcb.dtor;  /* Invoke Debug destructor. */
+    if (dtor) (*dtor)(t);
+    wl__tensor_node_t** head = &ctx->rc_tracked;
+    if (*head) {
+        wl__tensor_node_t* curr = *head, *prev = NULL;
+        if (curr->tensor == t) { /* Head itself holds key */
+            *head = curr->next;
+            (*wl__alloc)(curr, 0);
+        } else {
+            while (curr && curr->tensor != t) { /* Find node */
+                prev = curr;
+                curr = curr->next;
+            }
+            if (curr) { /* Found node */
+                prev->next = curr->next;
+                (*wl__alloc)(curr, 0); /* Free node */
+            }
+        }
+    }
+#endif
     if (t->flags & WL__TFLAG_OWNER) { /* Free device memory if tensor owns it. */
         wl__icompute_device_t* dvc = t->ctx->device;
         void (*deallocator)(wl__icompute_device_t*, wl__itensor_storage_buffer*) = dvc->free_storage;
@@ -1640,6 +1718,7 @@ void wl_tensor_destroy(wl_tensor_t* t) {
     }
     (*wl__alloc)(t, 0); /* Free tensor struct. */
     --ctx->tensor_rc;
+    return true; /* Actually destroyed */
 }
 
 wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1) {

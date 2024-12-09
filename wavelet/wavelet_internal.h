@@ -5,6 +5,8 @@
 
 #include "wavelet.h"
 
+#define WL__SANITIZE_RC 1 /* Enable runtime checks for debugging of reference counted tensors. */
+
 #ifdef _MSC_VER
 #include <intrin.h>
 #else
@@ -69,34 +71,34 @@ typedef enum wl__mo_t {             /* Atomic memory order */
     WL__MO_SEQ_CST = __ATOMIC_SEQ_CST
 } wl__mo_t;
 
-static WL__AINLINE void neo_atomic_store(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE void wl__atomic_store(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     __atomic_store_n(o, x, order);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_load(volatile wl__atomic_t* o, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_load(volatile wl__atomic_t* o, wl__mo_t order) {
     return __atomic_load_n(o, order);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_add(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_add(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     return __atomic_fetch_add(o, x, order);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_sub(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_sub(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     return __atomic_fetch_sub(o, x, order);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_and(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_and(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     return __atomic_fetch_and(o, x, order);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_or(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_or(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     return __atomic_fetch_or(o, x, order);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_xor(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_xor(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     return __atomic_fetch_xor(o, x, order);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_exchange(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_exchange(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     return __atomic_exchange_n(o, x, order);
 }
-static WL__AINLINE bool neo_atomic_compare_exchange_weak(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+static WL__AINLINE bool wl__atomic_compare_exchange_weak(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
     return __atomic_compare_exchange(o, exp, des, true, order_succ, order_fail);
 }
-static WL__AINLINE bool neo_atomic_compare_exchange_strong(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+static WL__AINLINE bool wl__atomic_compare_exchange_strong(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
     return __atomic_compare_exchange(o, exp, des, false, order_succ, order_fail);
 }
 
@@ -141,44 +143,44 @@ typedef enum wl__mo_t {             /* Atomic memory order */
     WL__MO_SEQ_CST
 } wl__mo_t;
 
-static WL__AINLINE void neo_atomic_store(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE void wl__atomic_store(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order; _InterlockedExchange(o, x);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_load(volatile wl__atomic_t* o, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_load(volatile wl__atomic_t* o, wl__mo_t order) {
     (void)order;
     wl__atomic_t r;
     _InterlockedExchange(&r, *o);
     return r;
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_add(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_add(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
     return _InterlockedExchangeAdd(o, x);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_sub(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_sub(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
     return _InterlockedExchangeAdd(o, -x);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_and(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_and(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
     return _InterlockedAnd(o, x);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_or(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_or(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
     return _InterlockedOr(o, x);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_fetch_xor(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_fetch_xor(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
     return _InterlockedXor(o, x);
 }
-static WL__AINLINE wl__atomic_t neo_atomic_exchange(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
+static WL__AINLINE wl__atomic_t wl__atomic_exchange(volatile wl__atomic_t* o, wl__atomic_t x, wl__mo_t order) {
     (void)order;
     return _InterlockedExchange(o, x);
 }
-static WL__AINLINE bool neo_atomic_compare_exchange_weak(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+static WL__AINLINE bool wl__atomic_compare_exchange_weak(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
     (void)order_succ; (void)order_fail;
     return _InterlockedCompareExchange(o, *des, *exp) == *exp;
 }
-static WL__AINLINE bool neo_atomic_compare_exchange_strong(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
+static WL__AINLINE bool wl__atomic_compare_exchange_strong(volatile wl__atomic_t* o, wl__atomic_t *exp, wl__atomic_t *des, wl__mo_t order_succ, wl__mo_t order_fail) {
     (void)order_succ; (void)order_fail;
     return _InterlockedCompareExchange(o, *des, *exp) == *exp;
 }
@@ -287,8 +289,9 @@ extern WL_EXPORT void wl__free_aligned(void* blk);
 #   define WL__SRC_NAME __FILE__ ":" WL__STRINGIZE(__LINE__)
 #endif
 #define wl__log_info(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__); } while (0)
-#define wl__log_warn(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__); fflush(stdout); } while (0)
-#define wl__log_error(msg, ...) do { if (wl__unlikely(wl__log_enabled)) fprintf(stdout,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__); fflush(stdout); } while (0)
+#define wl__log_info_force(msg, ...) do { fprintf(stdout,   WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " msg "\n", ## __VA_ARGS__); } while (0)
+#define wl__log_warn(msg, ...) do { fprintf(stdout,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_YELLOW msg WL__CC_RESET "\n", ## __VA_ARGS__); fflush(stdout); } while (0)
+#define wl__log_error(msg, ...) do { fprintf(stdout,  WL__CC_CYAN "[WAVELET] " WL__CC_RESET WL__SRC_NAME " " WL__CC_RED msg WL__CC_RESET "\n", ## __VA_ARGS__); fflush(stdout); } while (0)
 
 #define wl__assert(expr, msg, ...) \
     if (wl__unlikely(!(expr))) { \
@@ -357,6 +360,14 @@ typedef struct wl__op_perf_info_t {
     uint64_t n_execs;
 } wl__op_perf_info_t;
 
+#if WL__SANITIZE_RC
+typedef struct wl__tensor_node_t wl__tensor_node_t;
+struct wl__tensor_node_t {
+    wl_tensor_t* tensor;
+    wl__tensor_node_t* next;
+};
+#endif
+
 /*
 ** Context contains all isolated state and data.
 ** Lifetimes of tensors and compute graphs are bound to the context - the context is the owner.
@@ -377,6 +388,9 @@ struct wl_ctx_t {
     } sys;
     size_t tensor_rc;                               /* Total tensors created. */
     size_t tensor_alloc_rc;                         /* Total tensors allocated. */
+#if WL__SANITIZE_RC
+    wl__tensor_node_t* rc_tracked;                  /* Linked list of RC tensors for sanitize. */
+#endif
     wl_exec_mode_t exec_mode;
     bool profiler_enabled;
     wl__op_perf_info_t op_perf_mons_total[WL_OP__COUNT];
@@ -418,6 +432,13 @@ wl_static_assert(WL__TFLAG_MAX <= 0xff);
 ** Tensor with up to 6 Dimensions.
 */
 struct wl_tensor_t {
+    struct {
+        uint32_t rc_strong;                         /* Strong reference count. */
+        uint32_t rc_weak;                           /* Weak reference count. */
+#if WL__SANITIZE_RC
+        void (*dtor)(wl_tensor_t*);                 /* Debug destructor. */
+#endif
+    } rcb;                                          /* Reference count control block. */
     wl_ctx_t* ctx;                                  /* Host context. */
     int64_t rank;                                   /* Number of active dimensions. [1, MAX_DIMS] */
     int64_t shape[WL_MAX_DIMS];                     /* Shape of the tensor. */
