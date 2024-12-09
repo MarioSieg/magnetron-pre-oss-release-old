@@ -989,7 +989,7 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
 #endif
     wl__log_info("Tensors Created: %zu, Tensors Allocated: %zu", ctx->tensor_rc, ctx->tensor_alloc_rc);
     if (wl__unlikely(ctx->tensor_alloc_rc > 0)) { /* Check for leaked tensors. */
-        wl__panic("Leaked tensors detected: %zu", ctx->tensor_rc);
+        wl__log_error("Leaked tensors detected: %zu", ctx->tensor_rc);
     }
     wl__compute_device_destroy(ctx);
     memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
@@ -1607,7 +1607,7 @@ int64_t wl_tensor_num_cols(const wl_tensor_t* t) { return *t->shape; }
 
 #if WL__SANITIZE_RC
     static void wl__tensor_sanitize_dtor(wl_tensor_t* t) {
-        wl__log_info_force("Freeing tensor %p '%s'", t, t->name);
+        (void)t;
     }
 #endif
 
