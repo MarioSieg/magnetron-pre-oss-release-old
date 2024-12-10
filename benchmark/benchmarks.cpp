@@ -33,9 +33,9 @@ auto main() -> int {
         wl_tensor_t* inputs[2] = {A, B};
         wl_tensor_t* C = wl_tensor_operator(ctx, WL_OP_ADD, false, inputs, 2, nullptr);
 
-        wl_tensor_destroy(A);
-        wl_tensor_destroy(B);
-        wl_tensor_destroy(C);
+        wl_tensor_decref(A);
+        wl_tensor_decref(B);
+        wl_tensor_decref(C);
         return C;
     });
 }

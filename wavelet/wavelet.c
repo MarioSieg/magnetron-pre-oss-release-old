@@ -968,6 +968,8 @@ wl_ctx_t* wl_ctx_create2(wl_compute_device_type_t device) {
     return wl_ctx_create(&info);
 }
 
+static void wl__tensor_destroy(wl_tensor_t* t);
+
 void wl_ctx_destroy(wl_ctx_t* ctx) {
 #if WL__SANITIZE_RC /* Check for leaked tensors in RC tracking list and print them */
     wl__tensor_node_t** head = &ctx->rc_tracked;
@@ -983,7 +985,7 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
     while (curr) { /* Free tracking list */
         wl__tensor_node_t* tmp = curr;
         curr = curr->next;
-        /* wl_tensor_destroy(tmp->tensor); TODO: free tensor  */
+        wl__tensor_destroy(tmp->tensor);
         (*wl__alloc)(tmp, 0);
     }
     *head = NULL;
@@ -1620,7 +1622,7 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
             view_offs += view->view_offs;
             view = view->view;
         }
-        ++view->rcb.rc_strong; /* Increment view refcount */
+        wl_tensor_incref(view);
     }
     int64_t scalar_size = wl_dtype_info_of(type)->size;
     int64_t elems_total = 1;
@@ -1685,11 +1687,8 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     return t;
 }
 
-bool wl_tensor_destroy(wl_tensor_t* t) {
-    if (wl__unlikely(!t)) return false;
+static void wl__tensor_destroy(wl_tensor_t* t) {
     wl_ctx_t* ctx = t->ctx;
-    --t->rcb.rc_strong;             /* Decrement strong refcount */
-    if (t->rcb.rc_strong) return false;   /* References still exist, dont destroy */
 #if WL__SANITIZE_RC  /* If tensor RC sanitize is enabled, invoke destructor and erase from tracking list */
     void (*dtor)(wl_tensor_t*) = t->rcb.dtor;  /* Invoke Debug destructor. */
     if (dtor) (*dtor)(t);
@@ -1719,7 +1718,19 @@ bool wl_tensor_destroy(wl_tensor_t* t) {
     }
     (*wl__alloc)(t, 0); /* Free tensor struct. */
     --ctx->tensor_rc;
-    return true; /* Actually destroyed */
+}
+
+void wl_tensor_incref(wl_tensor_t* t) {
+    wl__assert2(t->rcb.rc_strong < UINT32_MAX);
+    ++t->rcb.rc_strong;
+}
+
+bool wl_tensor_decref(wl_tensor_t* t) {
+    if (!--t->rcb.rc_strong) { /* Strong RC reaches zero, destroy. */
+        wl__tensor_destroy(t);
+        return true;
+    }
+    return false;
 }
 
 wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1) {

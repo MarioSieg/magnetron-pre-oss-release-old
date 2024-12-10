@@ -31,7 +31,7 @@ TEST(wl_tensor_t, init_1d) {
     ASSERT_TRUE(wl_tensor_is_matrix(tensor));
     ASSERT_TRUE(wl_tensor_is_volume(tensor));
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -61,7 +61,7 @@ TEST(wl_tensor_t, init_2d) {
     ASSERT_TRUE(wl_tensor_is_matrix(tensor));
     ASSERT_TRUE(wl_tensor_is_volume(tensor));
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -91,7 +91,7 @@ TEST(wl_tensor_t, init_3d) {
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_TRUE(wl_tensor_is_volume(tensor));
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -121,7 +121,7 @@ TEST(wl_tensor_t, init_4d) {
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_FALSE(wl_tensor_is_volume(tensor));
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -156,7 +156,7 @@ TEST(wl_tensor_t, init_5d) {
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_FALSE(wl_tensor_is_volume(tensor));
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -191,7 +191,7 @@ TEST(wl_tensor_t, init_6d) {
     ASSERT_FALSE(wl_tensor_is_matrix(tensor));
     ASSERT_FALSE(wl_tensor_is_volume(tensor));
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -203,7 +203,7 @@ TEST(wl_tensor_t, print) {
     wl_tensor_fill_random_uniform(tensor, 0.0f, 1.0f);
     wl_tensor_print(tensor, false, true);
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -215,7 +215,7 @@ TEST(wl_tensor_t, name) {
     wl_tensor_set_name(tensor, "Gradient Backup");
     ASSERT_STREQ(wl_tensor_get_name(tensor), "Gradient Backup");
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
     wl_ctx_destroy(ctx);
 }
 
@@ -247,8 +247,8 @@ TEST(wl_tensor_t, deep_clone) {
     ASSERT_NE(a, b);
     ASSERT_EQ(0, std::memcmp(a, b, wl_tensor_data_size(origin)));
 
-    wl_tensor_destroy(origin);
-    wl_tensor_destroy(clone);
+    wl_tensor_decref(origin);
+    wl_tensor_decref(clone);
     wl_ctx_destroy(ctx);
 }
 
@@ -264,9 +264,9 @@ TEST(wl_tensor_t, equals) {
     ASSERT_FALSE(wl_tensor_eq(origin, clone2));
     ASSERT_FALSE(wl_tensor_eq(clone, clone2));
 
-    wl_tensor_destroy(origin);
-    wl_tensor_destroy(clone);
-    wl_tensor_destroy(clone2);
+    wl_tensor_decref(origin);
+    wl_tensor_decref(clone);
+    wl_tensor_decref(clone2);
 
     wl_ctx_destroy(ctx);
 }
@@ -283,7 +283,7 @@ TEST(wl_tensor_t, buffer_linearly) {
     }
     std::cout << std::endl;
 
-    wl_tensor_destroy(origin);
+    wl_tensor_decref(origin);
 
     wl_ctx_destroy(ctx);
 }
@@ -312,9 +312,9 @@ TEST(wl_tensor_t, view) {
     }
 
 
-    wl_tensor_destroy(origin);
-    wl_tensor_destroy(slice1);
-    wl_tensor_destroy(slice2);
+    wl_tensor_decref(origin);
+    wl_tensor_decref(slice1);
+    wl_tensor_decref(slice2);
 
     wl_ctx_destroy(ctx);
 }
@@ -336,8 +336,8 @@ TEST(wl_tensor_t, transpose) {
     ASSERT_TRUE(wl_tensor_is_contiguous(origin));
     ASSERT_FALSE(wl_tensor_is_contiguous(transposed));
 
-    wl_tensor_destroy(origin);
-    wl_tensor_destroy(transposed);
+    wl_tensor_decref(origin);
+    wl_tensor_decref(transposed);
 
     wl_ctx_destroy(ctx);
 }
@@ -372,8 +372,8 @@ TEST(wl_tensor_t, permute) {
     ASSERT_TRUE(wl_tensor_is_contiguous(origin));
     ASSERT_FALSE(wl_tensor_is_contiguous(permuted));
 
-    wl_tensor_destroy(origin);
-    wl_tensor_destroy(permuted);
+    wl_tensor_decref(origin);
+    wl_tensor_decref(permuted);
 
     wl_ctx_destroy(ctx);
 }
@@ -398,9 +398,9 @@ TEST(wl_tensor_t, isclose) {
     ASSERT_FALSE(wl_tensor_is_close(clone, clone2, FLT_EPSILON, & percent));
     ASSERT_DOUBLE_EQ(percent, 0.0);
 
-    wl_tensor_destroy(origin);
-    wl_tensor_destroy(clone);
-    wl_tensor_destroy(clone2);
+    wl_tensor_decref(origin);
+    wl_tensor_decref(clone);
+    wl_tensor_decref(clone2);
 
     wl_ctx_destroy(ctx);
 }
@@ -421,7 +421,7 @@ TEST(wl_tensor_t, copy_buffer_from) {
     ASSERT_NE(a, b);
     ASSERT_EQ(0, std::memcmp(a, b, wl_tensor_data_size(tensor)));
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -447,7 +447,7 @@ TEST(wl_tensor_t, fill) {
         ASSERT_FLOAT_EQ(buf[0], -1.0f);
     }
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -470,7 +470,7 @@ TEST(wl_tensor_t, random_uniform_pcg) {
         ASSERT_LT(x, rmax);
     }
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -493,7 +493,7 @@ TEST(wl_tensor_t, random_uniform_mersenne) {
         ASSERT_LT(x, rmax);
     }
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -525,7 +525,7 @@ TEST(wl_tensor_t, random_normal_mersenne) {
     ASSERT_NEAR(r_mean, mean, 0.01);
     ASSERT_NEAR(r_stddev, stddev, 0.01);
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -557,7 +557,7 @@ TEST(wl_tensor_t, random_normal_pcg) {
     ASSERT_NEAR(r_mean, mean, 0.01);
     ASSERT_NEAR(r_stddev, stddev, 0.01);
 
-    wl_tensor_destroy(tensor);
+    wl_tensor_decref(tensor);
 
     wl_ctx_destroy(ctx);
 }
@@ -569,7 +569,7 @@ TEST(wl_tensor_t, rc_init_strong) {
     ASSERT_EQ(a->rcb.rc_strong, 1);
     ASSERT_EQ(a->rcb.rc_weak, 0);
 
-    ASSERT_TRUE(wl_tensor_destroy(a));
+    ASSERT_TRUE(wl_tensor_decref(a));
 
     wl_ctx_destroy(ctx);
 }
@@ -586,13 +586,13 @@ TEST(wl_tensor_t, rc_refs) {
     ASSERT_EQ(b->rcb.rc_weak, 0);
     ASSERT_EQ(a->rcb.rc_strong, 2); // a is now referenced by b
     ASSERT_EQ(a->rcb.rc_weak, 0);
-    ASSERT_FALSE(wl_tensor_destroy(a)); // a is still referenced by b
+    ASSERT_FALSE(wl_tensor_decref(a)); // a is still referenced by b
 
-    ASSERT_TRUE(wl_tensor_destroy(b)); // b is the last reference to a
+    ASSERT_TRUE(wl_tensor_decref(b)); // b is the last reference to a
     ASSERT_EQ(a->rcb.rc_strong, 1);
     ASSERT_EQ(a->rcb.rc_weak, 0);
 
-    ASSERT_TRUE(wl_tensor_destroy(a)); // no more references here
+    ASSERT_TRUE(wl_tensor_decref(a)); // no more references here
 
     wl_ctx_destroy(ctx);
 }
@@ -609,9 +609,9 @@ TEST(wl_tensor_t, rc_ref_leak) {
     ASSERT_EQ(b->rcb.rc_weak, 0);
     ASSERT_EQ(a->rcb.rc_strong, 2); // a is now referenced by b
     ASSERT_EQ(a->rcb.rc_weak, 0);
-    ASSERT_FALSE(wl_tensor_destroy(a)); // a is still referenced by b
+    ASSERT_FALSE(wl_tensor_decref(a)); // a is still referenced by b
 
-    ASSERT_TRUE(wl_tensor_destroy(a)); // no more references here
+    ASSERT_TRUE(wl_tensor_decref(a)); // no more references here
 
     wl_ctx_destroy(ctx);
 }

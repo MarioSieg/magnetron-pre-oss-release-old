@@ -22,7 +22,7 @@ TEST(image, load) {
 
     // TODO: check data
 
-    wl_tensor_destroy(img);
+    wl_tensor_decref(img);
     wl_ctx_destroy(ctx);
 }
 
@@ -45,7 +45,7 @@ TEST(image, load_resize) {
         ASSERT_LE(buf[i], 1.0f);
     }
 
-    wl_tensor_destroy(img);
+    wl_tensor_decref(img);
 
     wl_ctx_destroy(ctx);
 }
@@ -59,7 +59,7 @@ TEST(image, draw_box) {
     wl_tensor_print(img, true, false);
     //wl_tensor_save_image(img, "test_data/car2.jpg");
 
-    wl_tensor_destroy(img);
+    wl_tensor_decref(img);
     wl_ctx_destroy(ctx);
 }
 
@@ -72,6 +72,6 @@ TEST(image, draw_text) {
     wl_tensor_print(img, true, false);
     //wl_tensor_save_image(img, "test_data/car3.jpg");
 
-    wl_tensor_destroy(img);
+    wl_tensor_decref(img);
     wl_ctx_destroy(ctx);
 }

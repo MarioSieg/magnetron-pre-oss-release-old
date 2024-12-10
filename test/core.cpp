@@ -26,10 +26,10 @@ TEST(core, profiler_small_dims) {
         wl_tensor_t* C =  wl_tensor_emit_op_va(ctx, WL_OP_COS, B);
         [[maybe_unused]]
         wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
-        wl_tensor_destroy(A);
-        wl_tensor_destroy(B);
-        wl_tensor_destroy(C);
-        wl_tensor_destroy(D);
+        wl_tensor_decref(A);
+        wl_tensor_decref(B);
+        wl_tensor_decref(C);
+        wl_tensor_decref(D);
     }
     wl_ctx_profile_stop_recording(ctx, "perf.csv");
     ASSERT_TRUE(std::filesystem::exists("perf.csv"));
@@ -46,10 +46,10 @@ TEST(core, profiler_big_dims) {
     [[maybe_unused]]
     wl_tensor_t* D =  wl_tensor_emit_op_va(ctx, WL_OP_TANH, C);
     wl_ctx_profile_stop_recording(ctx, NULL);
-    wl_tensor_destroy(A);
-    wl_tensor_destroy(B);
-    wl_tensor_destroy(C);
-    wl_tensor_destroy(D);
+    wl_tensor_decref(A);
+    wl_tensor_decref(B);
+    wl_tensor_decref(C);
+    wl_tensor_decref(D);
     wl_ctx_destroy(ctx);
 }
 
