@@ -30,3 +30,4 @@ _deps
 out/
 .tmp
 CMakeSettings.json
+wavelet_chat/.idea
