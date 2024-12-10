@@ -1622,7 +1622,7 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
             view_offs += view->view_offs;
             view = view->view;
         }
-        wl_tensor_incref(view);
+        wl_tensor_incref(view); /* Increment view tensor strong RC */
     }
     int64_t scalar_size = wl_dtype_info_of(type)->size;
     int64_t elems_total = 1;
@@ -1637,7 +1637,7 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     memset(t, 0, sizeof(*t));
     *t = (wl_tensor_t) {
         .rcb = {
-            .rc_strong = 1,
+            .rc_strong = 0,
             .rc_weak = 0,
             #if WL__SANITIZE_RC
                 .dtor = &wl__tensor_sanitize_dtor
@@ -1661,6 +1661,7 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
         .name = "",
         .ud = NULL
     };
+    wl_tensor_incref(t); /* First strong RC=1 */
     #pragma GCC unroll 6
     for (uint32_t i=0; i < WL_MAX_DIMS; ++i)    /* Copy dimensions and set unused to identity. */
         t->shape[i] = i < rank ? dims[i] : 1;
