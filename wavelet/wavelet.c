@@ -1713,8 +1713,8 @@ bool wl_tensor_destroy(wl_tensor_t* t) {
 #endif
     if (t->flags & WL__TFLAG_OWNER) { /* Free device memory if tensor owns it. */
         wl__icompute_device_t* dvc = t->ctx->device;
-        void (*deallocator)(wl__icompute_device_t*, wl__itensor_storage_buffer*) = dvc->free_storage;
-        (*deallocator)(dvc, t->storage);
+        void (*dtor)(wl__icompute_device_t*, wl__itensor_storage_buffer*) = dvc->free_storage;
+        (*dtor)(dvc, t->storage);
         --ctx->tensor_alloc_rc;
     }
     (*wl__alloc)(t, 0); /* Free tensor struct. */
@@ -1875,6 +1875,14 @@ void wl_tensor_fill_random_normal(wl_tensor_t* t, float mean, float stddev) {
         } break;
         default: wl__panic("Unsupported DType: %d", t->dtype);
     }
+}
+
+uint64_t wl_tensor_get_packed_refcounts(const wl_tensor_t* t) {
+    return (uint64_t)t->rcb.rc_strong|((uint64_t)t->rcb.rc_weak << 32);
+}
+
+void wl_tensor_retain(wl_tensor_t* t) {
+    ++t->rcb.rc_strong;
 }
 
 size_t wl_tensor_get_memory_usage(const wl_tensor_t* t) {

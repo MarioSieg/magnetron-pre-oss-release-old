@@ -236,6 +236,8 @@ extern WL_EXPORT void wl_tensor_fill(wl_tensor_t* t, float x); /* Set all tensor
 extern WL_EXPORT void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max); /* Fill tensor with random values from uniform distribution within [min, max] */
 extern WL_EXPORT void wl_tensor_fill_random_normal(wl_tensor_t* t, float mean, float stddev); /* Fill tensor with random values from the normal distribution. */
 
+extern WL_EXPORT uint64_t wl_tensor_get_packed_refcounts(const wl_tensor_t* t); /* Return strong refcount is loword, weak refcount is hiword. */
+extern WL_EXPORT void wl_tensor_retain(wl_tensor_t* t); /* Increment refcount */
 extern WL_EXPORT size_t wl_tensor_get_memory_usage(const wl_tensor_t* t); /* Return memory used by this tensor in bytes. */
 extern WL_EXPORT void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data); /* Print tensor info (with or without data) */
 extern WL_EXPORT void wl_tensor_set_name(wl_tensor_t* t, const char* name); /* Set the name of the tensor */
