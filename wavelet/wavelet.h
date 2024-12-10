@@ -218,19 +218,132 @@ typedef enum wl_graph_eval_order_t {
     WL_GRAPH_EVAL_ORDER_REVERSE = 1 /* Evaluate graph from right to left */
 } wl_graph_eval_order_t;
 
-typedef struct wl_tensor_t wl_tensor_t; /* Opaque type representing a tensor */
+/**
+ * @brief Multidimensional tensor of arbitrary rank and data type.
+ *      The tensor is reference counted and can be shared between multiple tensors.
+ *      Rule of Thumb for Reference Counting:
+ *          - If you only use the reference temporarily and do not store it, no need to adjust the reference count.
+ *          - If you store the reference (e.g., in a data structure), increase the reference count when storing and decrease it when removing.
+ *      The rank is > 0 and <= WL_MAX_DIMS. The shape of the tensor is an array of dimensions of size WL_MAX_DIMS.
+ *      Is a node in a static or dynamic computation graph, depending on the context execution mode.
+ */
+typedef struct wl_tensor_t wl_tensor_t;
 
-extern WL_EXPORT wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1); /* Create 1D tensor */
-extern WL_EXPORT wl_tensor_t* wl_tensor_create_2d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2); /* Create 2D tensor */
-extern WL_EXPORT wl_tensor_t* wl_tensor_create_3d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3); /* Create 3D tensor */
-extern WL_EXPORT wl_tensor_t* wl_tensor_create_4d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4); /* Create 4D tensor */
-extern WL_EXPORT wl_tensor_t* wl_tensor_create_5d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5); /* Create 5D tensor */
-extern WL_EXPORT wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6); /* Create 6D tensor */
+/**
+ * @brief Create a new 1-dimensional tensor.
+ *      Data is uninitialized, should be filled with values before using it.
+ * @param ctx Context to create the tensor in. Must not be NULL.
+ * @param type Data type of the tensor. Must be a valid wl_dtype_t.
+ * @param d1 Size of the first dimension. Must be > 0 and < INT64_MAX.
+ * @returns New tensor. Is never NULL.
+ */
+extern WL_EXPORT wl_tensor_t* wl_tensor_create_1d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1);
 
+/**
+ * @brief Create a new 2-dimensional tensor.
+ *      Data is uninitialized, should be filled with values before using it.
+ * @param ctx Context to create the tensor in. Must not be NULL.
+ * @param type Data type of the tensor. Must be a valid wl_dtype_t.
+ * @param d1 Size of the first dimension. Must be > 0 and < INT64_MAX.
+ * @param d2 Size of the second dimension. Must be > 0 and < INT64_MAX.
+ * @returns New tensor. Is never NULL.
+ */
+extern WL_EXPORT wl_tensor_t* wl_tensor_create_2d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2);
+
+/**
+ * @brief Create a new 3-dimensional tensor.
+ *      Data is uninitialized, should be filled with values before using it.
+ * @param ctx Context to create the tensor in. Must not be NULL.
+ * @param type Data type of the tensor. Must be a valid wl_dtype_t.
+ * @param d1 Size of the first dimension. Must be > 0 and < INT64_MAX.
+ * @param d2 Size of the second dimension. Must be > 0 and < INT64_MAX.
+ * @param d3 Size of the third dimension. Must be > 0 and < INT64_MAX.
+ * @returns New tensor. Is never NULL.
+ */
+extern WL_EXPORT wl_tensor_t* wl_tensor_create_3d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3);
+
+/**
+ * @brief Create a new 4-dimensional tensor.
+ *      Data is uninitialized, should be filled with values before using it.
+ * @param ctx Context to create the tensor in. Must not be NULL.
+ * @param type Data type of the tensor. Must be a valid wl_dtype_t.
+ * @param d1 Size of the first dimension. Must be > 0 and < INT64_MAX.
+ * @param d2 Size of the second dimension. Must be > 0 and < INT64_MAX.
+ * @param d3 Size of the third dimension. Must be > 0 and < INT64_MAX.
+ * @param d4 Size of the fourth dimension. Must be > 0 and < INT64_MAX.
+ * @returns New tensor. Is never NULL.
+ */
+extern WL_EXPORT wl_tensor_t* wl_tensor_create_4d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4);
+
+/**
+ * @brief Create a new 5-dimensional tensor.
+ *      Data is uninitialized, should be filled with values before using it.
+ * @param ctx Context to create the tensor in. Must not be NULL.
+ * @param type Data type of the tensor. Must be a valid wl_dtype_t.
+ * @param d1 Size of the first dimension. Must be > 0 and < INT64_MAX.
+ * @param d2 Size of the second dimension. Must be > 0 and < INT64_MAX.
+ * @param d3 Size of the third dimension. Must be > 0 and < INT64_MAX.
+ * @param d4 Size of the fourth dimension. Must be > 0 and < INT64_MAX.
+ * @param d5 Size of the fifth dimension. Must be > 0 and < INT64_MAX.
+ * @returns New tensor. Is never NULL.
+ */
+extern WL_EXPORT wl_tensor_t* wl_tensor_create_5d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
+
+/**
+ * @brief Create a new 6-dimensional tensor.
+ *      Data is uninitialized, should be filled with values before using it.
+ * @param ctx Context to create the tensor in. Must not be NULL.
+ * @param type Data type of the tensor. Must be a valid wl_dtype_t.
+ * @param d1 Size of the first dimension. Must be > 0 and < INT64_MAX.
+ * @param d2 Size of the second dimension. Must be > 0 and < INT64_MAX.
+ * @param d3 Size of the third dimension. Must be > 0 and < INT64_MAX.
+ * @param d4 Size of the fourth dimension. Must be > 0 and < INT64_MAX.
+ * @param d5 Size of the fifth dimension. Must be > 0 and < INT64_MAX.
+ * @param d6 Size of the sixth dimension. Must be > 0 and < INT64_MAX.
+ * @returns New tensor. Is never NULL.
+ */
+extern WL_EXPORT wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6);
+
+
+/**
+ * @brief Emit operation with variable arguments.
+ * Constructs and returns a result tensor R by applying an operation to input tensors. R = op(X, Y, ...).
+ * If the execution mode is WL_EXEC_MODE_EAGER, the operation is executed immediately, and R contains the computed result.
+ * If the execution mode is WL_EXEC_MODE_DEFERRED, the operation is added to the computation graph, and R is a placeholder tensor.
+ * @param ctx Context to create the tensor in. Must not be NULL.
+ * @param op Operation code (WL_OP_*)
+ * @param inplace If true, the operation is applied in-place, and the result is stored in the first input tensor. Otherwise, a new tensor is created.
+ *          With inplace=true, R = op(X, Y) is equivalent to X = op(X, Y).
+ *          Reduces memory usage and improves performance, because no new tensor is created.
+ *          If the operation does not support in-place execution, the function creates a new tensor like with inplace=false.
+ *          Example: R = X + Y turns into X += Y with inplace=true.
+ * @param inputs Pointer to array of input tensors of size n_inputs. Must not be NULL.
+ * @param n_inputs Number of input tensors, must be equal to the operation's argument count, if not, the function panics.
+ * @param params Array of operation parameters. Can be NULL if the operation does not require any parameters.
+ * @returns Result tensor R. Is never NULL.
+ */
 extern WL_EXPORT wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]);
 
-extern WL_EXPORT void wl_tensor_incref(wl_tensor_t* t); /* Increment tensor reference count */
-extern WL_EXPORT bool wl_tensor_decref(wl_tensor_t* t); /* Destroy tensor and free memory */
+/**
+ * @brief Increment reference count of tensor.
+ *      Increment the strong reference count of the tensor. The tensor is not destroyed until the strong reference count reaches zero.
+ *      Rule of Thumb for Reference Counting:
+ *      - If you only use the reference temporarily and do not store it, no need to adjust the reference count.
+ *      - If you store the reference (e.g., in a data structure), increase the reference count when storing and decrease it when removing.
+ * @param t Tensor. Must not be NULL.
+ */
+extern WL_EXPORT void wl_tensor_incref(wl_tensor_t* t);
+
+/**
+ * @brief Decrement reference count of tensor.
+ *      Decrement the strong reference count of the tensor. The tensor is destroyed when the strong reference count reaches zero.
+ *      Rule of Thumb for Reference Counting:
+ *      - If you only use the reference temporarily and do not store it, no need to adjust the reference count.
+ *      - If you store the reference (e.g., in a data structure), increase the reference count when storing and decrease it when removing.
+ * @param t Tensor. Must not be NULL.
+ * @returns True if the tensor was destroyed, false if the tensor is still alive.
+ */
+extern WL_EXPORT bool wl_tensor_decref(wl_tensor_t* t);
 
 extern WL_EXPORT void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size); /* Copy data into tensor buffer */
 extern WL_EXPORT void wl_tensor_fill(wl_tensor_t* t, float x); /* Set all tensor elements to a specific value */
