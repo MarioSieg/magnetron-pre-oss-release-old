@@ -1,4 +1,4 @@
-# Autogenered by /Users/mariosieg/Documents/projects/wavelet/python/wavelet_framework/bing_gen.py 2024-12-09 22:07:21.367047, do NOT edit!
+# Autogenered by /Users/mariosieg/Documents/projects/wavelet/python/wavelet_framework/bing_gen.py 2024-12-14 10:57:58.701162, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -62,11 +62,14 @@ extern   wl_tensor_t* wl_tensor_create_4d(wl_ctx_t* ctx, wl_dtype_t type, int64_
 extern   wl_tensor_t* wl_tensor_create_5d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
 extern   wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6);
 extern   wl_tensor_t* wl_tensor_operator(wl_ctx_t* ctx, wl_op_t op, bool inplace, wl_tensor_t** inputs, uint32_t n_inputs, const wl_op_param_t(*params)[6]);
-extern   bool wl_tensor_destroy(wl_tensor_t* t);
+extern   void wl_tensor_incref(wl_tensor_t* t);
+extern   bool wl_tensor_decref(wl_tensor_t* t);
 extern   void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size);
 extern   void wl_tensor_fill(wl_tensor_t* t, float x);
 extern   void wl_tensor_fill_random_uniform(wl_tensor_t* t, float min, float max);
 extern   void wl_tensor_fill_random_normal(wl_tensor_t* t, float mean, float stddev);
+extern   uint64_t wl_tensor_get_packed_refcounts(const wl_tensor_t* t);
+extern   void wl_tensor_retain(wl_tensor_t* t);
 extern   size_t wl_tensor_get_memory_usage(const wl_tensor_t* t);
 extern   void wl_tensor_print(const wl_tensor_t* t, bool with_header, bool with_data);
 extern   void wl_tensor_set_name(wl_tensor_t* t, const char* name);

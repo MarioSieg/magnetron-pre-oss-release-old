@@ -317,7 +317,7 @@ class Tensor:
 
     def __del__(self) -> None:
         """Destructor to release tensor resources."""
-        C.wl_tensor_destroy(self.tensor)
+        C.wl_tensor_decref(self.tensor)
         self.tensor = ffi.NULL
 
     _DISPATCH = {

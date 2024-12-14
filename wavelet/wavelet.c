@@ -1676,14 +1676,9 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     wl__tensor_node_t* node = (*wl__alloc)(NULL, sizeof(*node));
     *node = (wl__tensor_node_t) {
         .tensor = t,
-        .next = NULL
+        .next = *head
     };
-    if (!*head) *head = node;                   /* Insert at head */
-    else {
-        wl__tensor_node_t* curr = *head;
-        while (curr->next) curr = curr->next;   /* Traverse to end */
-        curr->next = node;                      /* Append */
-    }
+    *head = node;
 #endif
     return t;
 }
@@ -1727,6 +1722,9 @@ void wl_tensor_incref(wl_tensor_t* t) {
 }
 
 bool wl_tensor_decref(wl_tensor_t* t) {
+    if (t->view) { /* If tensor is a view, decrement base RC and free tensor chain */
+        wl_tensor_decref(t->view);
+    }
     if (!--t->rcb.rc_strong) { /* Strong RC reaches zero, destroy. */
         wl__tensor_destroy(t);
         return true;

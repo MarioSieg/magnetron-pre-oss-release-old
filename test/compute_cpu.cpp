@@ -52,8 +52,10 @@ static constexpr std::int64_t k_lim_broadcast = 3;
                 wl_tensor_buf_f32_to_vec(x, x_origin); \
                 \
                 wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x); \
+                wl_tensor_set_name(r, "result");  \
                 \
                 const auto* b_x = x_origin.data(); \
+                wl_tensor_set_name(x, "X"); \
                 const auto* b_r = wl_tensor_data_as_f32(r); \
                 ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r)); \
                 ASSERT_EQ(wl_tensor_data_as_f32(x), wl_tensor_data_as_f32(r)); \
