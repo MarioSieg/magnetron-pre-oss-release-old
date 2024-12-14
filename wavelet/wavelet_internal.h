@@ -384,8 +384,6 @@ struct wl_ctx_t {
         uint32_t x86_64_cpu_features[8][4];         /* x86-64 CPU features. */
 #endif
     } sys;
-    size_t tensor_rc;                               /* Total tensors created. */
-    size_t tensor_alloc_rc;                         /* Total tensors allocated. */
 #if WL__SANITIZE_RC
     wl__tensor_node_t* rc_tracked;                  /* Linked list of RC tensors for sanitize. */
 #endif
@@ -448,7 +446,7 @@ struct wl_tensor_t {
     wl_op_t op;                                     /* Opcode for operators. */
     wl_tensor_t* op_inputs[WL_MAX_INPUT_TENSORS];   /* Input tensors for operators. */
     wl_op_param_t op_params[WL_MAX_OP_PARAMS];      /* Operator parameters. */
-    wl_tensor_t* view;                              /* View tensor. */
+    wl_tensor_t* view_link;                              /* View tensor. */
     size_t view_offs;                               /* Offset in view tensor. */
     wl_tensor_t* grad;                              /* ∇f - Gradient tensor. */
     wl__perf_mon_t pmon;                            /* Performance monitor. */

@@ -990,10 +990,6 @@ void wl_ctx_destroy(wl_ctx_t* ctx) {
     }
     *head = NULL;
 #endif
-    wl__log_info("Tensors Created: %zu, Tensors Allocated: %zu", ctx->tensor_rc, ctx->tensor_alloc_rc);
-    if (wl__unlikely(ctx->tensor_alloc_rc > 0)) { /* Check for leaked tensors. */
-        wl__log_error("Leaked tensors detected: %zu", ctx->tensor_rc);
-    }
     wl__compute_device_destroy(ctx);
     memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
     (*wl__alloc)(ctx, 0);
@@ -1025,7 +1021,7 @@ uint32_t wl_ctx_get_cpu_sockets(const wl_ctx_t* ctx) { return ctx->sys.cpu_socke
 uint64_t wl_ctx_get_physical_memory_total(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_total; }
 uint64_t wl_ctx_get_physical_memory_free(const wl_ctx_t* ctx) { return ctx->sys.phys_mem_free; }
 bool wl_ctx_is_numa_system(const wl_ctx_t* ctx) { return false; /* TODO */ }
-size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx) { return ctx->tensor_rc; }
+size_t wl_ctx_get_total_tensors_created(const wl_ctx_t* ctx) { return 0; /* TODO */ }
 
 void wl_ctx_profile_start_recording(wl_ctx_t* ctx) {
     if (ctx->profiler_enabled) return;
@@ -1618,9 +1614,9 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     wl__assert(dims != NULL && rank >= 0 && rank <= WL_MAX_DIMS, "Rank must be within (0, %d]", WL_MAX_DIMS);
     wl__assert2(view_offs == 0); /* Not respected at the moment. */
     if (view) {
-        if (view->view) { /* Traverse view chain and accumulate offset */
+        if (view->view_link) { /* Traverse view chain and accumulate offset */
             view_offs += view->view_offs;
-            view = view->view;
+            view = view->view_link;
         }
         wl_tensor_incref(view); /* Increment view tensor strong RC */
     }
@@ -1654,7 +1650,7 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
         .op = WL_OP_NOP,
         .op_inputs = {0},
         .op_params = {0},
-        .view = view,
+        .view_link = view,
         .view_offs = view_offs,
         .grad = NULL,
         .pmon = {0},
@@ -1669,8 +1665,6 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     #pragma GCC unroll 5
     for (uint32_t i=1; i < WL_MAX_DIMS; ++i)    /* Calculate strides and check for overflow. */
         wl__assert2(!wl__imull64_ov(t->strides[i-1], t->shape[i-1], t->strides+i));
-    ++ctx->tensor_rc;
-    if (!view) ++ctx->tensor_alloc_rc;
 #if WL__SANITIZE_RC /* If tensor RC sanitize is enabled, insert into tracking list */
     wl__tensor_node_t** head = &ctx->rc_tracked;
     wl__tensor_node_t* node = (*wl__alloc)(NULL, sizeof(*node));
@@ -1684,8 +1678,8 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
 }
 
 static void wl__tensor_destroy(wl_tensor_t* t) {
-    wl_ctx_t* ctx = t->ctx;
 #if WL__SANITIZE_RC  /* If tensor RC sanitize is enabled, invoke destructor and erase from tracking list */
+    wl_ctx_t* ctx = t->ctx;
     void (*dtor)(wl_tensor_t*) = t->rcb.dtor;  /* Invoke Debug destructor. */
     if (dtor) (*dtor)(t);
     wl__tensor_node_t** head = &ctx->rc_tracked;
@@ -1710,10 +1704,8 @@ static void wl__tensor_destroy(wl_tensor_t* t) {
         wl__icompute_device_t* dvc = t->ctx->device;
         void (*dtor)(wl__icompute_device_t*, wl__itensor_storage_buffer*) = dvc->free_storage;
         (*dtor)(dvc, t->storage);
-        --ctx->tensor_alloc_rc;
     }
     (*wl__alloc)(t, 0); /* Free tensor struct. */
-    --ctx->tensor_rc;
 }
 
 void wl_tensor_incref(wl_tensor_t* t) {
@@ -1722,8 +1714,8 @@ void wl_tensor_incref(wl_tensor_t* t) {
 }
 
 bool wl_tensor_decref(wl_tensor_t* t) {
-    if (t->view) { /* If tensor is a view, decrement base RC and free tensor chain */
-        wl_tensor_decref(t->view);
+    if (t->view_link) { /* If tensor is a view, decrement base RC and free tensor chain */
+        wl_tensor_decref(t->view_link);
     }
     if (!--t->rcb.rc_strong) { /* Strong RC reaches zero, destroy. */
         wl__tensor_destroy(t);
