@@ -1614,9 +1614,9 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
     wl__assert(dims != NULL && rank >= 0 && rank <= WL_MAX_DIMS, "Rank must be within (0, %d]", WL_MAX_DIMS);
     wl__assert2(view_offs == 0); /* Not respected at the moment. */
     if (view) {
-        if (view->view_link) { /* Traverse view chain and accumulate offset */
+        if (view->view_uplink) { /* Traverse view chain and accumulate offset */
             view_offs += view->view_offs;
-            view = view->view_link;
+            view = view->view_uplink;
         }
         wl_tensor_incref(view); /* Increment view tensor strong RC */
     }
@@ -1650,7 +1650,7 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
         .op = WL_OP_NOP,
         .op_inputs = {0},
         .op_params = {0},
-        .view_link = view,
+        .view_uplink = view,
         .view_offs = view_offs,
         .grad = NULL,
         .pmon = {0},
@@ -1714,8 +1714,8 @@ void wl_tensor_incref(wl_tensor_t* t) {
 }
 
 bool wl_tensor_decref(wl_tensor_t* t) {
-    if (t->view_link) { /* If tensor is a view, decrement base RC and free tensor chain */
-        wl_tensor_decref(t->view_link);
+    if (t->view_uplink) { /* If tensor is a view, decrement base RC and free tensor chain */
+        wl_tensor_decref(t->view_uplink);
     }
     if (!--t->rcb.rc_strong) { /* Strong RC reaches zero, destroy. */
         wl__tensor_destroy(t);
