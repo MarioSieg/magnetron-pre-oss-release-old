@@ -2308,35 +2308,35 @@ static void (*wl__blas_dispatch_table_backward[WL_OP__COUNT])(const wl__cpu_thre
     [WL_OP_MATMUL] = &wl__blas_matmul_f32
 };
 
-static WL__HOTPROC void wl__cpu_exec_fwd(wl__icompute_device_t* dvc, wl_tensor_t* root) {
+static WL__HOTPROC void wl__cpu_exec_fwd(wl__compute_device_t* dvc, wl_tensor_t* root) {
     wl__cpu_thread_local_ctx_t* bci = (wl__cpu_thread_local_ctx_t*)(dvc+1); // todo
     wl__blas_dispatch_table_forward[root->op](bci, root, (const wl_tensor_t**)root->op_inputs);
 }
 
-static WL__HOTPROC void wl__cpu_exec_bwd(wl__icompute_device_t* dvc, wl_tensor_t* root) {
+static WL__HOTPROC void wl__cpu_exec_bwd(wl__compute_device_t* dvc, wl_tensor_t* root) {
     wl__cpu_thread_local_ctx_t* bci = (wl__cpu_thread_local_ctx_t*)(dvc+1); // todo
     wl__blas_dispatch_table_backward[root->op](bci, root, (const wl_tensor_t**)root->op_inputs);
 }
 
-static void wl__cpu_buf_set(wl__itensor_storage_buffer* sto, size_t offs, uint8_t x) {
+static void wl__cpu_buf_set(wl__storage_buffer* sto, size_t offs, uint8_t x) {
     wl__assert2(sto->base+offs <= sto->base+sto->size);
     memset((void*)(sto->base+offs), x, sto->size-offs); /* On CPU just plain old memset with offset. */
 }
 
-static void wl__cpu_buf_cpy_host_device(wl__itensor_storage_buffer* sto, size_t offs, const void* src, size_t n) {
+static void wl__cpu_buf_cpy_host_device(wl__storage_buffer* sto, size_t offs, const void* src, size_t n) {
     wl__assert2(sto->base+offs+n <= sto->base+sto->size);
     memcpy((void*)(sto->base+offs), src, n); /* On CPU just plain old memcpy with offset. */
 }
 
-static void wl__cpu_buf_cpy_device_host(wl__itensor_storage_buffer* sto, size_t offs, void* dst, size_t n) {
+static void wl__cpu_buf_cpy_device_host(wl__storage_buffer* sto, size_t offs, void* dst, size_t n) {
     wl__assert2(sto->base+offs+n <= sto->base+sto->size);
     memcpy(dst, (void*)(sto->base+offs), n); /* On CPU just plain old memcpy with offset. */
 }
 
-static wl__itensor_storage_buffer* wl__cpu_alloc_storage(wl__icompute_device_t* host, size_t size, size_t align) {
+static wl__storage_buffer* wl__cpu_alloc_storage(wl__compute_device_t* host, size_t size, size_t align) {
     wl__assert2(size);
-    wl__itensor_storage_buffer* sto = (*wl__alloc)(NULL, sizeof(*sto));
-    *sto = (wl__itensor_storage_buffer){
+    wl__storage_buffer* sto = (*wl__alloc)(NULL, sizeof(*sto));
+    *sto = (wl__storage_buffer){
         .base = (uintptr_t)wl__alloc_aligned(size, align), /* TODO: Caching allocator */
         .size = size,
         .alignment = align,
@@ -2348,14 +2348,14 @@ static wl__itensor_storage_buffer* wl__cpu_alloc_storage(wl__icompute_device_t* 
     return sto;
 }
 
-static void wl__cpu_free_storage(wl__icompute_device_t* dvc, wl__itensor_storage_buffer* buf) {
+static void wl__cpu_free_storage(wl__compute_device_t* dvc, wl__storage_buffer* buf) {
     wl__free_aligned((void*)buf->base);
     (*wl__alloc)(buf, 0);
 }
 
-static wl__icompute_device_t* wl__cpu_init_interface(wl_ctx_t* ctx) {
-    wl__icompute_device_t* dvc = (*wl__alloc)(NULL, sizeof(*dvc));
-    *dvc = (wl__icompute_device_t){
+static wl__compute_device_t* wl__cpu_init_interface(wl_ctx_t* ctx) {
+    wl__compute_device_t* dvc = (*wl__alloc)(NULL, sizeof(*dvc));
+    *dvc = (wl__compute_device_t){
         .name = "CPU",
         .impl = NULL,
         .is_async = false,
@@ -2369,16 +2369,16 @@ static wl__icompute_device_t* wl__cpu_init_interface(wl_ctx_t* ctx) {
     return dvc;
 }
 
-static void wl__cpu_release_interface(wl__icompute_device_t* ctx) {
+static void wl__cpu_release_interface(wl__compute_device_t* ctx) {
     (*wl__alloc)(ctx, 0);
 }
 
-wl__icompute_device_t* wl__init_device_cpu(wl_ctx_t* ctx, uint32_t num_threads) {
+wl__compute_device_t* wl__init_device_cpu(wl_ctx_t* ctx, uint32_t num_threads) {
     num_threads = num_threads ? num_threads : wl__max(1, ctx->sys.cpu_virtual_cores);
-    wl__icompute_device_t* dvc = wl__cpu_init_interface(ctx);
+    wl__compute_device_t* dvc = wl__cpu_init_interface(ctx);
     return dvc;
 }
 
-void wl__destroy_device_cpu(wl__icompute_device_t* dvc) {
+void wl__destroy_device_cpu(wl__compute_device_t* dvc) {
     wl__cpu_release_interface(dvc);
 }

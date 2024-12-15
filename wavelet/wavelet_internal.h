@@ -319,30 +319,30 @@ static WL__AINLINE void* wl__pincr(void** p, size_t sz, size_t align) {
 }
 
 /* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
-typedef struct wl__icompute_device_t wl__icompute_device_t;
+typedef struct wl__compute_device_t wl__compute_device_t;
 
 /* Buffer interface on a compute device */
-typedef struct wl__itensor_storage_buffer wl__itensor_storage_buffer;
-struct wl__itensor_storage_buffer {
+typedef struct wl__storage_buffer wl__storage_buffer;
+struct wl__storage_buffer {
     uintptr_t base;                                                                                     /* Pointer to buffer on device. Never access directly. */
     size_t size;                                                                                        /* Size of buffer in bytes. */
     size_t alignment;                                                                                   /* Alignment of buffer. */
-    wl__icompute_device_t* host;                                                                        /* Host device. */
-    void (*set)(wl__itensor_storage_buffer* sto, size_t offs, uint8_t x);                               /* Memset buffer. */
-    void (*cpy_host_device)(wl__itensor_storage_buffer* sto, size_t offs, const void* src, size_t n);   /* Copy data from host to device. */
-    void (*cpy_device_host)(wl__itensor_storage_buffer* sto, size_t offs, void* dst, size_t n);         /* Copy data from device to host. */
+    wl__compute_device_t* host;                                                                        /* Host device. */
+    void (*set)(wl__storage_buffer* sto, size_t offs, uint8_t x);                               /* Memset buffer. */
+    void (*cpy_host_device)(wl__storage_buffer* sto, size_t offs, const void* src, size_t n);   /* Copy data from host to device. */
+    void (*cpy_device_host)(wl__storage_buffer* sto, size_t offs, void* dst, size_t n);         /* Copy data from device to host. */
 };
 
 /* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
-struct wl__icompute_device_t {
+struct wl__compute_device_t {
     char name[128];                                                         /* Device name. */
     void* impl;                                                             /* Device specific implementation, if applicable. */
     bool is_async;                                                          /* If device is async. */
     wl_compute_device_type_t type;                                          /* Device type enum. */
-    void (*eager_exec_fwd)(wl__icompute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op forward. */
-    void (*eager_exec_bwd)(wl__icompute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op backwards. */
-    wl__itensor_storage_buffer* (*alloc_storage)(wl__icompute_device_t* dvc, size_t size, size_t align);
-    void (*free_storage)(wl__icompute_device_t* dvc, wl__itensor_storage_buffer* buf);
+    void (*eager_exec_fwd)(wl__compute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op forward. */
+    void (*eager_exec_bwd)(wl__compute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op backwards. */
+    wl__storage_buffer* (*alloc_storage)(wl__compute_device_t* dvc, size_t size, size_t align);
+    void (*free_storage)(wl__compute_device_t* dvc, wl__storage_buffer* buf);
 };
 
 /* Profiling performance monitor per op. */
@@ -406,7 +406,7 @@ struct wl_ctx_t {
     size_t sh_len;                                  /* Number of shutdown hooks. */
     size_t sh_cap;                                  /* Maximum number of shutdown hooks. */
     wl_compute_device_type_t device_type;           /* Active compute device. */
-    wl__icompute_device_t* device;                  /* Active compute device. */
+    wl__compute_device_t* device;                  /* Active compute device. */
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], wl_color_channels_t);    /* Image loader. stb_image by default, you can plug-in your own. */
     void (*image_load_free_fn)(uint8_t*);                                           /* Image loader free function.  stb_image by default, you can plug-in your own. */
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);       /* Image saver. stb_image by default, you can plug-in your own. */
@@ -440,7 +440,7 @@ struct wl_tensor_t {
     int64_t shape[WL_MAX_DIMS];                     /* Shape of the tensor. */
     int64_t strides[WL_MAX_DIMS];                   /* Strides of the tensor. We store the strides in element counts and NOT in bytes. */
     wl_dtype_t dtype;                               /* Data type of the tensor. */
-    wl__itensor_storage_buffer* storage;            /* Storage buffer. */
+    wl__storage_buffer* storage;            /* Storage buffer. */
     int64_t num_elems;                              /* Number of elements in the tensor. */
     wl__tensor_flags_t flags;                       /* Tensor flags. */
     wl_op_t op;                                     /* Opcode for operators. */

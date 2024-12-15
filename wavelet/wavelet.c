@@ -1626,9 +1626,9 @@ static wl_tensor_t* wl__tensor_create(wl_ctx_t* ctx, wl_dtype_t type, const int6
         wl__assert2(dims[i] > 0 && !wl__imull64_ov(dims[i], elems_total, &elems_total)); /* Overflow in buffer size. Max: INT64_MAX. Reduce dimensions. */
     int64_t bytes_total = elems_total*scalar_size;
     wl__assert2(!view || !bytes_total || bytes_total + view_offs <= wl_tensor_data_size(view)); /* Slice must be within viewed tensor data range. *//* Allocate memory for tensor struct on CPU RAM. */
-    wl__icompute_device_t* dvc = ctx->device;
-    wl__itensor_storage_buffer* (*allocator)(wl__icompute_device_t*, size_t, size_t) = dvc->alloc_storage;
-    wl__itensor_storage_buffer* sto = view ? view->storage : (*allocator)(dvc, bytes_total, scalar_size);  /* Allocate or reference memory for tensor data on compute device */
+    wl__compute_device_t* dvc = ctx->device;
+    wl__storage_buffer* (*allocator)(wl__compute_device_t*, size_t, size_t) = dvc->alloc_storage;
+    wl__storage_buffer* sto = view ? view->storage : (*allocator)(dvc, bytes_total, scalar_size);  /* Allocate or reference memory for tensor data on compute device */
     wl_tensor_t* t = (*wl__alloc)(NULL, sizeof(*t));
     memset(t, 0, sizeof(*t));
     *t = (wl_tensor_t) {
@@ -1701,8 +1701,8 @@ static void wl__tensor_destroy(wl_tensor_t* t) {
     }
 #endif
     if (t->flags & WL__TFLAG_OWNER) { /* Free device memory if tensor owns it. */
-        wl__icompute_device_t* dvc = t->ctx->device;
-        void (*dtor)(wl__icompute_device_t*, wl__itensor_storage_buffer*) = dvc->free_storage;
+        wl__compute_device_t* dvc = t->ctx->device;
+        void (*dtor)(wl__compute_device_t*, wl__storage_buffer*) = dvc->free_storage;
         (*dtor)(dvc, t->storage);
     }
     (*wl__alloc)(t, 0); /* Free tensor struct. */
@@ -1748,12 +1748,12 @@ wl_tensor_t* wl_tensor_create_6d(wl_ctx_t* ctx, wl_dtype_t type, int64_t d1, int
     return wl__tensor_create(ctx, type, (int64_t[]) {d1, d2, d3, d4, d5, d6}, 6, NULL, 0);
 }
 
-static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl__icompute_device_t* dvc, wl_graph_eval_order_t ord) {
+static void WL__HOTPROC wl__op_exec(wl_tensor_t* R, wl__compute_device_t* dvc, wl_graph_eval_order_t ord) {
     wl__perf_mon_t* pmon = &R->pmon;
     wl__op_perf_info_t (*pmon_ops)[WL_OP__COUNT] = &R->ctx->op_perf_mons_total;
     wl__op_perf_info_t* pmon_op = (*pmon_ops)+R->op;
     uint64_t start = R->ctx->profiler_enabled ? wl__hpc_clock_ns() : 0;    /* Profiling monitoring */
-    void (*exec)(wl__icompute_device_t*, wl_tensor_t*) = ord == WL_GRAPH_EVAL_ORDER_FORWARD ? dvc->eager_exec_fwd : dvc->eager_exec_bwd;
+    void (*exec)(wl__compute_device_t*, wl_tensor_t*) = ord == WL_GRAPH_EVAL_ORDER_FORWARD ? dvc->eager_exec_fwd : dvc->eager_exec_bwd;
     (*exec)(dvc, R); /* Dispatch to backend. */
     if (!R->ctx->profiler_enabled) return; /* Profiling disabled. */
     pmon->elapsed_ns = wl__hpc_clock_elapsed_ns(start);
@@ -1823,13 +1823,13 @@ void wl_tensor_set_arg(wl_tensor_t* t, size_t slot, wl_tensor_t* arg) {
 
 void wl_tensor_copy_buffer_from(wl_tensor_t* t, const void* data, size_t size) {
     wl__assert(size == (size_t) wl_tensor_data_size(t), "Buffer size mismatch: %zu != %lld", size, wl_tensor_data_size(t));
-    wl__itensor_storage_buffer* sto = t->storage;
+    wl__storage_buffer* sto = t->storage;
     (*sto->cpy_host_device)(sto, 0, data, size);
 }
 
 void wl_tensor_fill(wl_tensor_t* t, float x) {
     if (x == 0.0f) {
-        wl__itensor_storage_buffer* sto = t->storage;
+        wl__storage_buffer* sto = t->storage;
         (*sto->set)(sto, 0, 0); /* Zero out the buffer. */
         return;
     }
@@ -2063,7 +2063,7 @@ float wl_tensor_get_scalar_physical_index(const wl_tensor_t* t, int64_t d0, int6
     switch (t->dtype) {
         case WL_DTYPE_F32: {
             float r;
-            wl__itensor_storage_buffer* sto = t->storage;
+            wl__storage_buffer* sto = t->storage;
             (*sto->cpy_device_host)(sto, sizeof(r)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &r, sizeof(r));
             return r;
         }
@@ -2076,7 +2076,7 @@ void wl_tensor_set_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1,
     wl__load_local_storage_group(t, s, strides);
     switch (t->dtype) {
         case WL_DTYPE_F32: {
-            wl__itensor_storage_buffer* sto = t->storage;
+            wl__storage_buffer* sto = t->storage;
             (*sto->cpy_host_device)(sto, sizeof(x)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &x, sizeof(x));
         } break;
         default: wl__panic("Unsupported data type: %s", wl_dtype_info_of(t->dtype)->name);
@@ -2092,7 +2092,7 @@ float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t v_idx) {
     switch (t->dtype) {
         case WL_DTYPE_F32: {
             float r;
-            wl__itensor_storage_buffer* sto = t->storage;
+            wl__storage_buffer* sto = t->storage;
             (*sto->cpy_device_host)(sto, sizeof(r)*v_idx, &r, sizeof(r));
             return r;
         }
@@ -2110,7 +2110,7 @@ void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x) 
     }
     switch (t->dtype) {
         case WL_DTYPE_F32: {
-            wl__itensor_storage_buffer* sto = t->storage;
+            wl__storage_buffer* sto = t->storage;
             (*sto->cpy_host_device)(sto, sizeof(x)*v_idx, &x, sizeof(x));
         } break;
         default:
