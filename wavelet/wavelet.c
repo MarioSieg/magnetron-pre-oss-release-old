@@ -30,8 +30,8 @@
 #include "wavelet_internal.h"
 #include "wavelet_cpu.h"
 #ifdef WL_ENABLE_CUDA
-extern wl__icompute_device_t* wl__init_device_cuda(wl_ctx_t* ctx); /* Initialize GPU compute device. */
-extern void wl__destroy_device_cuda(wl__icompute_device_t* dvc); /* Destroy GPU compute device. */
+extern wl__compute_device_t* wl__init_device_cuda(wl_ctx_t* ctx); /* Initialize GPU compute device. */
+extern void wl__destroy_device_cuda(wl__compute_device_t* dvc); /* Destroy GPU compute device. */
 #endif
 
 #include <stdio.h>

@@ -11,8 +11,8 @@
 #include <cuda.h>
 
 namespace wl::cuda {
-    extern "C" auto wl__init_device_cuda(wl_ctx_t* ctx) -> wl__icompute_device_t*; /* Initialize GPU compute device. (Invoked from wavelet C core) */
-    extern "C" auto wl__destroy_device_cuda(wl__icompute_device_t* dvc) -> void; /* Destroy GPU compute device. (Invoked from wavelet C core) */
+    extern "C" auto wl__init_device_cuda(wl_ctx_t* ctx) -> wl__compute_device_t*; /* Initialize GPU compute device. (Invoked from wavelet C core) */
+    extern "C" auto wl__destroy_device_cuda(wl__compute_device_t* dvc) -> void; /* Destroy GPU compute device. (Invoked from wavelet C core) */
 
     constexpr std::size_t max_devices = 32;
     constexpr std::uint32_t warp_size = 32;

@@ -2183,7 +2183,7 @@ static void WL__HOTPROC wl__blas_matmul_f32(
             }
         }
     }
-#elif 1 /* Tiled matrix multiplication. */
+#elif 0 /* Tiled matrix multiplication. */
     const int64_t TILE_I = 256;
     const int64_t TILE_K = 256;
     const int64_t TILE_J = 256;
@@ -2335,9 +2335,11 @@ static void wl__cpu_buf_cpy_device_host(wl__storage_buffer* sto, size_t offs, vo
 
 static wl__storage_buffer* wl__cpu_alloc_storage(wl__compute_device_t* host, size_t size, size_t align) {
     wl__assert2(size);
-    wl__storage_buffer* sto = (*wl__alloc)(NULL, sizeof(*sto));
+    wl__storage_buffer* sto = (*wl__alloc)(NULL, sizeof(*sto)); /* TODO: Caching allocator */
+    void* block = wl__alloc_aligned(size, align);
+    memset(block, 0, size); /* Zero out */
     *sto = (wl__storage_buffer){
-        .base = (uintptr_t)wl__alloc_aligned(size, align), /* TODO: Caching allocator */
+        .base = (uintptr_t)block,
         .size = size,
         .alignment = align,
         .host = host,

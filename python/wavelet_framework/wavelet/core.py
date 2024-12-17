@@ -341,7 +341,6 @@ class Tensor:
 
     @staticmethod
     def operator(op: Operator, inplace: bool = False, params: list[OpParam] | None = None, *args) -> 'Tensor':
-        inplace = False
         """Applies an operation to one or more tensors"""
         c_para: ffi.CData
         c_para_ptr: ffi.CData = ffi.NULL
