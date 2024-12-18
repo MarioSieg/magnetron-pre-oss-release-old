@@ -7,10 +7,14 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 add_subdirectory(googletest)
 
 file(GLOB_RECURSE TEST_SOURCES *.cpp)
-add_executable(wavelet_test ${TEST_SOURCES} ../wavelet/wavelet.hpp)
-target_link_libraries(wavelet_test wavelet)
-target_include_directories(wavelet_test PRIVATE ../wavelet)
+add_executable(magnetron_test ${TEST_SOURCES})
+target_link_libraries(magnetron_test magnetron)
+target_include_directories(magnetron_test PRIVATE ../magnetron)
 target_link_libraries(
-    wavelet_test
+    magnetron_test
     GTest::gtest_main
 )
+
+if (${MAGNETRON_ENABLE_CUDA})
+    target_compile_definitions(magnetron_test PRIVATE MAG_ENABLE_CUDA)
+endif()

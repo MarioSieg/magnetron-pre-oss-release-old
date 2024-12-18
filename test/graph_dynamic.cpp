@@ -3,34 +3,40 @@
 #include "prelude.hpp"
 
 TEST(graph_dynamic, simple) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_ctx_set_exec_mode(ctx, WL_EXEC_MODE_EAGER);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_set_exec_mode(ctx, MAG_EXEC_MODE_EAGER);
 
     // ((W * X) + B).relu()
 
-    auto* W = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 2, 2);
-    wl_tensor_fill(W, 0.6f);
-    wl_tensor_set_name(W, "W");
+    auto* W = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 2, 2);
+    mag_tensor_fill(W, 0.6f);
+    mag_tensor_set_name(W, "W");
 
-    auto* X = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 2, 2);
-    wl_tensor_fill(X, 2.11f);
-    wl_tensor_set_name(X, "X");
+    auto* X = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 2, 2);
+    mag_tensor_fill(X, 2.11f);
+    mag_tensor_set_name(X, "X");
 
-    auto* WX = wl_tensor_emit_op_va(ctx, WL_OP_MUL, W, X);
-    auto* buf = wl_tensor_data_as_f32(WX);
-    for (std::int64_t i=0; i < wl_tensor_num_elements(WX); ++i) { // op must already be executed
+    auto* WX = mag_tensor_emit_op_va(ctx, MAG_OP_MUL, W, X);
+    auto* buf = static_cast<float*>(mag_tensor_data_ptr(WX));
+    for (std::int64_t i=0; i < mag_tensor_numel(WX); ++i) { // op must already be executed
         ASSERT_EQ(buf[i], 0.6f*2.11f);
     }
 
-    auto* B = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 2, 2);
-    wl_tensor_fill(B, 0.1f);
-    wl_tensor_set_name(B, "B");
+    auto* B = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 2, 2);
+    mag_tensor_fill(B, 0.1f);
+    mag_tensor_set_name(B, "B");
 
-    auto* WXB = wl_tensor_emit_op_va(ctx, WL_OP_ADD, WX, B);
-    buf = wl_tensor_data_as_f32(WXB);
-    for (std::int64_t i=0; i < wl_tensor_num_elements(WXB); ++i) { // op must already be executed
+    auto* WXB = mag_tensor_emit_op_va(ctx, MAG_OP_ADD, WX, B);
+    buf = static_cast<float*>(mag_tensor_data_ptr(WXB));
+    for (std::int64_t i=0; i < mag_tensor_numel(WXB); ++i) { // op must already be executed
         ASSERT_EQ(buf[i], 0.6f*2.11f + 0.1f);
     }
 
-    wl_ctx_destroy(ctx);
+    mag_tensor_decref(WXB);
+    mag_tensor_decref(B);
+    mag_tensor_decref(WX);
+    mag_tensor_decref(W);
+    mag_tensor_decref(X);
+
+    mag_ctx_destroy(ctx);
 }

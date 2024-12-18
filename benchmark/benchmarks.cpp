@@ -4,11 +4,11 @@
 
 #include <functional>
 
-#include <wavelet.h>
+#include <magnetron.h>
 #define ANKERL_NANOBENCH_IMPLEMENT
 #include <nanobench.h>
 
-static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(wl_ctx_t* ctx) -> wl_tensor_t*>&& callback) -> void;
+static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(mag_ctx_t* ctx) -> mag_tensor_t*>&& callback) -> void;
 
 auto main() -> int {
     ankerl::nanobench::Bench matmul_bench {};
@@ -21,28 +21,30 @@ auto main() -> int {
         .relative(true);
     matmul_bench.performanceCounters(true);
 
-    run_bench(matmul_bench, "Tensor Add", [](wl_ctx_t* ctx) -> wl_tensor_t* {
+    run_bench(matmul_bench, "Tensor Add", [](mag_ctx_t* ctx) -> mag_tensor_t* {
         constexpr std::int64_t N = 1024;
 
-        wl_tensor_t* A = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N, N);
-        wl_tensor_fill(A, 1.0f);
+        mag_tensor_t* A = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, N, N);
+        mag_tensor_fill(A, 1.0f);
 
-        wl_tensor_t* B = wl_tensor_create_2d(ctx, WL_DTYPE_F32, N, N);
-        wl_tensor_fill(A, 1.0f);
+        mag_tensor_t* B = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, N, N);
+        mag_tensor_fill(A, 1.0f);
 
-        wl_tensor_t* inputs[2] = {A, B};
-        wl_tensor_t* C = wl_tensor_operator(ctx, WL_OP_ADD, false, inputs, 2, nullptr);
+        mag_tensor_t* inputs[2] = {A, B};
+        mag_tensor_t* C = mag_tensor_operator(ctx, MAG_OP_ADD, false, inputs, 2, nullptr);
+
+        mag_tensor_decref(A);
+        mag_tensor_decref(B);
+        mag_tensor_decref(C);
         return C;
     });
 }
 
-static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(wl_ctx_t* ctx) -> wl_tensor_t*>&& callback) -> void {
-    wl_ctx_t* ctx = wl_ctx_create2(4ull << 30);
-    wl_ctx_set_exec_mode(ctx, WL_EXEC_MODE_DEFERRED);
-    wl_compute_graph_t* gra = wl_compute_graph_compile(ctx, std::invoke(callback, ctx), WL_GRAPH_EVAL_ORDER_FORWARD, nullptr);
-    b.run(name, [gra]() -> void {
-        wl_compute_graph_execute(gra);
+static auto run_bench(ankerl::nanobench::Bench& b, const char* name, std::function<auto(mag_ctx_t* ctx) -> mag_tensor_t*>&& callback) -> void {
+    mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_CPU);
+    b.run(name, [&]() -> void {
+        std::invoke(callback, ctx);
     });
-    ankerl::nanobench::doNotOptimizeAway(gra);
-    wl_ctx_destroy(ctx);
+    ankerl::nanobench::doNotOptimizeAway(ctx);
+    mag_ctx_destroy(ctx);
 }

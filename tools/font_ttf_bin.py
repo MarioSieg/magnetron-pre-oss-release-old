@@ -8,7 +8,7 @@ def main():
     with open(TARGET, 'rb') as f:
         data = f.read()
         with open(DST, 'w') as dst:
-            dst.write(f'const uint8_t wl__font_data[{len(data)}] = {{')
+            dst.write(f'const uint8_t mag__font_data[{len(data)}] = {{')
             for i in range(len(data)):
                 if i % 32 == 0:
                     dst.write('\n\t')
