@@ -69,49 +69,33 @@ jobs:
         run: ctest --build-config ${{ matrix.build_type }} --verbose
 
       - name: Setup Python Virtual Environment
+        shell: bash
         run: |
           python3 -m venv .venv
-          if [ -f ".venv/bin/activate" ]; then
-            source .venv/bin/activate
-          else
-            .venv\Scripts\activate
-          fi
+          . .venv/bin/activate
           pip install --upgrade pip
 
       - name: Build Python wheel
+        shell: bash
         run: |
-          if [ -f ".venv/bin/activate" ]; then
-            source .venv/bin/activate
-          else
-            .venv\Scripts\activate
-          fi
-          cd wavelet/python/wavelet_framework
+          . .venv/bin/activate
+          cd ${{ github.workspace }}/python/magnetron_framework
           pip wheel -w dist .
 
       - name: Install Python wheel
+        shell: bash
         run: |
-          if [ -f ".venv/bin/activate" ]; then
-            source .venv/bin/activate
-          else
-            .venv\Scripts\activate
-          fi
-          pip install wavelet/python/wavelet_framework/dist/*.whl
+          . .venv/bin/activate
+          pip install ${{ github.workspace }}/python/magnetron_framework/dist/*.whl
 
       - name: Install Pytest
+        shell: bash
         run: |
-          if [ -f ".venv/bin/activate" ]; then
-            source .venv/bin/activate
-          else
-            .venv\Scripts\activate
-          fi
+          . .venv/bin/activate
           pip install pytest
 
       - name: Run Python Tests
+        shell: bash
         run: |
-          if [ -f ".venv/bin/activate" ]; then
-            source .venv/bin/activate
-          else
-            .venv\Scripts\activate
-          fi
-          python -m pytest -v wavelet/python/tests
-      
+          . .venv/bin/activate
+          python -m pytest ${{ github.workspace }}/python/tests/tests.py
