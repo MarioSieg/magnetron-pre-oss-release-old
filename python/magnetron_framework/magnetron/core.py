@@ -724,7 +724,7 @@ class Tensor:
                     flattened.extend(flat)
                 first_shape = shapes[0]
                 for s in shapes:
-                    assert s == first_shape, "All sub-lists must have the same shape"
+                    assert s == first_shape, 'All sub-lists must have the same shape'
                 return (len(nested),) + first_shape, flattened
 
         shape, flattened_data = flatten_nested_lists(data)

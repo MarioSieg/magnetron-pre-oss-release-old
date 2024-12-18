@@ -1,4 +1,14 @@
-# (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
+# (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
+
+def test_import_magnetron():
+    import magnetron
+    assert magnetron.__version__ is not None
+
+
+def test_simple_exec():
+    import magnetron as mag
+    a = mag.Tensor.const([1, 4, 1])
+    assert a.max().scalar() == 4
 
 from magnetron import *
 
@@ -75,7 +85,7 @@ def test_tensor_unary_ops():
 def test_save_and_load(tmp_path):
     # Test saving and loading a tensor
     t = Tensor.const([[1, 2], [3, 4]])
-    file_path = tmp_path / "test_tensor.magnetron"
+    file_path = tmp_path / 'test_tensor.magnetron'
     t.save(str(file_path))
     loaded = Tensor.load(str(file_path))
     assert loaded.shape == t.shape
@@ -85,7 +95,7 @@ def test_operator_metadata():
     # Test operator metadata
     op = Operator.ADD
     assert op.is_binary is True
-    assert op.name == "add"
-    assert op.mnemonic == "+"
+    assert op.name == 'ADD'
+    assert op.mnemonic == '+'
     assert op.argument_count == 2
     assert op.supports_inplace is True
