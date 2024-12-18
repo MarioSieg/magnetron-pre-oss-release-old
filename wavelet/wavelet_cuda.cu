@@ -6,56 +6,56 @@
 #include <cstdio>
 
 namespace wl::cuda {
-    extern "C" [[noreturn]] auto wl__panic(const char* msg, ...) -> void;
+    extern "C" [[noreturn]] auto wl_panic(const char* msg, ...) -> void;
 
     /* Driver result check. */
-    #define wl__cu_chk_rdv(expr) \
+    #define wl_cu_chk_rdv(expr) \
         do { \
         if (auto rrr {(expr)}; rrr != CUDA_SUCCESS) [[unlikely]] { \
             const char* err_str = "?"; \
             cuGetErrorString(rrr, &err_str); \
-            wl__panic(#expr, __func__, __FILE__, __LINE__, err_str); \
+            wl_panic(#expr, __func__, __FILE__, __LINE__, err_str); \
         } \
     } while (0)
 
     /* Runtime result check. */
-    #define wl__cu_chk_rt(expr) \
+    #define wl_cu_chk_rt(expr) \
         do { \
             if (auto rrr {(expr)}; rrr != cudaSuccess) [[unlikely]] { \
-                wl__panic(#expr, __func__, __FILE__, __LINE__, cudaGetErrorString(rrr)); \
+                wl_panic(#expr, __func__, __FILE__, __LINE__, cudaGetErrorString(rrr)); \
             } \
         } while (0)
 
-    #define wl__cu_assert(expr, msg, ...) \
+    #define wl_cu_assert(expr, msg, ...) \
         if (!(expr)) [[unlikely]] { \
-            wl__panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
+            wl_panic("%s:%d Assertion failed: " #expr " <- " msg, __FILE__, __LINE__, ## __VA_ARGS__);\
         }
-    #define wl__cu_assert2(expr) wl__cu_assert(expr, "")
+    #define wl_cu_assert2(expr) wl_cu_assert(expr, "")
 
     static constinit bool s_is_init {};
     static constinit std::array<physical_device, max_devices> s_devices {};
     static constinit std::int32_t s_num_devices {};
 
-    auto wl__init_device_cuda([[maybe_unused]] wl_ctx_t* ctx) -> wl__compute_device_t* {
+    auto wl_init_device_cuda([[maybe_unused]] wl_ctx_t* ctx) -> wl_compute_device_t* {
         std::int32_t active_device_id {0}; // TODO: Implement device selection.
         std::span<const physical_device> devices {cuda_init()};
         if (devices.empty()) { /* No devices available or initialization failed, let runtime fallback to other compute device. */
-            wl__log_error("No CUDA devices available, using CPU processing");
+            wl_log_error("No CUDA devices available, using CPU processing");
             return nullptr; /* Return null device. */
         }
         if (active_device_id < 0 || active_device_id >= devices.size()) {
-            wl__log_error("Invalid device ID %d, using device 0", active_device_id);
+            wl_log_error("Invalid device ID %d, using device 0", active_device_id);
             active_device_id = 0;
         }
-        auto* dvc {static_cast<wl__compute_device_t*>((*wl__alloc)(nullptr, sizeof(wl__compute_device_t)))};
+        auto* dvc {static_cast<wl_compute_device_t*>((*wl_alloc)(nullptr, sizeof(wl_compute_device_t)))};
         set_active_device_by_id(active_device_id);
         const auto& active_dvc {get_active_device()};
         std::snprintf(dvc->name, sizeof(dvc->name), "%s", active_dvc.name.data());
         return dvc;
     }
 
-    void wl__destroy_device_cuda(wl__compute_device_t* dvc) {
-        (*wl__alloc)(dvc, 0);
+    void wl_destroy_device_cuda(wl_compute_device_t* dvc) {
+        (*wl_alloc)(dvc, 0);
     }
 
     /*
@@ -98,20 +98,20 @@ namespace wl::cuda {
 
     auto set_active_device_by_id(std::int32_t id) -> void {
         std::int32_t curr;
-        wl__cu_chk_rt(cudaGetDevice(&curr));
+        wl_cu_chk_rt(cudaGetDevice(&curr));
         if (curr == id) return; /* Already active */
-        wl__cu_chk_rt(cudaSetDevice(id));
+        wl_cu_chk_rt(cudaSetDevice(id));
     }
 
     auto get_active_device_id() -> std::int32_t {
         std::int32_t curr;
-        wl__cu_chk_rt(cudaGetDevice(&curr));
+        wl_cu_chk_rt(cudaGetDevice(&curr));
         return curr;
     }
 
     auto get_active_device() -> const physical_device& {
         const auto id {get_active_device_id()}; /* Ensure device is active. */
-        wl__cu_assert2(id >= 0 && id < s_num_devices);
+        wl_cu_assert2(id >= 0 && id < s_num_devices);
         return s_devices[id];
     }
 
@@ -122,8 +122,8 @@ namespace wl::cuda {
 
     vm_pool::~vm_pool() {
         if (m_dvc_address) {
-            wl__cu_chk_rdv(cuMemUnmap(m_dvc_address, m_cap));
-            wl__cu_chk_rdv(cuMemAddressFree(m_dvc_address, max_size));
+            wl_cu_chk_rdv(cuMemUnmap(m_dvc_address, m_cap));
+            wl_cu_chk_rdv(cuMemAddressFree(m_dvc_address, max_size));
         }
     }
 
@@ -132,25 +132,25 @@ namespace wl::cuda {
         if (std::size_t free {m_cap-m_needle}; sz > free) {
             std::size_t reserve {sz-free};
             reserve = (reserve+m_granularity-1)&-m_granularity; /* Align to granularity. */
-            wl__cu_assert2(m_cap+reserve <= max_size);
+            wl_cu_assert2(m_cap+reserve <= max_size);
             CUmemAllocationProp prop {};
             prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
             prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
             prop.location.id = m_dvc_id;
             CUmemGenericAllocationHandle handle {};
-            wl__cu_chk_rdv(cuMemCreate(&handle, reserve, &prop, 0));
+            wl_cu_chk_rdv(cuMemCreate(&handle, reserve, &prop, 0));
             if (!m_dvc_address) /* Reserve virtual memory */
-                wl__cu_chk_rdv(cuMemAddressReserve(&m_dvc_address, max_size, 0, 0, 0));
-            wl__cu_chk_rdv(cuMemMap(m_dvc_address+m_cap, reserve, 0, handle, 0));
-            wl__cu_chk_rdv(cuMemRelease(handle)); /* Release handle */
+                wl_cu_chk_rdv(cuMemAddressReserve(&m_dvc_address, max_size, 0, 0, 0));
+            wl_cu_chk_rdv(cuMemMap(m_dvc_address+m_cap, reserve, 0, handle, 0));
+            wl_cu_chk_rdv(cuMemRelease(handle)); /* Release handle */
             CUmemAccessDesc access {};
             access.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
             access.location.id = m_dvc_id;
             access.flags = CU_MEM_ACCESS_FLAGS_PROT_READWRITE;
-            wl__cu_chk_rdv(cuMemSetAccess(m_dvc_address+m_cap, reserve, &access, 1)); /* Set access */
+            wl_cu_chk_rdv(cuMemSetAccess(m_dvc_address+m_cap, reserve, &access, 1)); /* Set access */
             m_cap += reserve;
         }
-        wl__cu_assert2(m_dvc_address);
+        wl_cu_assert2(m_dvc_address);
         auto* p {reinterpret_cast<void*>(m_dvc_address+m_needle)};
         out_sz = sz;
         m_needle += sz;
@@ -159,6 +159,6 @@ namespace wl::cuda {
 
     auto vm_pool::free(void* ptr, std::size_t sz) -> void {
         m_needle -= sz;
-        wl__cu_assert2(ptr == reinterpret_cast<void*>(m_dvc_address + m_needle));
+        wl_cu_assert2(ptr == reinterpret_cast<void*>(m_dvc_address + m_needle));
     }
 }

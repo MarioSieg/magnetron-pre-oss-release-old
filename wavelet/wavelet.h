@@ -7,7 +7,7 @@
 #define WL_CFG_X86_64_FAST_MATH 1 /* Use fast math for x86_64 by setting mxcsr control register. */
 #define WL_INTRIN 1 /* Use platform and compiler specific intrinsics for performance. */
 #define WL_BOUNDS_CHECK 0 /* Enable bounds checking for BLAS routines. */
-#define WL__SANITIZE_RC 0 /* Enable runtime checks for debugging of reference counted tensors. */
+#define WL_SANITIZE_RC 0 /* Enable runtime checks for debugging of reference counted tensors. */
 #define WL_EXPORT_DLL
 
 #if !defined(NDEBUG) && !WL_BOUNDS_CHECK
