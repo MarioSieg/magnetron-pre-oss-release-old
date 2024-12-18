@@ -58,12 +58,24 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
           -S ${{ github.workspace }}
 
-      - name: Build
+      - name: Build C++ Runtime
         run: cmake --build ${{ steps.strings.outputs.build-output-dir }} --config ${{ matrix.build_type }} -j4
 
-      - name: Prepare Test Data
+      - name: Prepare C++ Test Data
         run: cp -r ${{ github.workspace }}/test_data ${{ steps.strings.outputs.build-output-dir }}/test/test_data
 
-      - name: Test
+      - name: Run C++ Runtime Tests
         working-directory: ${{ steps.strings.outputs.build-output-dir }}
         run: ctest --build-config ${{ matrix.build_type }} --verbose
+
+      - name: Build Python wheel
+        run: cd ${{ github.workspace }}/python/wavelet_framework && pip3 wheel -w dist .
+
+      - name: Install Python wheel
+        run: pip3 install ${{ github.workspace }}/python/wavelet_framework/dist/*.whl
+
+      - name: Install Pytest
+        run: pip3 install pytest
+
+      - name: Run Python Tests
+        run: python -m pytest ${{ github.workspace }}/python/tests
