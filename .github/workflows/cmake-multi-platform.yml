@@ -69,28 +69,33 @@ jobs:
         run: ctest --build-config ${{ matrix.build_type }} --verbose
 
       - name: Setup Python Virtual Environment
+        shell: bash
         run: |
           python3 -m venv .venv
-          source .venv/bin/activate || .venv\\Scripts\\activate
+          . .venv/bin/activate
           pip install --upgrade pip
-          echo "source .venv/bin/activate || .venv\\Scripts\\activate" >> $GITHUB_ENV
 
       - name: Build Python wheel
+        shell: bash
         run: |
-          source .venv/bin/activate || .venv\\Scripts\\activate
-          cd ${{ github.workspace }}/python/wavelet_framework && pip wheel -w dist .
+          . .venv/bin/activate
+          cd ${{ github.workspace }}/python/wavelet_framework
+          pip wheel -w dist .
 
       - name: Install Python wheel
+        shell: bash
         run: |
-          source .venv/bin/activate || .venv\\Scripts\\activate
+          . .venv/bin/activate
           pip install ${{ github.workspace }}/python/wavelet_framework/dist/*.whl
 
       - name: Install Pytest
+        shell: bash
         run: |
-          source .venv/bin/activate || .venv\\Scripts\\activate
+          . .venv/bin/activate
           pip install pytest
 
       - name: Run Python Tests
+        shell: bash
         run: |
-          source .venv/bin/activate || .venv\\Scripts\\activate
+          . .venv/bin/activate
           python -m pytest ${{ github.workspace }}/python/tests
