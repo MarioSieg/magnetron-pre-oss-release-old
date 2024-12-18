@@ -483,13 +483,21 @@ class Tensor:
         """Returns the data type of the tensor."""
         return DType(C.wl_tensor_dtype(self.tensor))
 
-    def data_as_f32(self) -> list[float]:
+    @property
+    def data_ptr(self) -> int:
+        """Returns the data pointer of the tensor."""
+        return int(ffi.cast('uintptr_t', C.wl_tensor_data_ptr(self.tensor)))
+
+    def to_list(self) -> list[float]:
         """Returns the data of the tensor buffer as a list of floats."""
         assert self.dtype == DType.F32, 'Invalid data type'
-        return ffi.unpack(C.wl_tensor_data_as_f32(self.tensor), self.num_elements)
+        # Todo: check that compute device is CPU
+        return ffi.unpack(ffi.cast('float*', C.wl_tensor_data_ptr(self.tensor)), self.numel)
 
     def scalar(self) -> float:
-        return self.data_as_f32()[0]
+        assert self.dtype == DType.F32, 'Invalid data type'
+        # Todo: check that compute device is CPU
+        return ffi.unpack(ffi.cast('float*', C.wl_tensor_data_ptr(self.tensor)), 1)[0]
 
     @property
     def data_size(self) -> int:
@@ -497,9 +505,9 @@ class Tensor:
         return C.wl_tensor_data_size(self.tensor)
 
     @property
-    def num_elements(self) -> int:
+    def numel(self) -> int:
         """Returns the size of the tensor buffer in bytes."""
-        return C.wl_tensor_num_elements(self.tensor)
+        return C.wl_tensor_numel(self.tensor)
 
     @property
     def num_rows(self) -> int:

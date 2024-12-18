@@ -15,8 +15,8 @@ typedef struct wl_cpu_thread_local_ctx_t {
     int64_t thread_idx;
 } wl_cpu_thread_local_ctx_t;
 
-#define wl_f32p(t) ((const float*)(t)->storage->base)
-#define wl_f32p_mut(t) ((float*)(t)->storage->base)
+#define wl_f32p(t) ((const float*)(t)->storage.base)
+#define wl_f32p_mut(t) ((float*)(t)->storage.base)
 
 #if WL_APPROXMATH && (defined(__aarch64__) && defined(__ARM_NEON)) || defined(_M_ARM64)
 
@@ -1060,7 +1060,7 @@ static void WL_HOTPROC wl_blas_mean_f32( /* Σx/n Arithmetic mean */
             }
         }
     }
-    sum /= (double)x->num_elems;
+    sum /= (double)x->numel;
     *b_r = (float)sum;
 }
 
@@ -2333,12 +2333,11 @@ static void wl_cpu_buf_cpy_device_host(wl_storage_buffer* sto, size_t offs, void
     memcpy(dst, (void*)(sto->base+offs), n); /* On CPU just plain old memcpy with offset. */
 }
 
-static wl_storage_buffer* wl_cpu_alloc_storage(wl_compute_device_t* host, size_t size, size_t align) {
+static void wl_cpu_alloc_storage(wl_compute_device_t* host, wl_storage_buffer* out, size_t size, size_t align) {
     wl_assert2(size);
-    wl_storage_buffer* sto = (*wl_alloc)(NULL, sizeof(*sto)); /* TODO: Caching allocator */
     void* block = wl_alloc_aligned(size, align);
-    memset(block, 0, size); /* Zero out */
-    *sto = (wl_storage_buffer){
+    memset(block, 0, size);
+    *out = (wl_storage_buffer){ /* Set up storage buffer. */
         .base = (uintptr_t)block,
         .size = size,
         .alignment = align,
@@ -2347,12 +2346,11 @@ static wl_storage_buffer* wl_cpu_alloc_storage(wl_compute_device_t* host, size_t
         .cpy_host_device = &wl_cpu_buf_cpy_host_device,
         .cpy_device_host = &wl_cpu_buf_cpy_device_host
     };
-    return sto;
 }
 
 static void wl_cpu_free_storage(wl_compute_device_t* dvc, wl_storage_buffer* buf) {
     wl_free_aligned((void*)buf->base);
-    (*wl_alloc)(buf, 0);
+    memset(buf, 0, sizeof(*buf)); /* Set to zero. */
 }
 
 static wl_compute_device_t* wl_cpu_init_interface(wl_ctx_t* ctx) {

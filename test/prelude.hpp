@@ -25,6 +25,6 @@ template <bool Inplace=false, typename... Args>
 
 inline auto wl_tensor_buf_f32_to_vec(const wl_tensor_t* tensor, std::vector<float>& out) -> void {
     out.clear();
-    out.reserve(wl_tensor_num_elements(tensor));
-    std::memcpy(out.data(), wl_tensor_data_as_f32(tensor), wl_tensor_data_size(tensor));
+    out.reserve(wl_tensor_numel(tensor));
+    std::memcpy(out.data(), wl_tensor_data_ptr(tensor), wl_tensor_data_size(tensor));
 }

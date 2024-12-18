@@ -14,10 +14,10 @@ TEST(image, load) {
     ASSERT_EQ(wl_tensor_shape(img)[1], wl_tensor_image_height(img));
     ASSERT_EQ(wl_tensor_shape(img)[0], wl_tensor_image_channels(img)); // RGB
 
-    auto* buf = wl_tensor_data_as_f32(img);
-    for (int64_t i=0; i < wl_tensor_num_elements(img); ++i) {
-        ASSERT_GE(buf[i], 0.0f);
-        ASSERT_LE(buf[i], 1.0f);
+    auto* buf = wl_tensor_data_ptr(img);
+    for (int64_t i=0; i < wl_tensor_numel(img); ++i) {
+        ASSERT_GE(static_cast<float*>(buf)[i], 0.0f);
+        ASSERT_LE(static_cast<float*>(buf)[i], 1.0f);
     }
 
     // TODO: check data
@@ -39,8 +39,8 @@ TEST(image, load_resize) {
 
     // wl_tensor_save_image(img, "test_data/car_resized.jpg");
 
-    auto* buf = wl_tensor_data_as_f32(img);
-    for (int64_t i=0; i < wl_tensor_num_elements(img); ++i) {
+    auto* buf = static_cast<float*>(wl_tensor_data_ptr(img));
+    for (int64_t i=0; i < wl_tensor_numel(img); ++i) {
         ASSERT_GE(buf[i], 0.0f);
         ASSERT_LE(buf[i], 1.0f);
     }

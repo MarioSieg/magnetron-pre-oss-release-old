@@ -324,13 +324,13 @@ typedef struct wl_compute_device_t wl_compute_device_t;
 /* Buffer interface on a compute device */
 typedef struct wl_storage_buffer wl_storage_buffer;
 struct wl_storage_buffer {
-    uintptr_t base;                                                                                     /* Pointer to buffer on device. Never access directly. */
-    size_t size;                                                                                        /* Size of buffer in bytes. */
-    size_t alignment;                                                                                   /* Alignment of buffer. */
-    wl_compute_device_t* host;                                                                        /* Host device. */
-    void (*set)(wl_storage_buffer* sto, size_t offs, uint8_t x);                               /* Memset buffer. */
-    void (*cpy_host_device)(wl_storage_buffer* sto, size_t offs, const void* src, size_t n);   /* Copy data from host to device. */
-    void (*cpy_device_host)(wl_storage_buffer* sto, size_t offs, void* dst, size_t n);         /* Copy data from device to host. */
+    uintptr_t base;                                                                             /* Pointer to buffer on device. Might point to GPU or any other device memory. */
+    size_t size;                                                                                /* Size of buffer in bytes. */
+    size_t alignment;                                                                           /* Alignment of buffer. */
+    wl_compute_device_t* host;                                                                  /* Host device. */
+    void (*set)(wl_storage_buffer* sto, size_t offs, uint8_t x);                                /* Memset buffer. */
+    void (*cpy_host_device)(wl_storage_buffer* sto, size_t offs, const void* src, size_t n);    /* Copy data from host to device. */
+    void (*cpy_device_host)(wl_storage_buffer* sto, size_t offs, void* dst, size_t n);          /* Copy data from device to host. */
 };
 
 /* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
@@ -341,7 +341,7 @@ struct wl_compute_device_t {
     wl_compute_device_type_t type;                                          /* Device type enum. */
     void (*eager_exec_fwd)(wl_compute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op forward. */
     void (*eager_exec_bwd)(wl_compute_device_t* dvc, wl_tensor_t* root);  /* Execute a single op backwards. */
-    wl_storage_buffer* (*alloc_storage)(wl_compute_device_t* dvc, size_t size, size_t align);
+    void (*alloc_storage)(wl_compute_device_t* dvc, wl_storage_buffer* out, size_t size, size_t align);
     void (*free_storage)(wl_compute_device_t* dvc, wl_storage_buffer* buf);
 };
 
@@ -440,16 +440,16 @@ struct wl_tensor_t {
     int64_t shape[WL_MAX_DIMS];                     /* Shape of the tensor. */
     int64_t strides[WL_MAX_DIMS];                   /* Strides of the tensor. We store the strides in element counts and NOT in bytes. */
     wl_dtype_t dtype;                               /* Data type of the tensor. */
-    wl_storage_buffer* storage;            /* Storage buffer. */
-    int64_t num_elems;                              /* Number of elements in the tensor. */
-    wl_tensor_flags_t flags;                       /* Tensor flags. */
+    wl_storage_buffer storage;                      /* Storage buffer. */
+    int64_t numel;                                  /* Number of elements in the tensor. */
+    wl_tensor_flags_t flags;                        /* Tensor flags. */
     wl_op_t op;                                     /* Opcode for operators. */
     wl_tensor_t* op_inputs[WL_MAX_INPUT_TENSORS];   /* Input tensors for operators. */
     wl_op_param_t op_params[WL_MAX_OP_PARAMS];      /* Operator parameters. */
     wl_tensor_t* view_uplink;                       /* View base tensor. */
     size_t view_offs;                               /* Offset in view tensor. */
     wl_tensor_t* grad;                              /* ∇f - Gradient tensor. */
-    wl_perf_mon_t pmon;                            /* Performance monitor. */
+    wl_perf_mon_t pmon;                             /* Performance monitor. */
     char name[WL_MAX_TENSOR_NAME_LEN];              /* Tensor debug name. */
     void* ud;                                       /* User data. */
 };

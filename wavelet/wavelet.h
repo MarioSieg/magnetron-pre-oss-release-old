@@ -361,9 +361,9 @@ extern WL_EXPORT int64_t wl_tensor_rank(const wl_tensor_t* t); /* Get the rank (
 extern WL_EXPORT const int64_t* wl_tensor_shape(const wl_tensor_t* t); /* Get the dimensions of the tensor */
 extern WL_EXPORT const int64_t* wl_tensor_strides(const wl_tensor_t* t); /* Get the strides of the tensor */
 extern WL_EXPORT wl_dtype_t wl_tensor_dtype(const wl_tensor_t* t); /* Get the data type of the tensor */
-extern WL_EXPORT float* wl_tensor_data_as_f32(const wl_tensor_t* t); /* Get the tensor buffer pointer as float pointer. Only valid if tensor's dtype is f32, else panics. */
+extern WL_EXPORT void* wl_tensor_data_ptr(const wl_tensor_t* t); /* Get the tensor raw buffer pointer. Might pointer to GPU or any other device memory. */
 extern WL_EXPORT int64_t wl_tensor_data_size(const wl_tensor_t* t); /* Get the size of the tensor buffer in bytes. */
-extern WL_EXPORT int64_t wl_tensor_num_elements(const wl_tensor_t* t); /* Get the total amount of elements in the tensor. */
+extern WL_EXPORT int64_t wl_tensor_numel(const wl_tensor_t* t); /* Get the total amount of elements in the tensor. */
 extern WL_EXPORT int64_t wl_tensor_num_rows(const wl_tensor_t* t); /* Get the number of rows (for 2D tensors) */
 extern WL_EXPORT int64_t wl_tensor_num_cols(const wl_tensor_t* t); /* Get the number of columns (for 2D tensors) */
 extern WL_EXPORT bool wl_tensor_is_scalar(const wl_tensor_t* t); /* Check if the tensor is a scalar */
@@ -376,9 +376,9 @@ extern WL_EXPORT bool wl_tensor_can_broadcast(const wl_tensor_t* a, const wl_ten
 extern WL_EXPORT bool wl_tensor_is_transposed(const wl_tensor_t* t); /* Check if the tensor is transposed */
 extern WL_EXPORT bool wl_tensor_is_permuted(const wl_tensor_t* t); /* Check if the tensor is permuted */
 extern WL_EXPORT bool wl_tensor_is_contiguous(const wl_tensor_t* t); /* Check if the tensor memory is contiguous */
-extern WL_EXPORT float wl_tensor_get_scalar_physical_index(const wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5); /* Get scalar value at physical index */
+extern WL_EXPORT float wl_tensor_get_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5); /* Get scalar value at physical index */
 extern WL_EXPORT void wl_tensor_set_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, float x); /* Set scalar value at physical index */
-extern WL_EXPORT float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t v_idx); /* Get scalar value at virtual index */
+extern WL_EXPORT float wl_tensor_get_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx); /* Get scalar value at virtual index */
 extern WL_EXPORT void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x); /* Set scalar value at virtual index */
 extern WL_EXPORT bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b); /* Check if two tensors are equal without epsilon. */
 extern WL_EXPORT bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, double* percent_eq); /* Check if two tensors are equal with epsilon and percentage in equality. Set eps to < 0 to use machine epsilon. */

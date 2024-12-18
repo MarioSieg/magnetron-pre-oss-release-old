@@ -119,7 +119,7 @@ class WAVELETViewer(QMainWindow):
         if tensor_name not in self.tensors:
             return
         tensor = self.tensors[tensor_name]
-        tensor_data = tensor.data_as_f32()
+        tensor_data = tensor.to_list()
 
         rows = []
         elements_per_row = 16
@@ -135,7 +135,7 @@ class WAVELETViewer(QMainWindow):
             f'Strides: {tensor.strides}',
             f'DType: {tensor.dtype}',
             f'Rank: {tensor.rank}',
-            f'Total Elements: {tensor.num_elements}',
+            f'Total Elements: {tensor.numel}',
             f'Total Bytes: {tensor.data_size}',
             f'Min: {min(tensor_data)}',
             f'Max: {max(tensor_data)}',

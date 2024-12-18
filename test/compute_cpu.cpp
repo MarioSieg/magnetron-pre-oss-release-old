@@ -24,11 +24,11 @@ static constexpr std::int64_t k_lim_broadcast = 3;
             \
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x); \
             \
-            const auto* b_x = wl_tensor_data_as_f32(x); \
-            const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r)); \
-            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
-            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
+            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
+            ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(r)); \
+            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
                 ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
             } \
             wl_tensor_decref(r); \
@@ -56,10 +56,10 @@ static constexpr std::int64_t k_lim_broadcast = 3;
                 \
                 const auto* b_x = x_origin.data(); \
                 wl_tensor_set_name(x, "X"); \
-                const auto* b_r = wl_tensor_data_as_f32(r); \
-                ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r)); \
-                ASSERT_EQ(wl_tensor_data_as_f32(x), wl_tensor_data_as_f32(r)); \
-                for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+                const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
+                ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(r)); \
+                ASSERT_EQ(wl_tensor_data_ptr(x), wl_tensor_data_ptr(r)); \
+                for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
                     ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
                 } \
                 wl_tensor_decref(r); \
@@ -84,10 +84,10 @@ TEST(compute_cpu, neg_same_shape) {
         wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5);
         wl_tensor_fill_random_uniform(x, 0.0f, 1.0f);
         wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_NEG, x);
-        const auto* b_x = wl_tensor_data_as_f32(x);
-        const auto* b_r = wl_tensor_data_as_f32(r);
-        ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(r));
-        for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) {
+        const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x));
+        const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r));
+        ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(r));
+        for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) {
             ASSERT_EQ(b_r[i], -b_x[i]);
         }
         wl_tensor_decref(x);
@@ -188,13 +188,13 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x, y); \
                                                  \
             \
-            const auto* b_x = wl_tensor_data_as_f32(x); \
-            const auto* b_y = wl_tensor_data_as_f32(y); \
-            const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
-            ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
-            ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(y)); \
-            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
+            const auto* b_y = static_cast<const float*>(wl_tensor_data_ptr(y)); \
+            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
+            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
+            ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(y)); \
+            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(y)); \
+            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
                 wl_tensor_decref(r); \
@@ -221,12 +221,12 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             \
             wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x, y); \
             \
-            const auto* b_x = wl_tensor_data_as_f32(x); \
-            const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(x)); \
-            ASSERT_NE(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
-            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
-            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
+            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
+            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(x)); \
+            ASSERT_NE(wl_tensor_numel(x), wl_tensor_numel(y)); \
+            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
             wl_tensor_decref(r); \
@@ -255,13 +255,13 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
                                                  \
             \
             const auto* b_x = x_origin.data(); \
-            const auto* b_xx = wl_tensor_data_as_f32(x); \
-            const auto* b_y = wl_tensor_data_as_f32(y); \
-            const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_EQ(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
-            ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(y)); \
-            ASSERT_EQ(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
-            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+            const auto* b_xx = static_cast<const float*>(wl_tensor_data_ptr(x)); \
+            const auto* b_y  = static_cast<const float*>(wl_tensor_data_ptr(y)); \
+            const auto* b_r  = static_cast<const float*>(wl_tensor_data_ptr(r)); \
+            ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(y)); \
+            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(y)); \
+            ASSERT_EQ(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]); \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
@@ -292,13 +292,13 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             \
             wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x, y); \
             \
-            const auto* b_x = x_origin.data(); \
-            const auto* b_xx = wl_tensor_data_as_f32(x); \
-            const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_EQ(wl_tensor_num_elements(r), wl_tensor_num_elements(x)); \
-            ASSERT_NE(wl_tensor_num_elements(x), wl_tensor_num_elements(y)); \
-            ASSERT_EQ(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
-            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+            const auto* b_x  = x_origin.data(); \
+            const auto* b_xx = static_cast<const float*>(wl_tensor_data_ptr(x)); \
+            const auto* b_r  = static_cast<const float*>(wl_tensor_data_ptr(r)); \
+            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(x)); \
+            ASSERT_NE(wl_tensor_numel(x), wl_tensor_numel(y)); \
+            ASSERT_EQ(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]);  \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
@@ -324,10 +324,10 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
             wl_tensor_t* r = wl_tensor_emit_op_va_op_params<false>(ctx, WL_OP_##op##S, xi, x); \
              \
             \
-            const auto* b_x = wl_tensor_data_as_f32(x); \
-            const auto* b_r = wl_tensor_data_as_f32(r); \
-            ASSERT_NE(wl_tensor_data_as_f32(r), wl_tensor_data_as_f32(x)); \
-            for (std::int64_t i=0; i < wl_tensor_num_elements(x); ++i) { \
+            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
+            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
+            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op wl_op_param_unpack_float(xi)); \
             } \
             wl_tensor_decref(r); \
@@ -399,7 +399,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     // Create result tensor R for matrix multiplication
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MATMUL, A, B);
     wl_tensor_print(R, true, true);
-    auto* buf = wl_tensor_data_as_f32(R);
+    auto* buf = static_cast<const float*>(wl_tensor_data_ptr(R));
 
     static constexpr float expected[2*2] = {
         0.3717081,   0.7322086,
@@ -438,7 +438,7 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MATMUL, A, B);
     //ASSERT_EQ(wl_tensor_rank(R), 1);
     ASSERT_EQ(wl_tensor_shape(R)[0], 3);
-    const auto* C = wl_tensor_data_as_f32(R);
+    const auto* C = static_cast<const float*>(wl_tensor_data_ptr(R));
     //wl__inner_matmul_naive(A, B, C, 3, 1, 2);
     ASSERT_FLOAT_EQ(C[0], -1.5f);
     ASSERT_FLOAT_EQ(C[1], -2.5f);
@@ -458,10 +458,10 @@ TEST(compute_cpu, arithmetic_mean) {
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MEAN, A);
     ASSERT_NE(R, nullptr);
     double a_mean = 0.0;
-    for (std::int64_t i=0; i < wl_tensor_num_elements(A); ++i)
-        a_mean += static_cast<double>(wl_tensor_data_as_f32(A)[i]);
-    a_mean /= static_cast<double>(wl_tensor_num_elements(A));
-    ASSERT_NEAR(static_cast<float>(a_mean), *wl_tensor_data_as_f32(R), 1e-9);
+    for (std::int64_t i=0; i < wl_tensor_numel(A); ++i)
+        a_mean += static_cast<double>(static_cast<const float*>(wl_tensor_data_ptr(A))[i]);
+    a_mean /= static_cast<double>(wl_tensor_numel(A));
+    ASSERT_NEAR(static_cast<float>(a_mean), *static_cast<const float*>(wl_tensor_data_ptr(R)), 1e-9);
     wl_tensor_decref(A);
     wl_tensor_decref(R);
     wl_ctx_destroy(ctx);
@@ -473,8 +473,8 @@ TEST(compute_cpu, min) {
     wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MIN, A);
     ASSERT_NE(R, nullptr);
-    float a_min = *std::min_element(wl_tensor_data_as_f32(A), wl_tensor_data_as_f32(A) + wl_tensor_num_elements(A));
-    ASSERT_FLOAT_EQ(a_min, *wl_tensor_data_as_f32(R));
+    float a_min = *std::min_element(static_cast<const float*>(wl_tensor_data_ptr(A)), static_cast<const float*>(wl_tensor_data_ptr(A)) + wl_tensor_numel(A));
+    ASSERT_FLOAT_EQ(a_min, *static_cast<const float*>(wl_tensor_data_ptr(R)));
     wl_tensor_decref(A);
     wl_tensor_decref(R);
     wl_ctx_destroy(ctx);
@@ -486,8 +486,8 @@ TEST(compute_cpu, max) {
     wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MAX, A);
     ASSERT_NE(R, nullptr);
-    float a_min = *std::max_element(wl_tensor_data_as_f32(A), wl_tensor_data_as_f32(A) + wl_tensor_num_elements(A));
-    ASSERT_FLOAT_EQ(a_min, *wl_tensor_data_as_f32(R));
+    float a_min = *std::max_element(static_cast<const float*>(wl_tensor_data_ptr(A)), static_cast<const float*>(wl_tensor_data_ptr(A)) + wl_tensor_numel(A));
+    ASSERT_FLOAT_EQ(a_min, *static_cast<const float*>(wl_tensor_data_ptr(R)));
     wl_tensor_decref(A);
     wl_tensor_decref(R);
     wl_ctx_destroy(ctx);
@@ -500,9 +500,9 @@ TEST(compute_cpu, hsum) {
     wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_SUM, A);
     ASSERT_NE(R, nullptr);
     double a_sum = 0.0;
-    for (std::int64_t i=0; i < wl_tensor_num_elements(A); ++i)
-        a_sum += static_cast<double>(wl_tensor_data_as_f32(A)[i]);
-    ASSERT_NEAR(static_cast<float>(a_sum), *wl_tensor_data_as_f32(R), 1e-9);
+    for (std::int64_t i=0; i < wl_tensor_numel(A); ++i)
+        a_sum += static_cast<double>(static_cast<const float*>(wl_tensor_data_ptr(A))[i]);
+    ASSERT_NEAR(static_cast<float>(a_sum), *static_cast<const float*>(wl_tensor_data_ptr(R)), 1e-9);
     wl_tensor_decref(A);
     wl_tensor_decref(R);
     wl_ctx_destroy(ctx);

@@ -1,4 +1,4 @@
-# Autogenered by /Users/mariosieg/Documents/projects/wavelet/python/wavelet_framework/bing_gen.py 2024-12-14 10:57:58.701162, do NOT edit!
+# Autogenered by /home/mario/Documents/projects/wavelet/python/wavelet_framework/bing_gen.py 2024-12-18 19:49:53.445331, do NOT edit!
 
 __WL_CDECLS: str = '''
 
@@ -79,9 +79,9 @@ extern   int64_t wl_tensor_rank(const wl_tensor_t* t);
 extern   const int64_t* wl_tensor_shape(const wl_tensor_t* t);
 extern   const int64_t* wl_tensor_strides(const wl_tensor_t* t);
 extern   wl_dtype_t wl_tensor_dtype(const wl_tensor_t* t);
-extern   float* wl_tensor_data_as_f32(const wl_tensor_t* t);
+extern   void* wl_tensor_data_ptr(const wl_tensor_t* t);
 extern   int64_t wl_tensor_data_size(const wl_tensor_t* t);
-extern   int64_t wl_tensor_num_elements(const wl_tensor_t* t);
+extern   int64_t wl_tensor_numel(const wl_tensor_t* t);
 extern   int64_t wl_tensor_num_rows(const wl_tensor_t* t);
 extern   int64_t wl_tensor_num_cols(const wl_tensor_t* t);
 extern   bool wl_tensor_is_scalar(const wl_tensor_t* t);
@@ -94,9 +94,9 @@ extern   bool wl_tensor_can_broadcast(const wl_tensor_t* a, const wl_tensor_t* b
 extern   bool wl_tensor_is_transposed(const wl_tensor_t* t);
 extern   bool wl_tensor_is_permuted(const wl_tensor_t* t);
 extern   bool wl_tensor_is_contiguous(const wl_tensor_t* t);
-extern   float wl_tensor_get_scalar_physical_index(const wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
+extern   float wl_tensor_get_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5);
 extern   void wl_tensor_set_scalar_physical_index(wl_tensor_t* t, int64_t d0, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, float x);
-extern   float wl_tensor_get_scalar_virtual_index(const wl_tensor_t* t, int64_t v_idx);
+extern   float wl_tensor_get_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx);
 extern   void wl_tensor_set_scalar_virtual_index(wl_tensor_t* t, int64_t v_idx, float x);
 extern   bool wl_tensor_eq(const wl_tensor_t* a, const wl_tensor_t* b);
 extern   bool wl_tensor_is_close(const wl_tensor_t* a, const wl_tensor_t* b, float eps, double* percent_eq);
