@@ -1,19 +1,19 @@
 # (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
 
-import wavelet as wl
+import magnetron as mag
 
 
 # Define the perceptron function (McCulloch–Pitts neuron)
-def perceptron(x: wl.Tensor, w: wl.Tensor, b: wl.Tensor) -> wl.Tensor:
+def perceptron(x: mag.Tensor, w: mag.Tensor, b: mag.Tensor) -> mag.Tensor:
     return (w @ x + b).step()
 
 
 # Negating perceptron
 def p_not(xx: int) -> float:
-    x: wl.Tensor = wl.Tensor.full((1,), fill_value=float(xx))
-    w: wl.Tensor = wl.Tensor.full((1,), fill_value=-1)
-    b: wl.Tensor = wl.Tensor.full((1,), fill_value=0.5)
-    r: wl.Tensor = perceptron(x, w, b)
+    x: mag.Tensor = mag.Tensor.full((1,), fill_value=float(xx))
+    w: mag.Tensor = mag.Tensor.full((1,), fill_value=-1)
+    b: mag.Tensor = mag.Tensor.full((1,), fill_value=0.5)
+    r: mag.Tensor = perceptron(x, w, b)
     return r.scalar()
 
 

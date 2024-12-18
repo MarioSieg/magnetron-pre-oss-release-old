@@ -6,7 +6,7 @@ const infoText = document.getElementById('info-text');
 function botSay(botMessage) {
     const botDiv = document.createElement('div');
     botDiv.className = 'message bot';
-    botDiv.innerHTML = `<strong>Wavelet:</strong> ${botMessage}`;
+    botDiv.innerHTML = `<strong>magnetron:</strong> ${botMessage}`;
     chatbox.appendChild(botDiv);
     chatbox.scrollTop = chatbox.scrollHeight;
 }

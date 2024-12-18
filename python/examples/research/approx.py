@@ -1,17 +1,17 @@
 # (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
 
-import wavelet as wl
+import magnetron as mag
 import matplotlib
 import matplotlib.pyplot as plt
 
 matplotlib.rcParams["axes.formatter.limits"] = (-99, 99)  # Disable scientific notation to show all digits
 
 
-def plot_approximation_error(name: str, exact_func: callable, approx_op: wl.Operator, domain: (float, float),
+def plot_approximation_error(name: str, exact_func: callable, approx_op: mag.Operator, domain: (float, float),
                              step: float = 0.0001):
     x_values = [i * step for i in range(int(domain[0] / step), int(domain[1] / step))]
     exact = [exact_func(x) for x in x_values]
-    approx = wl.Tensor.operator(approx_op, False, None, wl.Tensor.const(x_values)).data_as_f32()
+    approx = mag.Tensor.operator(approx_op, False, None, mag.Tensor.const(x_values)).data_as_f32()
     errors = [abs(exact[i] - approx[i]) for i in range(len(exact))]
     assert len(exact) == len(approx) == len(errors) == len(x_values)
 

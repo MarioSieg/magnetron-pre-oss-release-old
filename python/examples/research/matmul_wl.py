@@ -1,12 +1,12 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-import wavelet as wl
+import magnetron as mag
 import time
 
 
 N = 1024
-A = wl.Tensor.rand((N, N), name='A')
-B = wl.Tensor.rand((N, N), name='B')
+A = mag.Tensor.rand((N, N), name='A')
+B = mag.Tensor.rand((N, N), name='B')
 print(A.shape)
 
 flop = 2*N**3

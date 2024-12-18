@@ -2,9 +2,9 @@
 
 cmake_minimum_required(VERSION 3.18)
 
-project(wavelet LANGUAGES C)
+project(magnetron LANGUAGES C)
 
-message("Configuring wavelet project for ${CMAKE_SYSTEM_PROCESSOR}...")
+message("Configuring magnetron project for ${CMAKE_SYSTEM_PROCESSOR}...")
 
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
     set(IS_AMD64 TRUE)
@@ -19,33 +19,33 @@ endif()
 
 set(CMAKE_C_STANDARD 99)
 
-option(WAVELET_BUILD_TESTS "Build tests" ON)
-option(WAVELET_BUILD_BENCHMARKS "Build benchmarks" ON)
-option(WAVELET_BUILD_FUZZERS "Build fuzzers" OFF)
+option(MAGNETRON_BUILD_TESTS "Build tests" ON)
+option(MAGNETRON_BUILD_BENCHMARKS "Build benchmarks" ON)
+option(MAGNETRON_BUILD_FUZZERS "Build fuzzers" OFF)
 
 # (CPU only) Enable SIMD math function approximations. Greatly increases performance. Try disabling if you encounter numerical instability. Does NOT enable -ffast-math or similar compiler flags.
-option(WAVELET_CPU_APPROX_MATH "Use faster but less precise math functions" ON)
-option(WAVELET_ENABLE_CUDA "Enable CUDA support" ON) # Enable CUDA support
+option(MAGNETRON_CPU_APPROX_MATH "Use faster but less precise math functions" ON)
+option(MAGNETRON_ENABLE_CUDA "Enable CUDA support" ON) # Enable CUDA support
 if (APPLE)
-    option(WAVELET_ENABLE_ACCELERATE "Use Apple's Accelerate framework" ON)
+    option(MAGNETRON_ENABLE_ACCELERATE "Use Apple's Accelerate framework" ON)
 endif()
 
-set(WAVELET_CUDA_COMPILER "/usr/local/cuda-12.6/bin/nvcc" CACHE STRING "Path to the CUDA compiler") # Set to your CUDA compiler path
+set(MAGNETRON_CUDA_COMPILER "/usr/local/cuda-12.6/bin/nvcc" CACHE STRING "Path to the CUDA compiler") # Set to your CUDA compiler path
 
 set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
 set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
 
-file(GLOB_RECURSE WAVELET_SOURCES wavelet/*.h wavelet/*.c wavelet/*.m)
-add_library(wavelet SHARED ${WAVELET_SOURCES})
-target_include_directories(wavelet PRIVATE extern)
+file(GLOB_RECURSE MAGNETRON_SOURCES magnetron/*.h magnetron/*.c magnetron/*.m)
+add_library(magnetron SHARED ${MAGNETRON_SOURCES})
+target_include_directories(magnetron PRIVATE extern)
 if(WIN32) # Windows specific config
-    target_compile_options(wavelet PRIVATE /W3 /Oi)
+    target_compile_options(magnetron PRIVATE /W3 /Oi)
     if (CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")     # Enable optimizations for release builds
-        target_compile_options(wavelet PRIVATE /O2 /Oy)
+        target_compile_options(magnetron PRIVATE /O2 /Oy)
     endif()
 else() # POSIX specific config
-    target_link_libraries(wavelet m) # link math library
-    target_compile_options(wavelet PRIVATE
+    target_link_libraries(magnetron m) # link math library
+    target_compile_options(magnetron PRIVATE
         -Wall
         -Werror
         -std=c99
@@ -56,67 +56,67 @@ else() # POSIX specific config
         -std=gnu99
     )
     if (APPLE) # Apple specific configuration
-        if (${WAVELET_ENABLE_ACCELERATE})
+        if (${MAGNETRON_ENABLE_ACCELERATE})
             find_library(ACCELERATE_FRAMEWORK Accelerate)
             if (ACCELERATE_FRAMEWORK)
                 message(STATUS "Accelerate framework found")
-                target_compile_definitions(wavelet PRIVATE WL_ACCELERATE)
-                target_compile_definitions(wavelet PRIVATE ACCELERATE_NEW_LAPACK)
-                target_compile_definitions(wavelet PRIVATE ACCELERATE_LAPACK_ILP64)
-                target_link_libraries(wavelet ${ACCELERATE_FRAMEWORK})
+                target_compile_definitions(magnetron PRIVATE MAG_ACCELERATE)
+                target_compile_definitions(magnetron PRIVATE ACCELERATE_NEW_LAPACK)
+                target_compile_definitions(magnetron PRIVATE ACCELERATE_LAPACK_ILP64)
+                target_link_libraries(magnetron ${ACCELERATE_FRAMEWORK})
             else()
                 message(WARNING "Accelerate framework not found, using fallback")
             endif()
         endif()
     endif()
-    if (${WAVELET_CPU_APPROX_MATH})
-        target_compile_definitions(wavelet PRIVATE WL_APPROXMATH)
+    if (${MAGNETRON_CPU_APPROX_MATH})
+        target_compile_definitions(magnetron PRIVATE MAG_APPROXMATH)
     endif()
     if(${IS_AMD64}) # x86-64 specific compilation options
-        target_compile_options(wavelet PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)
+        target_compile_options(magnetron PRIVATE -msse2 -msse3 -mssse3 -msse4.1 -msse4.2 -mpclmul)
     elseif(${IS_ARM64})
-        target_compile_options(wavelet PRIVATE -march=armv8-a+simd)
+        target_compile_options(magnetron PRIVATE -march=armv8-a+simd)
     endif()
     if(CMAKE_BUILD_TYPE STREQUAL "Release" OR CMAKE_BUILD_TYPE STREQUAL "MinSizeRel" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")     # Enable optimizations only for release builds
-        target_compile_options(wavelet PRIVATE -O3 -flto)
-        target_link_options(wavelet PRIVATE -flto)
+        target_compile_options(magnetron PRIVATE -O3 -flto)
+        target_link_options(magnetron PRIVATE -flto)
     endif()
 endif()
 
-if (${WAVELET_ENABLE_CUDA})
+if (${MAGNETRON_ENABLE_CUDA})
     find_package(CUDAToolkit)
     if (CUDAToolkit_FOUND)
         if (NOT DEFINED CMAKE_CUDA_ARCHITECTURES)
             set(CMAKE_CUDA_ARCHITECTURES "52;61;70;75")
         endif()
         if (NOT DEFINED CMAKE_CUDA_COMPILER)
-            set(CMAKE_CUDA_COMPILER "${WAVELET_CUDA_COMPILER}")
+            set(CMAKE_CUDA_COMPILER "${MAGNETRON_CUDA_COMPILER}")
         endif()
         set(CMAKE_CUDA_STANDARD 20)
         enable_language(CUDA)
-        file(GLOB_RECURSE WAVELET_CUDA_SOURCES wavelet/*.cu wavelet/*.cuh)
-        add_library(wavelet_cuda SHARED ${WAVELET_CUDA_SOURCES})
-        target_include_directories(wavelet_cuda PRIVATE extern)
-        target_link_libraries(wavelet_cuda CUDA::cudart CUDA::cuda_driver)
-        target_compile_definitions(wavelet_cuda PRIVATE WL_ENABLE_CUDA)
-        target_compile_definitions(wavelet PRIVATE WL_ENABLE_CUDA)
-        target_link_libraries(wavelet wavelet_cuda)
+        file(GLOB_RECURSE MAGNETRON_CUDA_SOURCES magnetron/*.cu magnetron/*.cuh)
+        add_library(magnetron_cuda SHARED ${MAGNETRON_CUDA_SOURCES})
+        target_include_directories(magnetron_cuda PRIVATE extern)
+        target_link_libraries(magnetron_cuda CUDA::cudart CUDA::cuda_driver)
+        target_compile_definitions(magnetron_cuda PRIVATE MAG_ENABLE_CUDA)
+        target_compile_definitions(magnetron PRIVATE MAG_ENABLE_CUDA)
+        target_link_libraries(magnetron magnetron_cuda)
     else()
         message(WARNING "CUDA not found, disabling CUDA support")
-        set(WAVELET_ENABLE_CUDA OFF)
+        set(MAGNETRON_ENABLE_CUDA OFF)
     endif()
 endif()
 
-if (${WAVELET_BUILD_TESTS})
+if (${MAGNETRON_BUILD_TESTS})
     enable_testing()
     add_subdirectory(test)
 endif()
 
-if (${WAVELET_BUILD_FUZZERS})
+if (${MAGNETRON_BUILD_FUZZERS})
     add_subdirectory(fuzzer)
 endif()
 
-if (${WAVELET_BUILD_BENCHMARKS})
+if (${MAGNETRON_BUILD_BENCHMARKS})
     add_subdirectory(benchmark)
 endif()
 

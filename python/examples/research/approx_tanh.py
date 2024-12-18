@@ -3,6 +3,6 @@
 import approx
 import math
 
-import wavelet as wl
+import magnetron as mag
 
-approx.plot_approximation_error('tanh', math.tanh, wl.Operator.TANH, domain=(-2, 2))
+approx.plot_approximation_error('tanh', math.tanh, mag.Operator.TANH, domain=(-2, 2))

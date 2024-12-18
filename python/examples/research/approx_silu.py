@@ -3,11 +3,11 @@
 import approx
 import math
 
-import wavelet as wl
+import magnetron as mag
 
 
 def silu(x: float) -> float:
     return x / (1.0 + math.exp(-x))
 
 
-approx.plot_approximation_error('silu', silu, wl.Operator.SILU, domain=(-2, 2))
+approx.plot_approximation_error('silu', silu, mag.Operator.SILU, domain=(-2, 2))

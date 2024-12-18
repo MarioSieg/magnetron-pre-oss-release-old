@@ -3,6 +3,6 @@
 import approx
 import math
 
-import wavelet as wl
+import magnetron as mag
 
-approx.plot_approximation_error('softmax', math.exp, wl.Operator.SOFTMAX, domain=(-10, 10))
+approx.plot_approximation_error('softmax', math.exp, mag.Operator.SOFTMAX, domain=(-10, 10))

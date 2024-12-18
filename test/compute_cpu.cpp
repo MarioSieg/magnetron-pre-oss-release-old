@@ -11,7 +11,7 @@ static constexpr std::int64_t k_lim_broadcast = 3;
 
 #define impl_test_unary_op(name, eps, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
-        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
         \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
@@ -19,26 +19,26 @@ static constexpr std::int64_t k_lim_broadcast = 3;
         for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
         for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
-            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            mag_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
             \
-            wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x); \
+            mag_tensor_t* r = mag_tensor_emit_op_va(ctx, MAG_OP_##op, x); \
             \
-            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
-            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
-            ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(r)); \
-            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
-            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
+            const auto* b_x = static_cast<const float*>(mag_tensor_data_ptr(x)); \
+            const auto* b_r = static_cast<const float*>(mag_tensor_data_ptr(r)); \
+            ASSERT_EQ(mag_tensor_numel(x), mag_tensor_numel(r)); \
+            ASSERT_NE(mag_tensor_data_ptr(r), mag_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) { \
                 ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
             } \
-            wl_tensor_decref(r); \
-            wl_tensor_decref(x); \
+            mag_tensor_decref(r); \
+            mag_tensor_decref(x); \
         } \
         \
-        wl_ctx_destroy(ctx); \
+        mag_ctx_destroy(ctx); \
     } \
     TEST(compute_cpu, name##_same_shape_inplace) { \
-            wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+            mag_ctx_t* ctx = mag_ctx_create(nullptr); \
             \
             for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
             for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
@@ -46,27 +46,27 @@ static constexpr std::int64_t k_lim_broadcast = 3;
             for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
             for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
             for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
-                wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-                wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+                mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+                mag_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
                 std::vector<float> x_origin {}; \
-                wl_tensor_buf_f32_to_vec(x, x_origin); \
+                mag_tensor_buf_f32_to_vec(x, x_origin); \
                 \
-                wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x); \
-                wl_tensor_set_name(r, "result");  \
+                mag_tensor_t* r = mag_tensor_emit_op_va<true>(ctx, MAG_OP_##op, x); \
+                mag_tensor_set_name(r, "result");  \
                 \
                 const auto* b_x = x_origin.data(); \
-                wl_tensor_set_name(x, "X"); \
-                const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
-                ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(r)); \
-                ASSERT_EQ(wl_tensor_data_ptr(x), wl_tensor_data_ptr(r)); \
-                for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
+                mag_tensor_set_name(x, "X"); \
+                const auto* b_r = static_cast<const float*>(mag_tensor_data_ptr(r)); \
+                ASSERT_EQ(mag_tensor_numel(x), mag_tensor_numel(r)); \
+                ASSERT_EQ(mag_tensor_data_ptr(x), mag_tensor_data_ptr(r)); \
+                for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) { \
                     ASSERT_NEAR(b_r[i], scalar_op(b_x[i]), (eps)); \
                 } \
-                wl_tensor_decref(r); \
-                wl_tensor_decref(x); \
+                mag_tensor_decref(r); \
+                mag_tensor_decref(x); \
             } \
             \
-            wl_ctx_destroy(ctx); \
+            mag_ctx_destroy(ctx); \
         }
 
 impl_test_unary_op(abs, 1e-6, ABS, [](float x) -> float {
@@ -74,26 +74,26 @@ impl_test_unary_op(abs, 1e-6, ABS, [](float x) -> float {
 })
 
 TEST(compute_cpu, neg_same_shape) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
     for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0)
     for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1)
     for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2)
     for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3)
     for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4)
     for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) {
-        wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5);
-        wl_tensor_fill_random_uniform(x, 0.0f, 1.0f);
-        wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_NEG, x);
-        const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x));
-        const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r));
-        ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(r));
-        for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) {
+        mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5);
+        mag_tensor_fill_random_uniform(x, 0.0f, 1.0f);
+        mag_tensor_t* r = mag_tensor_emit_op_va(ctx, MAG_OP_NEG, x);
+        const auto* b_x = static_cast<const float*>(mag_tensor_data_ptr(x));
+        const auto* b_r = static_cast<const float*>(mag_tensor_data_ptr(r));
+        ASSERT_EQ(mag_tensor_numel(x), mag_tensor_numel(r));
+        for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) {
             ASSERT_EQ(b_r[i], -b_x[i]);
         }
-        wl_tensor_decref(x);
-        wl_tensor_decref(r);
+        mag_tensor_decref(x);
+        mag_tensor_decref(r);
     }
-    wl_ctx_destroy(ctx);
+    mag_ctx_destroy(ctx);
 }
 
 impl_test_unary_op(log, 1e-6, LOG, [](float x) -> float {
@@ -173,40 +173,40 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
 
 #define impl_test_binary_op(name, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
-        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
         for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
         for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
         for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
-            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_t* y = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, x); \
-            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
-            wl_tensor_fill_random_uniform(y, -5.0f, 5.0f); \
+            mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            mag_tensor_t* y = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, x); \
+            mag_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            mag_tensor_fill_random_uniform(y, -5.0f, 5.0f); \
             \
-            wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x, y); \
+            mag_tensor_t* r = mag_tensor_emit_op_va(ctx, MAG_OP_##op, x, y); \
                                                  \
             \
-            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
-            const auto* b_y = static_cast<const float*>(wl_tensor_data_ptr(y)); \
-            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
-            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
-            ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(y)); \
-            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(y)); \
-            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
+            const auto* b_x = static_cast<const float*>(mag_tensor_data_ptr(x)); \
+            const auto* b_y = static_cast<const float*>(mag_tensor_data_ptr(y)); \
+            const auto* b_r = static_cast<const float*>(mag_tensor_data_ptr(r)); \
+            ASSERT_NE(mag_tensor_data_ptr(r), mag_tensor_data_ptr(x)); \
+            ASSERT_EQ(mag_tensor_numel(x), mag_tensor_numel(y)); \
+            ASSERT_EQ(mag_tensor_numel(r), mag_tensor_numel(y)); \
+            for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
-                wl_tensor_decref(r); \
-                wl_tensor_decref(x); \
-                wl_tensor_decref(y); \
+                mag_tensor_decref(r); \
+                mag_tensor_decref(x); \
+                mag_tensor_decref(y); \
             } \
         \
-        wl_ctx_destroy(ctx); \
+        mag_ctx_destroy(ctx); \
     } \
      \
     TEST(compute_cpu, name##_scalar_broadcast) { \
-        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
         for (std::int64_t factor=2; factor <= 4; ++factor) \
         for (std::int64_t i0=1; i0 <= k_lim_broadcast; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_broadcast; ++i1) \
@@ -214,67 +214,67 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         for (std::int64_t i3=1; i3 <= k_lim_broadcast; ++i3) \
         for (std::int64_t i4=1; i4 <= k_lim_broadcast; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_broadcast; ++i5) { \
-            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
-            wl_tensor_t* y = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
-            wl_tensor_fill(y, 2.2f); \
+            mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
+            mag_tensor_t* y = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            mag_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            mag_tensor_fill(y, 2.2f); \
             \
-            wl_tensor_t* r = wl_tensor_emit_op_va(ctx, WL_OP_##op, x, y); \
+            mag_tensor_t* r = mag_tensor_emit_op_va(ctx, MAG_OP_##op, x, y); \
             \
-            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
-            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
-            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(x)); \
-            ASSERT_NE(wl_tensor_numel(x), wl_tensor_numel(y)); \
-            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
-            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
+            const auto* b_x = static_cast<const float*>(mag_tensor_data_ptr(x)); \
+            const auto* b_r = static_cast<const float*>(mag_tensor_data_ptr(r)); \
+            ASSERT_EQ(mag_tensor_numel(r), mag_tensor_numel(x)); \
+            ASSERT_NE(mag_tensor_numel(x), mag_tensor_numel(y)); \
+            ASSERT_NE(mag_tensor_data_ptr(r), mag_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
-            wl_tensor_decref(r); \
-            wl_tensor_decref(x); \
-            wl_tensor_decref(y); \
+            mag_tensor_decref(r); \
+            mag_tensor_decref(x); \
+            mag_tensor_decref(y); \
         } \
         \
-        wl_ctx_destroy(ctx); \
+        mag_ctx_destroy(ctx); \
     } \
     TEST(compute_cpu, name##_same_shape_inplace) { \
-        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
         for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
         for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
         for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
-            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_t* y = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, x); \
-            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
-            wl_tensor_fill_random_uniform(y, -5.0f, 5.0f); \
+            mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            mag_tensor_t* y = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, x); \
+            mag_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            mag_tensor_fill_random_uniform(y, -5.0f, 5.0f); \
             std::vector<float> x_origin {}; \
-            wl_tensor_buf_f32_to_vec(x, x_origin); \
+            mag_tensor_buf_f32_to_vec(x, x_origin); \
             \
-            wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x, y); \
+            mag_tensor_t* r = mag_tensor_emit_op_va<true>(ctx, MAG_OP_##op, x, y); \
                                                  \
             \
             const auto* b_x = x_origin.data(); \
-            const auto* b_xx = static_cast<const float*>(wl_tensor_data_ptr(x)); \
-            const auto* b_y  = static_cast<const float*>(wl_tensor_data_ptr(y)); \
-            const auto* b_r  = static_cast<const float*>(wl_tensor_data_ptr(r)); \
-            ASSERT_EQ(wl_tensor_numel(x), wl_tensor_numel(y)); \
-            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(y)); \
-            ASSERT_EQ(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
-            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
+            const auto* b_xx = static_cast<const float*>(mag_tensor_data_ptr(x)); \
+            const auto* b_y  = static_cast<const float*>(mag_tensor_data_ptr(y)); \
+            const auto* b_r  = static_cast<const float*>(mag_tensor_data_ptr(r)); \
+            ASSERT_EQ(mag_tensor_numel(x), mag_tensor_numel(y)); \
+            ASSERT_EQ(mag_tensor_numel(r), mag_tensor_numel(y)); \
+            ASSERT_EQ(mag_tensor_data_ptr(r), mag_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]); \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op b_y[i]); \
             } \
-            wl_tensor_decref(r); \
-            wl_tensor_decref(x); \
-            wl_tensor_decref(y); \
+            mag_tensor_decref(r); \
+            mag_tensor_decref(x); \
+            mag_tensor_decref(y); \
         } \
         \
-        wl_ctx_destroy(ctx); \
+        mag_ctx_destroy(ctx); \
     } \
      \
     TEST(compute_cpu, name##_scalar_broadcast_inplace) { \
-        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
         for (std::int64_t factor=2; factor <= 4; ++factor) \
         for (std::int64_t i0=1; i0 <= k_lim_broadcast; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_broadcast; ++i1) \
@@ -282,59 +282,59 @@ impl_test_unary_op(gelu, 1e-3, GELU, [](float x) -> float {
         for (std::int64_t i3=1; i3 <= k_lim_broadcast; ++i3) \
         for (std::int64_t i4=1; i4 <= k_lim_broadcast; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_broadcast; ++i5) { \
-            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
-            wl_tensor_t* y = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
-            wl_tensor_fill(y, 2.2f); \
+            mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0*factor, i1*factor, i2*factor, i3*factor, i4*factor, i5*factor); \
+            mag_tensor_t* y = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            mag_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            mag_tensor_fill(y, 2.2f); \
             \
             std::vector<float> x_origin {}; \
-            wl_tensor_buf_f32_to_vec(x, x_origin); \
+            mag_tensor_buf_f32_to_vec(x, x_origin); \
             \
-            wl_tensor_t* r = wl_tensor_emit_op_va<true>(ctx, WL_OP_##op, x, y); \
+            mag_tensor_t* r = mag_tensor_emit_op_va<true>(ctx, MAG_OP_##op, x, y); \
             \
             const auto* b_x  = x_origin.data(); \
-            const auto* b_xx = static_cast<const float*>(wl_tensor_data_ptr(x)); \
-            const auto* b_r  = static_cast<const float*>(wl_tensor_data_ptr(r)); \
-            ASSERT_EQ(wl_tensor_numel(r), wl_tensor_numel(x)); \
-            ASSERT_NE(wl_tensor_numel(x), wl_tensor_numel(y)); \
-            ASSERT_EQ(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
-            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
+            const auto* b_xx = static_cast<const float*>(mag_tensor_data_ptr(x)); \
+            const auto* b_r  = static_cast<const float*>(mag_tensor_data_ptr(r)); \
+            ASSERT_EQ(mag_tensor_numel(r), mag_tensor_numel(x)); \
+            ASSERT_NE(mag_tensor_numel(x), mag_tensor_numel(y)); \
+            ASSERT_EQ(mag_tensor_data_ptr(r), mag_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) { \
                 ASSERT_FLOAT_EQ(b_r[i], b_xx[i]);  \
                 ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op 2.2f); \
             } \
-            wl_tensor_decref(r); \
-            wl_tensor_decref(x); \
-            wl_tensor_decref(y); \
+            mag_tensor_decref(r); \
+            mag_tensor_decref(x); \
+            mag_tensor_decref(y); \
         } \
         \
-        wl_ctx_destroy(ctx); \
+        mag_ctx_destroy(ctx); \
     } \
     TEST(compute_cpu, name##_scalar) { \
-        wl_ctx_t* ctx = wl_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
         for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
         for (std::int64_t i3=1; i3 <= k_lim_same_shape; ++i3) \
         for (std::int64_t i4=1; i4 <= k_lim_same_shape; ++i4) \
         for (std::int64_t i5=1; i5 <= k_lim_same_shape; ++i5) { \
-            wl_tensor_t* x = wl_tensor_create_6d(ctx, WL_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
-            wl_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
+            mag_tensor_t* x = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, i0, i1, i2, i3, i4, i5); \
+            mag_tensor_fill_random_uniform(x, 0.0f, 1.0f); \
             \
-            wl_op_param_t xi = wl_op_param_float(static_cast<float>(i0+i1+i2+i3+i4+i5)*0.221f); \
-            wl_tensor_t* r = wl_tensor_emit_op_va_op_params<false>(ctx, WL_OP_##op##S, xi, x); \
+            mag_op_param_t xi = mag_op_param_float(static_cast<float>(i0+i1+i2+i3+i4+i5)*0.221f); \
+            mag_tensor_t* r = mag_tensor_emit_op_va_op_params<false>(ctx, MAG_OP_##op##S, xi, x); \
              \
             \
-            const auto* b_x = static_cast<const float*>(wl_tensor_data_ptr(x)); \
-            const auto* b_r = static_cast<const float*>(wl_tensor_data_ptr(r)); \
-            ASSERT_NE(wl_tensor_data_ptr(r), wl_tensor_data_ptr(x)); \
-            for (std::int64_t i=0; i < wl_tensor_numel(x); ++i) { \
-                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op wl_op_param_unpack_float(xi)); \
+            const auto* b_x = static_cast<const float*>(mag_tensor_data_ptr(x)); \
+            const auto* b_r = static_cast<const float*>(mag_tensor_data_ptr(r)); \
+            ASSERT_NE(mag_tensor_data_ptr(r), mag_tensor_data_ptr(x)); \
+            for (std::int64_t i=0; i < mag_tensor_numel(x); ++i) { \
+                ASSERT_FLOAT_EQ(b_r[i], b_x[i] scalar_op mag_op_param_unpack_float(xi)); \
             } \
-            wl_tensor_decref(r); \
-            wl_tensor_decref(x); \
+            mag_tensor_decref(r); \
+            mag_tensor_decref(x); \
         } \
         \
-        wl_ctx_destroy(ctx); \
+        mag_ctx_destroy(ctx); \
     }
 
 impl_test_binary_op(add_f32, ADD, +)
@@ -344,7 +344,7 @@ impl_test_binary_op(div_f32, DIV, /)
 
 #undef impl_test_binary_op
 
-static void wl__inner_matmul_naive(
+static void mag__inner_matmul_naive(
     const float* A,
     const float* B,
     float* C,
@@ -371,14 +371,14 @@ TEST(compute_cpu, matmul_inner_naive) {
     };
     static constexpr float B[2] = {0.5f, -1.0f};
     float C[3];
-    wl__inner_matmul_naive(A, B, C, 3, 1, 2);
+    mag__inner_matmul_naive(A, B, C, 3, 1, 2);
     ASSERT_FLOAT_EQ(C[0], -1.5f);
     ASSERT_FLOAT_EQ(C[1], -2.5f);
     ASSERT_FLOAT_EQ(C[2], -3.5f);
 }
 
 TEST(compute_cpu, matmul_f32_same_shape_2x2) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
 
     static constexpr float A_values[2][2] = {
         {1.6354027, -1.3607267},
@@ -390,16 +390,16 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
     };
 
     // Manually set known values for A and B
-    wl_tensor_t* A = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 2, 2);
-    wl_tensor_copy_buffer_from(A, A_values, sizeof(A_values));
+    mag_tensor_t* A = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 2, 2);
+    mag_tensor_copy_buffer_from(A, A_values, sizeof(A_values));
 
-    wl_tensor_t* B = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 2, 2);
-    wl_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
+    mag_tensor_t* B = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 2, 2);
+    mag_tensor_copy_buffer_from(B, B_values, sizeof(B_values));
 
     // Create result tensor R for matrix multiplication
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MATMUL, A, B);
-    wl_tensor_print(R, true, true);
-    auto* buf = static_cast<const float*>(wl_tensor_data_ptr(R));
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_MATMUL, A, B);
+    mag_tensor_print(R, true, true);
+    auto* buf = static_cast<const float*>(mag_tensor_data_ptr(R));
 
     static constexpr float expected[2*2] = {
         0.3717081,   0.7322086,
@@ -410,15 +410,15 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
         ASSERT_FLOAT_EQ(buf[i], expected[i]);
     }
 
-    wl_tensor_decref(A);
-    wl_tensor_decref(B);
-    wl_tensor_decref(R);
+    mag_tensor_decref(A);
+    mag_tensor_decref(B);
+    mag_tensor_decref(R);
 
-    wl_ctx_destroy(ctx);
+    mag_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, matmul_f32_different_shape_2x2) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
 
     static constexpr  float AV[3*2] = {
         1.0f, 2.0f,
@@ -428,108 +428,108 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
     static constexpr float BV[2] = {0.5f, -1.0f};
 
     // Manually set known values for A and B
-    wl_tensor_t* A = wl_tensor_create_2d(ctx, WL_DTYPE_F32, 3, 2);
-    wl_tensor_copy_buffer_from(A, AV, sizeof(AV));
+    mag_tensor_t* A = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 3, 2);
+    mag_tensor_copy_buffer_from(A, AV, sizeof(AV));
 
-    wl_tensor_t* B = wl_tensor_create_1d(ctx, WL_DTYPE_F32, 2);
-    wl_tensor_copy_buffer_from(B, BV, sizeof(BV));
+    mag_tensor_t* B = mag_tensor_create_1d(ctx, MAG_DTYPE_F32, 2);
+    mag_tensor_copy_buffer_from(B, BV, sizeof(BV));
 
     // Create result tensor R for matrix multiplication
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MATMUL, A, B);
-    //ASSERT_EQ(wl_tensor_rank(R), 1);
-    ASSERT_EQ(wl_tensor_shape(R)[0], 3);
-    const auto* C = static_cast<const float*>(wl_tensor_data_ptr(R));
-    //wl__inner_matmul_naive(A, B, C, 3, 1, 2);
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_MATMUL, A, B);
+    //ASSERT_EQ(mag_tensor_rank(R), 1);
+    ASSERT_EQ(mag_tensor_shape(R)[0], 3);
+    const auto* C = static_cast<const float*>(mag_tensor_data_ptr(R));
+    //mag__inner_matmul_naive(A, B, C, 3, 1, 2);
     ASSERT_FLOAT_EQ(C[0], -1.5f);
     ASSERT_FLOAT_EQ(C[1], -2.5f);
     ASSERT_FLOAT_EQ(C[2], -3.5f);
 
-    wl_tensor_decref(A);
-    wl_tensor_decref(B);
-    wl_tensor_decref(R);
+    mag_tensor_decref(A);
+    mag_tensor_decref(B);
+    mag_tensor_decref(R);
 
-    wl_ctx_destroy(ctx);
+    mag_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, arithmetic_mean) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
-    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MEAN, A);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
+    mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_MEAN, A);
     ASSERT_NE(R, nullptr);
     double a_mean = 0.0;
-    for (std::int64_t i=0; i < wl_tensor_numel(A); ++i)
-        a_mean += static_cast<double>(static_cast<const float*>(wl_tensor_data_ptr(A))[i]);
-    a_mean /= static_cast<double>(wl_tensor_numel(A));
-    ASSERT_NEAR(static_cast<float>(a_mean), *static_cast<const float*>(wl_tensor_data_ptr(R)), 1e-9);
-    wl_tensor_decref(A);
-    wl_tensor_decref(R);
-    wl_ctx_destroy(ctx);
+    for (std::int64_t i=0; i < mag_tensor_numel(A); ++i)
+        a_mean += static_cast<double>(static_cast<const float*>(mag_tensor_data_ptr(A))[i]);
+    a_mean /= static_cast<double>(mag_tensor_numel(A));
+    ASSERT_NEAR(static_cast<float>(a_mean), *static_cast<const float*>(mag_tensor_data_ptr(R)), 1e-9);
+    mag_tensor_decref(A);
+    mag_tensor_decref(R);
+    mag_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, min) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
-    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MIN, A);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
+    mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_MIN, A);
     ASSERT_NE(R, nullptr);
-    float a_min = *std::min_element(static_cast<const float*>(wl_tensor_data_ptr(A)), static_cast<const float*>(wl_tensor_data_ptr(A)) + wl_tensor_numel(A));
-    ASSERT_FLOAT_EQ(a_min, *static_cast<const float*>(wl_tensor_data_ptr(R)));
-    wl_tensor_decref(A);
-    wl_tensor_decref(R);
-    wl_ctx_destroy(ctx);
+    float a_min = *std::min_element(static_cast<const float*>(mag_tensor_data_ptr(A)), static_cast<const float*>(mag_tensor_data_ptr(A)) + mag_tensor_numel(A));
+    ASSERT_FLOAT_EQ(a_min, *static_cast<const float*>(mag_tensor_data_ptr(R)));
+    mag_tensor_decref(A);
+    mag_tensor_decref(R);
+    mag_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, max) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
-    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_MAX, A);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
+    mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_MAX, A);
     ASSERT_NE(R, nullptr);
-    float a_min = *std::max_element(static_cast<const float*>(wl_tensor_data_ptr(A)), static_cast<const float*>(wl_tensor_data_ptr(A)) + wl_tensor_numel(A));
-    ASSERT_FLOAT_EQ(a_min, *static_cast<const float*>(wl_tensor_data_ptr(R)));
-    wl_tensor_decref(A);
-    wl_tensor_decref(R);
-    wl_ctx_destroy(ctx);
+    float a_min = *std::max_element(static_cast<const float*>(mag_tensor_data_ptr(A)), static_cast<const float*>(mag_tensor_data_ptr(A)) + mag_tensor_numel(A));
+    ASSERT_FLOAT_EQ(a_min, *static_cast<const float*>(mag_tensor_data_ptr(R)));
+    mag_tensor_decref(A);
+    mag_tensor_decref(R);
+    mag_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, hsum) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_4d(ctx, WL_DTYPE_F32, 4, 1, 3, 2);
-    wl_tensor_fill_random_uniform(A, -1.0f, 1.0f);
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_SUM, A);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
+    mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_SUM, A);
     ASSERT_NE(R, nullptr);
     double a_sum = 0.0;
-    for (std::int64_t i=0; i < wl_tensor_numel(A); ++i)
-        a_sum += static_cast<double>(static_cast<const float*>(wl_tensor_data_ptr(A))[i]);
-    ASSERT_NEAR(static_cast<float>(a_sum), *static_cast<const float*>(wl_tensor_data_ptr(R)), 1e-9);
-    wl_tensor_decref(A);
-    wl_tensor_decref(R);
-    wl_ctx_destroy(ctx);
+    for (std::int64_t i=0; i < mag_tensor_numel(A); ++i)
+        a_sum += static_cast<double>(static_cast<const float*>(mag_tensor_data_ptr(A))[i]);
+    ASSERT_NEAR(static_cast<float>(a_sum), *static_cast<const float*>(mag_tensor_data_ptr(R)), 1e-9);
+    mag_tensor_decref(A);
+    mag_tensor_decref(R);
+    mag_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, heavy_compute_single_op) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_3d(ctx, WL_DTYPE_F32, 8192, 8192, 3);
-    wl_tensor_t* B = wl_tensor_emit_op_va(ctx, WL_OP_CLONE, A);
-    wl_tensor_fill(B, 3.0);
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_ADD, A, B);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_tensor_t* A = mag_tensor_create_3d(ctx, MAG_DTYPE_F32, 8192, 8192, 3);
+    mag_tensor_t* B = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, A);
+    mag_tensor_fill(B, 3.0);
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_ADD, A, B);
     ASSERT_NE(R, nullptr);
-    wl_tensor_decref(A);
-    wl_tensor_decref(B);
-    wl_tensor_decref(R);
-    wl_ctx_destroy(ctx);
+    mag_tensor_decref(A);
+    mag_tensor_decref(B);
+    mag_tensor_decref(R);
+    mag_ctx_destroy(ctx);
 }
 
 TEST(compute_cpu, heavy_compute_single_op_scalar) {
-    wl_ctx_t* ctx = wl_ctx_create(nullptr);
-    wl_tensor_t* A = wl_tensor_create_1d(ctx, WL_DTYPE_F32, 1);
-    wl_tensor_t* B =  wl_tensor_emit_op_va(ctx, WL_OP_CLONE, A);
-    wl_tensor_fill(B, 3.0);
-    wl_tensor_t* R = wl_tensor_emit_op_va(ctx, WL_OP_ADD, A, B);
+    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_tensor_t* A = mag_tensor_create_1d(ctx, MAG_DTYPE_F32, 1);
+    mag_tensor_t* B =  mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, A);
+    mag_tensor_fill(B, 3.0);
+    mag_tensor_t* R = mag_tensor_emit_op_va(ctx, MAG_OP_ADD, A, B);
     ASSERT_NE(R, nullptr);
-    wl_tensor_decref(A);
-    wl_tensor_decref(B);
-    wl_tensor_decref(R);
-    wl_ctx_destroy(ctx);
+    mag_tensor_decref(A);
+    mag_tensor_decref(B);
+    mag_tensor_decref(R);
+    mag_ctx_destroy(ctx);
 }

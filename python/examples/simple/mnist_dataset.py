@@ -3,7 +3,7 @@
 import gzip
 import struct
 import numpy as np
-import wavelet as wl
+import magnetron as mag
 
 
 def ubyte_load_data(src: str, num_samples: int) -> np.ndarray:
@@ -30,6 +30,6 @@ def ubyte_load_labels(src: str, num_samples: int) -> np.ndarray:
 
 
 data = ubyte_load_data('../../../datasets/mnist/images-idx3-ubyte.gz', 60000)
-mnist = wl.Tensor.const(data=data.tolist())
+mnist = mag.Tensor.const(data=data.tolist())
 mnist.print(True, False)
-mnist.save('mnist_images.wavelet')
+mnist.save('mnist_images.magnetron')

@@ -1,6 +1,6 @@
 # (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-from wavelet import *
+from magnetron import *
 
 def test_context_creation():
     # Test that a context can be created and defaults are correct.
@@ -75,7 +75,7 @@ def test_tensor_unary_ops():
 def test_save_and_load(tmp_path):
     # Test saving and loading a tensor
     t = Tensor.const([[1, 2], [3, 4]])
-    file_path = tmp_path / "test_tensor.wavelet"
+    file_path = tmp_path / "test_tensor.magnetron"
     t.save(str(file_path))
     loaded = Tensor.load(str(file_path))
     assert loaded.shape == t.shape

@@ -1,11 +1,11 @@
 // (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com>
 
-#ifdef WL_ENABLE_CUDA
+#ifdef MAG_ENABLE_CUDA
 
 #include "prelude.hpp"
-#include "wavelet_cuda.cuh"
+#include "magnetron_cuda.cuh"
 
-using namespace wl::cuda;
+using namespace mag::cuda;
 
 TEST(cuda, init) {
     for (auto&& dev : cuda_init()) {

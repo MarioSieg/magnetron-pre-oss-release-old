@@ -79,14 +79,14 @@ jobs:
         shell: bash
         run: |
           . .venv/bin/activate
-          cd ${{ github.workspace }}/python/wavelet_framework
+          cd ${{ github.workspace }}/python/magnetron_framework
           pip wheel -w dist .
 
       - name: Install Python wheel
         shell: bash
         run: |
           . .venv/bin/activate
-          pip install ${{ github.workspace }}/python/wavelet_framework/dist/*.whl
+          pip install ${{ github.workspace }}/python/magnetron_framework/dist/*.whl
 
       - name: Install Pytest
         shell: bash

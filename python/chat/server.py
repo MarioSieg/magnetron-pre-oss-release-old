@@ -2,8 +2,8 @@ from math import ceil
 
 from dotenv import load_dotenv
 from flask import Flask, render_template, request
-import wavelet as wl
-from wavelet.models import *
+import magnetron as mag
+from magnetron.models import *
 
 load_dotenv()
 
@@ -12,18 +12,18 @@ LEARNING_RATE: float = 0.8
 
 # Inputs
 inputs = [
-    wl.Tensor.const([0.0, 0.0]),
-    wl.Tensor.const([0.0, 1.0]),
-    wl.Tensor.const([1.0, 0.0]),
-    wl.Tensor.const([1.0, 1.0])
+    mag.Tensor.const([0.0, 0.0]),
+    mag.Tensor.const([0.0, 1.0]),
+    mag.Tensor.const([1.0, 0.0]),
+    mag.Tensor.const([1.0, 1.0])
 ]
 
 # Targets
 targets = [
-    wl.Tensor.const([0.0]),
-    wl.Tensor.const([1.0]),
-    wl.Tensor.const([1.0]),
-    wl.Tensor.const([0.0])
+    mag.Tensor.const([0.0]),
+    mag.Tensor.const([1.0]),
+    mag.Tensor.const([1.0]),
+    mag.Tensor.const([0.0])
 ]
 
 mlp = SequentialModel([
@@ -50,9 +50,9 @@ def get_response():
         splits = message.split(' ')
         a: float = float(splits[0])
         b: float = float(splits[1])
-        inp = wl.Tensor.const([a, b])
+        inp = mag.Tensor.const([a, b])
         result: float = mlp.forward(inp).scalar()
-        result_rounded: float = mlp.forward(inp, activation=wl.Operator.HARD_SIGMOID).scalar()
+        result_rounded: float = mlp.forward(inp, activation=mag.Operator.HARD_SIGMOID).scalar()
         return f'{a} ^ {b} = {result} ≈ {result_rounded} => {int(result_rounded) == 1}'
     except:
         return 'Please enter a valid input. Enter two numbers (between 0 and 1) seperated by spaces. For example: 1 1 or 1 0 or 0 0.'
@@ -60,7 +60,7 @@ def get_response():
 
 @app.route('/api/v1/system_info')
 def get_system_info():
-    ctx = wl.Context.active
+    ctx = mag.Context.active
     return f'{ctx.os_name} | {ctx.cpu_name} ({ctx.cpu_virtual_cores}) | {ctx.physical_memory_total / (1 << 30)} GiB RAM | {(ctx.total_allocated_pool_memory / (1 << 20)):.2f} MiB POOL'
 
 

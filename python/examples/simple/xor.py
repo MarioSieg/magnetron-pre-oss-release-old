@@ -1,7 +1,7 @@
 # (c) 2024 Mario 'Neo' Sieg. <mario.sieg.64@gmail.com>
 
-import wavelet as wl
-from wavelet.models import SequentialModel, DenseLayer
+import magnetron as mag
+from magnetron.models import SequentialModel, DenseLayer
 import matplotlib.pyplot as plt
 
 EPOCHS: int = 10000
@@ -9,18 +9,18 @@ LEARNING_RATE: float = 0.8
 
 # Inputs
 inputs = [
-    wl.Tensor.const([0.0, 0.0]),
-    wl.Tensor.const([0.0, 1.0]),
-    wl.Tensor.const([1.0, 0.0]),
-    wl.Tensor.const([1.0, 1.0])
+    mag.Tensor.const([0.0, 0.0]),
+    mag.Tensor.const([0.0, 1.0]),
+    mag.Tensor.const([1.0, 0.0]),
+    mag.Tensor.const([1.0, 1.0])
 ]
 
 # Targets
 targets = [
-    wl.Tensor.const([0.0]),
-    wl.Tensor.const([1.0]),
-    wl.Tensor.const([1.0]),
-    wl.Tensor.const([0.0])
+    mag.Tensor.const([0.0]),
+    mag.Tensor.const([1.0]),
+    mag.Tensor.const([1.0]),
+    mag.Tensor.const([0.0])
 ]
 
 mlp = SequentialModel([
