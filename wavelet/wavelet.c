@@ -1449,14 +1449,9 @@ static wl_tensor_t* wl_result_constructor_routine_nop(wl_tensor_t** inputs, cons
     return NULL;
 }
 
-static wl_tensor_t* wl_result_constructor_routine_isomorph_same_shape(wl_tensor_t** inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
-    (void)params;
-    return wl_tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, inputs[0]->rank, NULL, 0);
-}
-
 static wl_tensor_t* wl_result_constructor_routine_isomorph(wl_tensor_t** inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
     (void)params;
-    return wl_tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, WL_MAX_DIMS, NULL, 0);
+    return wl_tensor_create(inputs[0]->ctx, inputs[0]->dtype, inputs[0]->shape, inputs[0]->rank, NULL, 0);
 }
 
 static wl_tensor_t* wl_result_constructor_routine_view(wl_tensor_t** inputs, const wl_op_param_t(*params)[WL_MAX_OP_PARAMS]) {
@@ -1509,7 +1504,7 @@ static wl_tensor_t* wl_result_constructor_routine_matmul(wl_tensor_t** inputs, c
 static wl_tensor_t* (*wl_op_get_result_constructor_routine(wl_op_t op, wl_graph_eval_order_t gra_ord))(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) {
     static wl_tensor_t* (*const routines[WL_GRA_LEN][WL_OP__COUNT])(wl_tensor_t**, const wl_op_param_t(*)[WL_MAX_OP_PARAMS]) = {{ /* Forward pass */
             [WL_OP_NOP] = &wl_result_constructor_routine_nop,
-            [WL_OP_CLONE] = &wl_result_constructor_routine_isomorph_same_shape,
+            [WL_OP_CLONE] = &wl_result_constructor_routine_isomorph,
             [WL_OP_VIEW] = &wl_result_constructor_routine_view,
             [WL_OP_TRANSPOSE] = &wl_result_constructor_routine_transposed,
             [WL_OP_PERMUTE] = &wl_result_constructor_routine_permuted,
@@ -1549,7 +1544,7 @@ static wl_tensor_t* (*wl_op_get_result_constructor_routine(wl_op_t op, wl_graph_
             [WL_OP_MATMUL] = &wl_result_constructor_routine_matmul,
         }, { /* Backward pass */
             [WL_OP_NOP] = &wl_result_constructor_routine_nop,
-            [WL_OP_CLONE] = &wl_result_constructor_routine_isomorph_same_shape,
+            [WL_OP_CLONE] = &wl_result_constructor_routine_isomorph,
             [WL_OP_VIEW] = &wl_result_constructor_routine_view,
             [WL_OP_TRANSPOSE] = &wl_result_constructor_routine_transposed,
             [WL_OP_PERMUTE] = &wl_result_constructor_routine_permuted,
