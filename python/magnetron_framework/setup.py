@@ -44,6 +44,7 @@ class CMakeBuildExecutor(build_ext):
         build_args = [
             '--target magnetron', # Only build the magnetron library
             f'-j{NUM_JOBS}',
+            '-v'
         ]
         print(subprocess.check_call(['cmake', ext.root_dir] + cmake_args, cwd=self.build_temp))
         print(subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=self.build_temp))
