@@ -52,6 +52,7 @@ else() # POSIX specific config
         -Wno-gnu-zero-variadic-macro-arguments
         -Wno-error=overflow
         -Wno-error=unused-function
+        -Wno-error=format-truncation
         -fvisibility=hidden
         -std=gnu99
     )
