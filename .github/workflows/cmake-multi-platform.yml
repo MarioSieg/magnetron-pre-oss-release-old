@@ -80,7 +80,7 @@ jobs:
         run: |
           . .venv/bin/activate
           cd ${{ github.workspace }}/python/magnetron_framework
-          pip wheel -w dist .
+          pip wheel --verbose -w dist .
 
       - name: Install Python wheel
         shell: bash
