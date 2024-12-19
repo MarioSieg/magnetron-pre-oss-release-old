@@ -31,12 +31,8 @@ namespace mag::cuda {
         std::size_t vmm_granularity {}; /* Virtual memory management granularity */
     };
 
-    /* Initialize CUDA runtime. Returns empty span if initialization failed or not devices are available. */
-    [[nodiscard]] extern auto cuda_init() -> std::span<const physical_device>;
-
-    extern auto set_active_device_by_id(std::int32_t id) -> void;
-    extern auto get_active_device_id() -> std::int32_t;
-    extern auto get_active_device() -> const physical_device&;
+    /* Initialize CUDA runtime. Returns active device info if init successfully, else nullptr. */
+    [[nodiscard]] extern auto cuda_init(std::int32_t use_device) -> const physical_device*;
 
     /* Memory pool interface. */
     class pool {

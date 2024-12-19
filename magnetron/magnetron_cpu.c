@@ -1,6 +1,6 @@
 /* (c) 2024 Mario "Neo" Sieg. <mario.sieg.64@gmail.com> */
 
-#include "magnetron_cpu.h"
+#include "magnetron_internal.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -2224,7 +2224,7 @@ static void MAG_HOTPROC mag_blas_matmul_f32(
 #endif
 }
 
-static void (*mag_blas_dispatch_table_forward[MAG_OP__COUNT])(const mag_cpu_thread_local_ctx_t*, mag_tensor_t*, const mag_tensor_t**) = {
+static void (*mag_blas_dispatch_table_forward[MAG_OP__NUM])(const mag_cpu_thread_local_ctx_t*, mag_tensor_t*, const mag_tensor_t**) = {
     [MAG_OP_NOP] = &mag_blas_nop, /* No operation */
     [MAG_OP_CLONE] = &mag_blas_clone,
     [MAG_OP_VIEW] = &mag_blas_nop, /* View is a no-op */
@@ -2266,7 +2266,7 @@ static void (*mag_blas_dispatch_table_forward[MAG_OP__COUNT])(const mag_cpu_thre
     [MAG_OP_MATMUL] = &mag_blas_matmul_f32
 };
 
-static void (*mag_blas_dispatch_table_backward[MAG_OP__COUNT])(const mag_cpu_thread_local_ctx_t*, mag_tensor_t*, const mag_tensor_t**) = {
+static void (*mag_blas_dispatch_table_backward[MAG_OP__NUM])(const mag_cpu_thread_local_ctx_t*, mag_tensor_t*, const mag_tensor_t**) = {
     [MAG_OP_NOP] = &mag_blas_nop, /* No operation */
     [MAG_OP_CLONE] = &mag_blas_clone,
     [MAG_OP_VIEW] = &mag_blas_nop, /* View is a no-op */
@@ -2318,26 +2318,26 @@ static MAG_HOTPROC void mag_cpu_exec_bwd(mag_compute_device_t* dvc, mag_tensor_t
     mag_blas_dispatch_table_backward[root->op](bci, root, (const mag_tensor_t**)root->op_inputs);
 }
 
-static void mag_cpu_buf_set(mag_storage_buffer* sto, size_t offs, uint8_t x) {
+static void mag_cpu_buf_set(mag_storage_buffer_t* sto, size_t offs, uint8_t x) {
     mag_assert2(sto->base+offs <= sto->base+sto->size);
     memset((void*)(sto->base+offs), x, sto->size-offs); /* On CPU just plain old memset with offset. */
 }
 
-static void mag_cpu_buf_cpy_host_device(mag_storage_buffer* sto, size_t offs, const void* src, size_t n) {
+static void mag_cpu_buf_cpy_host_device(mag_storage_buffer_t* sto, size_t offs, const void* src, size_t n) {
     mag_assert2(sto->base+offs+n <= sto->base+sto->size);
     memcpy((void*)(sto->base+offs), src, n); /* On CPU just plain old memcpy with offset. */
 }
 
-static void mag_cpu_buf_cpy_device_host(mag_storage_buffer* sto, size_t offs, void* dst, size_t n) {
+static void mag_cpu_buf_cpy_device_host(mag_storage_buffer_t* sto, size_t offs, void* dst, size_t n) {
     mag_assert2(sto->base+offs+n <= sto->base+sto->size);
     memcpy(dst, (void*)(sto->base+offs), n); /* On CPU just plain old memcpy with offset. */
 }
 
-static void mag_cpu_alloc_storage(mag_compute_device_t* host, mag_storage_buffer* out, size_t size, size_t align) {
+static void mag_cpu_alloc_storage(mag_compute_device_t* host, mag_storage_buffer_t* out, size_t size, size_t align) {
     mag_assert2(size);
     void* block = mag_alloc_aligned(size, align);
     memset(block, 0, size);
-    *out = (mag_storage_buffer){ /* Set up storage buffer. */
+    *out = (mag_storage_buffer_t){ /* Set up storage buffer. */
         .base = (uintptr_t)block,
         .size = size,
         .alignment = align,
@@ -2348,7 +2348,7 @@ static void mag_cpu_alloc_storage(mag_compute_device_t* host, mag_storage_buffer
     };
 }
 
-static void mag_cpu_free_storage(mag_compute_device_t* dvc, mag_storage_buffer* buf) {
+static void mag_cpu_free_storage(mag_compute_device_t* dvc, mag_storage_buffer_t* buf) {
     mag_free_aligned((void*)buf->base);
     memset(buf, 0, sizeof(*buf)); /* Set to zero. */
 }
@@ -2365,7 +2365,10 @@ static mag_compute_device_t* mag_cpu_init_interface(mag_ctx_t* ctx) {
         .alloc_storage = &mag_cpu_alloc_storage,
         .free_storage = &mag_cpu_free_storage
     };
-    snprintf(dvc->name, sizeof(dvc->name), "%s", ctx->sys.cpu_name);
+    #pragma GCC diagnostic push
+    #pragma GCC diagnostic ignored "-Wformat-truncation"
+    snprintf(dvc->name, sizeof(dvc->name), "%s - %s", mag_device_type_get_name(dvc->type), ctx->sys.cpu_name);
+    #pragma GCC diagnostic pop
     return dvc;
 }
 

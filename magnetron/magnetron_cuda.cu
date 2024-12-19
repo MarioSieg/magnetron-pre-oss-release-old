@@ -3,11 +3,11 @@
 #include "magnetron_cuda.cuh"
 
 #include <bit>
+#include <algorithm>
 #include <cstdio>
+#include <vector>
 
 namespace mag::cuda {
-    extern "C" [[noreturn]] auto mag_panic(const char* msg, ...) -> void;
-
     /* Driver result check. */
     #define mag_cu_chk_rdv(expr) \
         do { \
@@ -33,28 +33,38 @@ namespace mag::cuda {
     #define mag_cu_assert2(expr) mag_cu_assert(expr, "")
 
     static constinit bool s_is_init {};
-    static constinit std::array<physical_device, max_devices> s_devices {};
-    static constinit std::int32_t s_num_devices {};
+    static constinit std::int32_t active_device_id {};
+    static std::vector<physical_device> s_devices {};
 
     auto mag_init_device_cuda([[maybe_unused]] mag_ctx_t* ctx) -> mag_compute_device_t* {
         std::int32_t active_device_id {0}; // TODO: Implement device selection.
-        std::span<const physical_device> devices {cuda_init()};
-        if (devices.empty()) { /* No devices available or initialization failed, let runtime fallback to other compute device. */
-            mag_log_error("No CUDA devices available, using CPU processing");
-            return nullptr; /* Return null device. */
-        }
-        if (active_device_id < 0 || active_device_id >= devices.size()) {
-            mag_log_error("Invalid device ID %d, using device 0", active_device_id);
-            active_device_id = 0;
+        const physical_device* device {cuda_init(active_device_id)};
+        if (!device) [[unlikely]] { /* No devices available or initialization failed, let runtime fallback to other compute device. */
+            mag_log_error("No CUDA devices with id %d available, using CPU processing", active_device_id);
+            return nullptr;
         }
         auto* dvc {static_cast<mag_compute_device_t*>((*mag_alloc)(nullptr, sizeof(mag_compute_device_t)))};
-        set_active_device_by_id(active_device_id);
-        const auto& active_dvc {get_active_device()};
-        std::snprintf(dvc->name, sizeof(dvc->name), "%s", active_dvc.name.data());
+        new (dvc) mag_compute_device_t {
+            .name = "GPU",
+            .impl = nullptr,
+            .is_async = true,
+            .type = MAG_COMPUTE_DEVICE_TYPE_GPU_CUDA,
+            .eager_exec_fwd = nullptr,
+            .eager_exec_bwd = nullptr,
+            .alloc_storage = nullptr,
+            .free_storage = nullptr
+        };
+        double vram;
+        const char* unit;
+        mag_humanize_memory_size(device->vram, &vram, &unit);
+        std::snprintf(dvc->name, sizeof(dvc->name), "%s - %s - %.03f %s VRAM", mag_device_type_get_name(dvc->type), device->name.data(), vram, unit);
         return dvc;
     }
 
     void mag_destroy_device_cuda(mag_compute_device_t* dvc) {
+        s_is_init = false;
+        s_devices.clear();
+        dvc->~mag_compute_device_t();
         (*mag_alloc)(dvc, 0);
     }
 
@@ -63,12 +73,14 @@ namespace mag::cuda {
     ** Normally, we panic when some CUDA runtime function fails, but in this case we just return an empty span,
     ** to allow the runtime to fall back to CPU processing, if no CUDA devices are available.
     */
-    auto cuda_init() -> std::span<const physical_device> {
-        if (s_is_init) return {s_devices.data(), static_cast<std::size_t>(s_num_devices)};
-        if (cudaGetDeviceCount(&s_num_devices) != cudaSuccess) [[unlikely]] return {};
-        if (!(s_num_devices && s_num_devices <= max_devices)) [[unlikely]] return {};
-        for (std::int32_t id {}; id < s_num_devices; ++id) { /* Iterate over devices */
-            physical_device& dvc {s_devices[id]};
+    auto cuda_init(std::int32_t use_device) -> const physical_device* {
+        if (s_is_init) return &s_devices[active_device_id];
+        std::int32_t numgpus {};
+        if (cudaGetDeviceCount(&numgpus) != cudaSuccess) [[unlikely]] return nullptr;
+        if (numgpus < 1 || numgpus > max_devices) [[unlikely]] return nullptr;
+        s_devices.reserve(numgpus);
+        for (std::int32_t id {}; id < numgpus; ++id) { /* Iterate over devices */
+            physical_device& dvc {s_devices.emplace_back()};
             CUdevice cu_dvc {};
             std::int32_t vmm_support {};
             if (cuDeviceGet(&cu_dvc, id) != CUDA_SUCCESS) [[unlikely]] continue; /* Get device handle */
@@ -92,27 +104,9 @@ namespace mag::cuda {
             dvc.ntpb = props.maxThreadsPerBlock;
             dvc.vram = props.totalGlobalMem;
         }
+        active_device_id = std::clamp(use_device, 0, numgpus-1);
         s_is_init = true;
-        return {s_devices.data(), static_cast<std::size_t>(s_num_devices)};
-    }
-
-    auto set_active_device_by_id(std::int32_t id) -> void {
-        std::int32_t curr;
-        mag_cu_chk_rt(cudaGetDevice(&curr));
-        if (curr == id) return; /* Already active */
-        mag_cu_chk_rt(cudaSetDevice(id));
-    }
-
-    auto get_active_device_id() -> std::int32_t {
-        std::int32_t curr;
-        mag_cu_chk_rt(cudaGetDevice(&curr));
-        return curr;
-    }
-
-    auto get_active_device() -> const physical_device& {
-        const auto id {get_active_device_id()}; /* Ensure device is active. */
-        mag_cu_assert2(id >= 0 && id < s_num_devices);
-        return s_devices[id];
+        return &s_devices[active_device_id];
     }
 
     vm_pool::vm_pool(const physical_device& dvc) {

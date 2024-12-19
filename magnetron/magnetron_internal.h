@@ -5,6 +5,9 @@
 
 #include "magnetron.h"
 
+#include <string.h>
+#include <stdio.h>
+
 #ifdef _MSC_VER
 #include <intrin.h>
 #else
@@ -269,6 +272,8 @@ extern MAG_EXPORT void* (*mag_alloc)(void* blk, size_t size);
 extern MAG_EXPORT void* mag_alloc_aligned(size_t size, size_t align);
 extern MAG_EXPORT void mag_free_aligned(void* blk);
 
+extern MAG_EXPORT void mag_humanize_memory_size(size_t n, double* out, const char** unit);
+
 #define mag_swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
 #define mag_max(x, y) (((x) > (y)) ? (x) : (y))
 #define mag_min(x, y) (((x) < (y)) ? (x) : (y))
@@ -286,8 +291,8 @@ extern MAG_EXPORT void mag_free_aligned(void* blk);
 #else
 #   define MAG_SRC_NAME __FILE__ ":" MAG_STRINGIZE(__LINE__)
 #endif
-#define mag_log_info(msg, ...) do { if (mag_unlikely(mag_log_enabled)) fprintf(stdout,   MAG_CC_CYAN "[magnetron] " MAG_CC_RESET MAG_SRC_NAME " " msg "\n", ## __VA_ARGS__); } while (0)
-#define mag_log_info_force(msg, ...) do { fprintf(stdout,   MAG_CC_CYAN "[magnetron] " MAG_CC_RESET MAG_SRC_NAME " " msg "\n", ## __VA_ARGS__); } while (0)
+#define mag_log_info(msg, ...) do { if (mag_unlikely(mag_log_enabled)) fprintf(stdout,   MAG_CC_CYAN "[magnetron] " MAG_CC_RESET msg "\n", ## __VA_ARGS__); } while (0)
+#define mag_log_info_force(msg, ...) do { fprintf(stdout,   MAG_CC_CYAN "[magnetron] " MAG_CC_RESET msg "\n", ## __VA_ARGS__); } while (0)
 #define mag_log_warn(msg, ...) do { fprintf(stdout,  MAG_CC_CYAN "[magnetron] " MAG_CC_RESET MAG_SRC_NAME " " MAG_CC_YELLOW msg MAG_CC_RESET "\n", ## __VA_ARGS__); fflush(stdout); } while (0)
 #define mag_log_error(msg, ...) do { fprintf(stdout,  MAG_CC_CYAN "[magnetron] " MAG_CC_RESET MAG_SRC_NAME " " MAG_CC_RED msg MAG_CC_RESET "\n", ## __VA_ARGS__); fflush(stdout); } while (0)
 
@@ -322,28 +327,38 @@ static MAG_AINLINE void* mag_pincr(void** p, size_t sz, size_t align) {
 typedef struct mag_compute_device_t mag_compute_device_t;
 
 /* Buffer interface on a compute device */
-typedef struct mag_storage_buffer mag_storage_buffer;
-struct mag_storage_buffer {
-    uintptr_t base;                                                                             /* Pointer to buffer on device. Might point to GPU or any other device memory. */
-    size_t size;                                                                                /* Size of buffer in bytes. */
-    size_t alignment;                                                                           /* Alignment of buffer. */
-    mag_compute_device_t* host;                                                                  /* Host device. */
-    void (*set)(mag_storage_buffer* sto, size_t offs, uint8_t x);                                /* Memset buffer. */
-    void (*cpy_host_device)(mag_storage_buffer* sto, size_t offs, const void* src, size_t n);    /* Copy data from host to device. */
-    void (*cpy_device_host)(mag_storage_buffer* sto, size_t offs, void* dst, size_t n);          /* Copy data from device to host. */
+typedef struct mag_storage_buffer_t mag_storage_buffer_t;
+struct mag_storage_buffer_t {
+    uintptr_t base;                                                                                 /* Pointer to buffer on device. Might point to GPU or any other device memory. */
+    size_t size;                                                                                    /* Size of buffer in bytes. */
+    size_t alignment;                                                                               /* Alignment of buffer. */
+    mag_compute_device_t* host;                                                                     /* Host device. */
+    void (*set)(mag_storage_buffer_t* sto, size_t offs, uint8_t x);                                 /* Memset buffer. */
+    void (*cpy_host_device)(mag_storage_buffer_t* sto, size_t offs, const void* src, size_t n);     /* Copy data from host to device. */
+    void (*cpy_device_host)(mag_storage_buffer_t* sto, size_t offs, void* dst, size_t n);           /* Copy data from device to host. */
 };
 
 /* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
 struct mag_compute_device_t {
-    char name[128];                                                         /* Device name. */
-    void* impl;                                                             /* Device specific implementation, if applicable. */
-    bool is_async;                                                          /* If device is async. */
-    mag_compute_device_type_t type;                                          /* Device type enum. */
-    void (*eager_exec_fwd)(mag_compute_device_t* dvc, mag_tensor_t* root);  /* Execute a single op forward. */
-    void (*eager_exec_bwd)(mag_compute_device_t* dvc, mag_tensor_t* root);  /* Execute a single op backwards. */
-    void (*alloc_storage)(mag_compute_device_t* dvc, mag_storage_buffer* out, size_t size, size_t align);
-    void (*free_storage)(mag_compute_device_t* dvc, mag_storage_buffer* buf);
+    char name[128];                                                             /* Device name. */
+    void* impl;                                                                 /* Device specific implementation, if applicable. */
+    bool is_async;                                                              /* If device is async. */
+    mag_compute_device_type_t type;                                             /* Device type enum. */
+    void (*eager_exec_fwd)(mag_compute_device_t* dvc, mag_tensor_t* root);      /* Execute a single op forward. */
+    void (*eager_exec_bwd)(mag_compute_device_t* dvc, mag_tensor_t* root);      /* Execute a single op backwards. */
+    void (*alloc_storage)(mag_compute_device_t* dvc, mag_storage_buffer_t* out, size_t size, size_t align);
+    void (*free_storage)(mag_compute_device_t* dvc, mag_storage_buffer_t* buf);
 };
+
+/* Device creation and destruction. */
+typedef struct mag_device_factory_t {
+    mag_compute_device_t* (*init)(mag_ctx_t* ctx);      /* Initialize device. */
+    void (*destroy)(mag_compute_device_t* dvc);         /* Destroy device. */
+} mag_device_factory_t;
+
+/* Global device factories. Implemented in magnetron_device_registry.c */
+extern mag_compute_device_t* mag_init_dynamic_device(mag_ctx_t* ctx, mag_compute_device_type_t type);
+extern void mag_destroy_dynamic_device(mag_compute_device_t* dvc);
 
 /* Profiling performance monitor per op. */
 typedef struct mag_perf_mon_t {
@@ -389,7 +404,7 @@ struct mag_ctx_t {
 #endif
     mag_exec_mode_t exec_mode;
     bool profiler_enabled;
-    mag_op_perf_info_t op_perf_mons_total[MAG_OP__COUNT];
+    mag_op_perf_info_t op_perf_mons_total[MAG_OP__NUM];
     union {
         struct {
             uint64_t state;
@@ -440,7 +455,7 @@ struct mag_tensor_t {
     int64_t shape[MAG_MAX_DIMS];                     /* Shape of the tensor. */
     int64_t strides[MAG_MAX_DIMS];                   /* Strides of the tensor. We store the strides in element counts and NOT in bytes. */
     mag_dtype_t dtype;                               /* Data type of the tensor. */
-    mag_storage_buffer storage;                      /* Storage buffer. */
+    mag_storage_buffer_t storage;                      /* Storage buffer. */
     int64_t numel;                                  /* Number of elements in the tensor. */
     mag_tensor_flags_t flags;                        /* Tensor flags. */
     mag_op_t op;                                     /* Opcode for operators. */

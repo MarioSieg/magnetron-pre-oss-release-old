@@ -16,7 +16,6 @@
 #endif
 
 #include <string.h>
-#include <stdlib.h>
 #include <stddef.h>
 #include <stdbool.h>
 #include <inttypes.h>
@@ -56,17 +55,24 @@ extern "C" {
 
 typedef enum mag_compute_device_type_t {
     MAG_COMPUTE_DEVICE_TYPE_CPU = 0, /* CPU compute device */
-    MAG_COMPUTE_DEVICE_TYPE_CUDA = 1  /* CUDA GPU compute device */
+    MAG_COMPUTE_DEVICE_TYPE_GPU_CUDA = 1,  /* CUDA GPU compute device */
+
+    MAG_COMPUTE_DEVICE_TYPE__NUM
 } mag_compute_device_type_t;
+extern MAG_EXPORT const char* mag_device_type_get_name(mag_compute_device_type_t op);
 
 typedef enum mag_exec_mode_t {
     MAG_EXEC_MODE_EAGER = 0, /* Execute operations immediately. (Dynamic computation graph, like PyTorch). */
-    MAG_EXEC_MODE_DEFERRED = 1 /* Build computation graph and execute later. (Static computation graph, like TensorFlow 1.0). */
+    MAG_EXEC_MODE_DEFERRED = 1, /* Build computation graph and execute later. (Static computation graph, like TensorFlow 1.0). */
+
+    MAG_EXEC_MODE__NUM
 } mag_exec_mode_t;
 
 typedef enum mag_prng_algorithm_t {
     MAG_PRNG_MERSENNE_TWISTER = 0, /* Mersenne Twister PRNG */
-    MAG_PRNG_PCG = 1 /* Permuted Congruential Generator PRNG */
+    MAG_PRNG_PCG = 1, /* Permuted Congruential Generator PRNG */
+
+    MAG_PRNG__NUM
 } mag_prng_algorithm_t;
 
 typedef enum mag_color_channels_t {
@@ -74,7 +80,9 @@ typedef enum mag_color_channels_t {
     MAG_COLOR_CHANNELS_GRAY,  /* Grayscale F32 */
     MAG_COLOR_CHANNELS_GRAY_A,/* Grayscale F32 + Alpha F32 */
     MAG_COLOR_CHANNELS_RGB,   /* R32G32B32 */
-    MAG_COLOR_CHANNELS_RGBA   /* R32G32B32A32 */
+    MAG_COLOR_CHANNELS_RGBA,   /* R32G32B32A32 */
+
+    MAG_COLOR_CHANNELS__NUM
 } mag_color_channels_t;
 
 extern MAG_EXPORT void* (*mag_get_alloc_fn(void))(void* blk, size_t size); /* Get global allocator. */
@@ -122,9 +130,9 @@ extern MAG_EXPORT void mag_ctx_destroy(mag_ctx_t* ctx); /* Destroy context and f
 
 typedef enum mag_dtype_t {
     MAG_DTYPE_F32,   /* 32-bit floating-point data type */
-    MAG_DTYPE_COUNT_ /* Total number of data types */
+    MAG_DTYPE__NUM /* Total number of data types */
 } mag_dtype_t;
-mag_static_assert(MAG_DTYPE_COUNT_ <= 0xff);
+mag_static_assert(MAG_DTYPE__NUM <= 0xff);
 
 typedef struct mag_dtype_info_t {
     int64_t size;         /* Size of the data type in bytes */
@@ -177,12 +185,12 @@ extern MAG_EXPORT const mag_dtype_info_t* mag_dtype_info_of(mag_dtype_t type);
 #define _(enumerator, mnemonic, argcount, paramcount, inplace) MAG_OP_##enumerator
 typedef enum mag_op_t {
     mag_op_def(_, MAG_SEP)
-    MAG_OP__COUNT
+    MAG_OP__NUM
 } mag_op_t;
 #undef _
 mag_static_assert(MAG_OP_NOP == 0);
-mag_static_assert(MAG_OP_MATMUL+1 == MAG_OP__COUNT);
-mag_static_assert(MAG_OP__COUNT <= 0xff);
+mag_static_assert(MAG_OP_MATMUL+1 == MAG_OP__NUM);
+mag_static_assert(MAG_OP__NUM <= 0xff);
 extern MAG_EXPORT const char* mag_op_get_name(mag_op_t op);
 extern MAG_EXPORT const char* mag_op_get_mnemonic(mag_op_t op);
 extern MAG_EXPORT uint8_t mag_op_get_argcount(mag_op_t op);

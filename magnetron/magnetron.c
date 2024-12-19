@@ -28,11 +28,6 @@
 
 #include "magnetron.h"
 #include "magnetron_internal.h"
-#include "magnetron_cpu.h"
-#ifdef MAG_ENABLE_CUDA
-extern mag_compute_device_t* mag_init_device_cuda(mag_ctx_t* ctx); /* Initialize GPU compute device. */
-extern void mag_destroy_device_cuda(mag_compute_device_t* dvc); /* Destroy GPU compute device. */
-#endif
 
 #include <stdio.h>
 #include <stdarg.h>
@@ -227,7 +222,7 @@ void mag_set_alloc_fn(void* (*alloc)(void* blk, size_t size)) {
     mag_alloc = alloc;
 }
 
-static void mag_humanize_memory_size(size_t n, double* out, const char** unit) {
+void mag_humanize_memory_size(size_t n, double* out, const char** unit) {
     if (n < (1<<10)) {
         *out = (double)n;
         *unit = "B";
@@ -642,86 +637,6 @@ typedef uint32_t mag_format_flags; /* Flags for formatting output */
 
 static char* mag_fmt_f64(mag_format_flags sf, double n, char* p);
 
-typedef struct mag_hashset_t {
-    size_t len;
-    mag_bitset_t* used;
-    const mag_tensor_t** keys;
-    bool is_pool;
-} mag_hashset_t;
-#define MAG_HASHSET_FULL ((size_t)-1)
-#define MAG_HASHSET_DUPLICATE ((size_t)-2)
-#define MAG_HASHSET_MAX ((size_t)-3) /* Must be last. */
-#define mag_hashset_hash_fn(ptr) ((size_t)(uintptr_t)(ptr)>>3)
-
-static size_t mag_hashset_compute_hash_size(size_t sz) {
-    mag_assert2(sz > 0 && sz < MAG_HASHSET_MAX);
-    static const size_t prime_lut[] = {
-        2, 3, 5, 11, 17, 37, 67, 131, 257, 521, 1031,
-        2053, 4099, 8209, 16411, 32771, 65537, 131101,
-        262147, 524309, 1048583, 2097169, 4194319, 8388617,
-        16777259, 33554467, 67108879, 134217757, 268435459,
-        536870923, 1073741827, 2147483659
-    };
-    size_t l = 0;
-    size_t r = sizeof(prime_lut)/sizeof(*prime_lut);
-    while (l < r) { /* Binary search for the smallest prime > sz. */
-        size_t mid = (l+r)>>1;
-        if (prime_lut[mid] < sz) l = mid+1;
-        else r = mid;
-    }
-    return l < sizeof(prime_lut)/sizeof(*prime_lut) ? prime_lut[l] : sz|1;
-}
-
-static mag_hashset_t mag_hashset_create(size_t size) {
-    size = mag_hashset_compute_hash_size(size);
-    mag_hashset_t set = {
-        .len = size,
-        .used = (mag_bitset_t*)(*mag_alloc)(NULL, mag_bitset_size(size)*sizeof(*set.used)),
-        .keys = (const mag_tensor_t**)(*mag_alloc)(NULL, size*sizeof(*set.keys)),
-        .is_pool = false
-    };
-    memset(set.used, 0, mag_bitset_size(size)*sizeof(*set.used));
-    return set;
-}
-
-static size_t mag_hashset_lookup(mag_hashset_t* set, const mag_tensor_t* key) {
-    size_t k = mag_hashset_hash_fn(key) % set->len, i = k;
-    while (mag_bitset_get(set->used, i) && set->keys[i] != key) { /* Linear probing. */
-        i = (i+1) % set->len;
-        if (i == k) return MAG_HASHSET_FULL;
-    }
-    return i;
-}
-
-static bool mag_hashset_contains_key(mag_hashset_t* set, const mag_tensor_t* key) {
-    size_t i = mag_hashset_lookup(set, key);
-    return mag_bitset_get(set->used, i) && i != MAG_HASHSET_FULL;
-}
-
-static size_t mag_hashset_insert(mag_hashset_t* set, const mag_tensor_t* key) {
-    size_t k = mag_hashset_hash_fn(key) % set->len, i = k;
-    do { /* Linear probing. */
-        if (!mag_bitset_get(set->used, i)) { /* Insert key. */
-            mag_bitset_set(set->used, i);
-            set->keys[i] = key;
-            return i;
-        }
-        if (set->keys[i] == key) return MAG_HASHSET_DUPLICATE; /* Key already exists. */
-        i = (i+1) % set->len;
-    } while (i != k);
-    mag_panic("Insertion target not found");
-}
-
-static void mag_hashset_reset(mag_hashset_t* set) {
-    memset(set->used, 0, mag_bitset_size(set->len)*sizeof(*set->used));
-}
-
-static void mag_hashset_destroy(mag_hashset_t* set) {
-    mag_assert2(!set->is_pool); /* Cannot destroy pooled hashset. */
-    (*mag_alloc)(set->used, 0);
-    (*mag_alloc)(set->keys, 0);
-}
-
 static bool MAG_AINLINE mag_imull64_ov(int64_t a, int64_t b, int64_t* out) { /* Performs c = a*b with overflow checking. Returns true on overflow, else false. */
     #ifdef _MSC_VER
     #ifdef _M_ARM64
@@ -853,7 +768,7 @@ static void mag_system_host_info_dump(mag_ctx_t* ctx) {
     mag_humanize_memory_size(ctx->sys.phys_mem_free, &mem_free, &mem_unit_free);
     mag_humanize_memory_size((size_t)llabs((int64_t)ctx->sys.phys_mem_total-(int64_t)ctx->sys.phys_mem_free), &mem_used, &mem_unit_used);
     double mem_used_percent = fabs((double)(ctx->sys.phys_mem_total-ctx->sys.phys_mem_free))/(double)ctx->sys.phys_mem_total*100.0;
-    mag_log_info("Physical memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
+    mag_log_info("Physical Machine Memory: %.03f %s, Free: %.03f %s, Used: %.03f %s (%.02f%%)", mem_total, mem_unit_total, mem_free, mem_unit_free, mem_used, mem_unit_used, mem_used_percent);
 }
 
 /* Default image loader/saver implementation. */
@@ -878,51 +793,6 @@ static MAG_COLDPROC void mag_ctx_dump_compiler_info(void) {
         compiler_version_minor = _MSC_VER % 100;
     #endif
     mag_log_info("magnetron v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d", mag_version_major(MAG_VERSION), mag_version_minor(MAG_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
-}
-
-static void mag_compute_device_init(mag_ctx_t* ctx, mag_compute_device_type_t type) {
-    mag_assert2(!ctx->device);
-    retry:
-        switch (ctx->device_type = type) {
-            case MAG_COMPUTE_DEVICE_TYPE_CPU: /* Initialize CPU device. */
-                ctx->device = mag_init_device_cpu(ctx, 0);
-                mag_assert(ctx->device, "Failed to initialize CPU compute device");
-                mag_log_info("Using CPU compute device: %s", ctx->device->name);
-            break;
-            case MAG_COMPUTE_DEVICE_TYPE_CUDA: /* Initialize CUDA device. */
-                #ifdef MAG_ENABLE_CUDA
-                    ctx->device = mag_init_device_cuda(ctx);
-                    if (mag_unlikely(!ctx->device)) { /* Fallback to CPU device if CUDA device initialization failed. */
-                        mag_log_error("Failed to initialize CUDA compute device or no CUDA devices found, falling back to CPU");
-                        type = MAG_COMPUTE_DEVICE_TYPE_CPU;
-                        goto retry; /* Retry with CPU device. */
-                    }
-                    mag_log_info("Using CUDA compute device: %s", ctx->device->name);
-                #else /* CUDA support is not enabled. */
-                    mag_log_error("CUDA support is not enabled, falling back to CPU. To use CUDA recompile magnetron with CUDA support enabled");
-                    type = MAG_COMPUTE_DEVICE_TYPE_CPU;
-                    goto retry; /* Retry with CPU device. */
-                #endif
-            break;
-            default: mag_panic("Unsupported compute device type: %d", ctx->device_type);
-        }
-        mag_assert2(ctx->device);
-}
-
-static void mag_compute_device_destroy(mag_ctx_t* ctx) {
-    mag_assert2(ctx->device);
-    switch (ctx->device_type) {
-        case MAG_COMPUTE_DEVICE_TYPE_CPU:
-            mag_destroy_device_cpu(ctx->device);
-        break;
-        case MAG_COMPUTE_DEVICE_TYPE_CUDA:
-            #ifdef MAG_ENABLE_CUDA
-                mag_destroy_device_cuda(ctx->device);
-            #endif
-        break;
-        default: mag_panic("Unsupported compute device type: %d", ctx->device_type);
-    }
-    ctx->device = NULL;
 }
 
 mag_ctx_t* mag_ctx_create(const mag_ctx_info_t* info) {
@@ -955,10 +825,11 @@ mag_ctx_t* mag_ctx_create(const mag_ctx_info_t* info) {
     /* Create selected compute device. */
     ctx->exec_mode = ctx_info.exec_mode;
     ctx->device_type = ctx_info.device;
-    mag_compute_device_init(ctx, ctx->device_type);
+    ctx->device = mag_init_dynamic_device(ctx, ctx_info.device);
+    mag_log_info("Compute device: %s", ctx->device->name);
 
     /* Print context initialization time. */
-    mag_log_info("magnetron context initialized in %.05f ms.", mag_hpc_clock_elapsed_ms(time_stamp_start));
+    mag_log_info("magnetron context initialized in %.05f ms", mag_hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
 }
 
@@ -990,8 +861,8 @@ void mag_ctx_destroy(mag_ctx_t* ctx) {
     }
     *head = NULL;
 #endif
-    mag_compute_device_destroy(ctx);
-    memset(ctx, (uintptr_t)ctx&0xff, sizeof(*ctx));
+    mag_destroy_dynamic_device(ctx->device); ctx->device = NULL;
+    memset(ctx, 0, sizeof(*ctx));
     (*mag_alloc)(ctx, 0);
     ctx = NULL;
     mag_log_info("magnetron context destroyed.");
@@ -1070,9 +941,9 @@ void mag_ctx_profile_stop_recording(mag_ctx_t* ctx, const char* export_csv_file)
         mag_print_separator(stdout);
         printf("%16s %16s %16s %16s %16s\n", "Operation", "Executions", "Usage (%)", "AVG Time (μs)", "Total Time (μs)");
     }
-    mag_op_perf_record_t sorted[MAG_OP__COUNT];
+    mag_op_perf_record_t sorted[MAG_OP__NUM];
     uint64_t exec_total = 0;
-    for (mag_op_t op=MAG_OP_NOP; op < MAG_OP__COUNT; ++op) { /* Convert to sortable record. */
+    for (mag_op_t op=MAG_OP_NOP; op < MAG_OP__NUM; ++op) { /* Convert to sortable record. */
         sorted[op].op = op;
         sorted[op].perf = ctx->op_perf_mons_total[op];
         exec_total += sorted[op].perf.n_execs;
@@ -1082,14 +953,14 @@ void mag_ctx_profile_stop_recording(mag_ctx_t* ctx, const char* export_csv_file)
         mag_print_separator(stdout);
         return;
     }
-    qsort(sorted, MAG_OP__COUNT, sizeof(*sorted), &mag_cmp_perf_info); /* Quicksort by time descending. */
+    qsort(sorted, MAG_OP__NUM, sizeof(*sorted), &mag_cmp_perf_info); /* Quicksort by time descending. */
     FILE* f = NULL;
     if (csv) {
         f = mag_fopen(export_csv_file, "wt");
         mag_assert(f, "Failed to open CSV file: %s", export_csv_file);
         fprintf(f, "Operation,Executions,Usage,AVG Time,Total Time\n"); /* CSV Header */
     }
-    for (mag_op_t i=MAG_OP_NOP; i < MAG_OP__COUNT; ++i) { /* Format sorted performance data */
+    for (mag_op_t i=MAG_OP_NOP; i < MAG_OP__NUM; ++i) { /* Format sorted performance data */
         const mag_op_perf_record_t* info = sorted+i;
         const mag_op_perf_info_t* perf = &info->perf;
         if (!perf->n_execs) continue; /* Op never executed. */
@@ -1145,8 +1016,16 @@ uint32_t mag_pack_color_f32(float r, float g, float b) {
     return (((uint32_t)(r*255.0f)&255)<<16)|(((uint32_t)(g*255.0f)&255)<<8)|((uint32_t)(b*255.0f)&255);
 }
 
+const char* mag_device_type_get_name(mag_compute_device_type_t op) {
+    static const char* const names[MAG_COMPUTE_DEVICE_TYPE__NUM] = {
+        [MAG_COMPUTE_DEVICE_TYPE_CPU] = "CPU",
+        [MAG_COMPUTE_DEVICE_TYPE_GPU_CUDA] = "CUDA GPU",
+    };
+    return names[op];
+}
+
 const mag_dtype_info_t* mag_dtype_info_of(mag_dtype_t type) {
-    static const mag_dtype_info_t infos[MAG_DTYPE_COUNT_] = {
+    static const mag_dtype_info_t infos[MAG_DTYPE__NUM] = {
         [MAG_DTYPE_F32] = {
             sizeof(float),
             "f32"
@@ -1157,7 +1036,7 @@ const mag_dtype_info_t* mag_dtype_info_of(mag_dtype_t type) {
 
 const char* mag_op_get_name(mag_op_t op) {
     #define _(enumerator, mnemonic, argcount, paramcount, inplace) #enumerator
-    static const char* const names[MAG_OP__COUNT] = {
+    static const char* const names[MAG_OP__NUM] = {
         mag_op_def(_, MAG_SEP)
     };
     #undef _
@@ -1166,7 +1045,7 @@ const char* mag_op_get_name(mag_op_t op) {
 
 const char* mag_op_get_mnemonic(mag_op_t op) {
     #define _(enumerator, mnemonic, argcount, paramcount, inplace) mnemonic
-    static const char* const mnemonics[MAG_OP__COUNT] = {
+    static const char* const mnemonics[MAG_OP__NUM] = {
         mag_op_def(_, MAG_SEP)
     };
     #undef _
@@ -1174,7 +1053,7 @@ const char* mag_op_get_mnemonic(mag_op_t op) {
 }
 
 #define _(enumerator, mnemonic, args, params, inplace) ((((args)&3)<<6)|(((params)&3)<<3)|((inplace)&1))
-static const uint8_t mag_packed_op_info[MAG_OP__COUNT] = {
+static const uint8_t mag_packed_op_info[MAG_OP__NUM] = {
     mag_op_def(_, MAG_SEP)
 };
 #undef _
@@ -1357,7 +1236,7 @@ static bool mag_validate_op_matmul(mag_op_t op, mag_tensor_t* result, mag_tensor
 }
 
 static bool (*mag_op_get_validator_routine(mag_op_t op, mag_graph_eval_order_t ord))(mag_op_t, mag_tensor_t*, mag_tensor_t**, uint32_t, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]) {
-    static bool (*const routines[MAG_GRA_LEN][MAG_OP__COUNT])(mag_op_t, mag_tensor_t*, mag_tensor_t**, uint32_t, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]) = {{ /* Forward pass */
+    static bool (*const routines[MAG_GRA_LEN][MAG_OP__NUM])(mag_op_t, mag_tensor_t*, mag_tensor_t**, uint32_t, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]) = {{ /* Forward pass */
             [MAG_OP_NOP] = &mag_validate_op_nop,
             [MAG_OP_CLONE] = &mag_validate_op_unary,
             [MAG_OP_VIEW] = &mag_validate_op_unary,
@@ -1502,7 +1381,7 @@ static mag_tensor_t* mag_result_constructor_routine_matmul(mag_tensor_t** inputs
 }
 
 static mag_tensor_t* (*mag_op_get_result_constructor_routine(mag_op_t op, mag_graph_eval_order_t gra_ord))(mag_tensor_t**, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]) {
-    static mag_tensor_t* (*const routines[MAG_GRA_LEN][MAG_OP__COUNT])(mag_tensor_t**, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]) = {{ /* Forward pass */
+    static mag_tensor_t* (*const routines[MAG_GRA_LEN][MAG_OP__NUM])(mag_tensor_t**, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]) = {{ /* Forward pass */
             [MAG_OP_NOP] = &mag_result_constructor_routine_nop,
             [MAG_OP_CLONE] = &mag_result_constructor_routine_isomorph,
             [MAG_OP_VIEW] = &mag_result_constructor_routine_view,
@@ -1583,7 +1462,7 @@ static mag_tensor_t* (*mag_op_get_result_constructor_routine(mag_op_t op, mag_gr
             [MAG_OP_DIVS] = &mag_result_constructor_routine_isomorph,
             [MAG_OP_MATMUL] = &mag_result_constructor_routine_matmul,
     }};
-    mag_static_assert(MAG_OP__COUNT*MAG_GRA_LEN*sizeof(void*) == sizeof(routines));
+    mag_static_assert(MAG_OP__NUM*MAG_GRA_LEN*sizeof(void*) == sizeof(routines));
     return routines[gra_ord][op];
 }
 
@@ -1614,12 +1493,12 @@ static mag_tensor_t* mag_tensor_create(mag_ctx_t* ctx, mag_dtype_t type, const i
         }
         mag_tensor_incref(view); /* Increment view tensor strong RC */
     }
-    int64_t scalar_size = mag_dtype_info_of(type)->size;
-    int64_t elems_total = 1;
+    int64_t dts = mag_dtype_info_of(type)->size;
+    int64_t numel = 1;
     for (int64_t i=0; i < rank; ++i) /* Calculate buffer size and check for overflow. */
-        mag_assert2(dims[i] > 0 && !mag_imull64_ov(dims[i], elems_total, &elems_total)); /* Overflow in buffer size. Max: INT64_MAX. Reduce dimensions. */
-    int64_t bytes_total = elems_total*scalar_size;
-    mag_assert2(!view || !bytes_total || bytes_total + view_offs <= mag_tensor_data_size(view)); /* Slice must be within viewed tensor data range. *//* Allocate memory for tensor struct on CPU RAM. */
+        mag_assert2(dims[i] > 0 && !mag_imull64_ov(dims[i], numel, &numel)); /* Overflow in buffer size. Max: INT64_MAX. Reduce dimensions. */
+    int64_t numbytes = numel*dts;
+    mag_assert2(!view || !numbytes || numbytes + view_offs <= mag_tensor_data_size(view)); /* Slice must be within viewed tensor data range. *//* Allocate memory for tensor struct on CPU RAM. */
     mag_tensor_t* t = (*mag_alloc)(NULL, sizeof(*t));
     memset(t, 0, sizeof(*t));
     *t = (mag_tensor_t) {
@@ -1636,7 +1515,7 @@ static mag_tensor_t* mag_tensor_create(mag_ctx_t* ctx, mag_dtype_t type, const i
         .strides = {0},
         .dtype = type,
         .storage = {0},
-        .numel = elems_total,
+        .numel = numel,
         .flags = view ? MAG_TFLAG_VIEW : MAG_TFLAG_OWNER,
         .op = MAG_OP_NOP,
         .op_inputs = {0},
@@ -1651,9 +1530,9 @@ static mag_tensor_t* mag_tensor_create(mag_ctx_t* ctx, mag_dtype_t type, const i
     mag_tensor_incref(t); /* First strong RC=1 */
     /* Allocate device memory */
     mag_compute_device_t* dvc = ctx->device;
-    void (*allocator)(mag_compute_device_t*, mag_storage_buffer*, size_t, size_t) = dvc->alloc_storage;
+    void (*allocator)(mag_compute_device_t*, mag_storage_buffer_t*, size_t, size_t) = dvc->alloc_storage;
     if (view) t->storage = view->storage; /* Reference memory from view */
-    else (*allocator)(dvc, &t->storage, bytes_total, scalar_size); /* Allocate new device memory */
+    else (*allocator)(dvc, &t->storage, numbytes, dts); /* Allocate new device memory */
     #pragma GCC unroll 6
     for (uint32_t i=0; i < MAG_MAX_DIMS; ++i)    /* Copy dimensions and set unused to identity. */
         t->shape[i] = i < rank ? dims[i] : 1;
@@ -1698,7 +1577,7 @@ static void mag_tensor_destroy(mag_tensor_t* t) {
 #endif
     if (t->flags & MAG_TFLAG_OWNER) { /* Free device memory if tensor owns it. */
         mag_compute_device_t* dvc = t->ctx->device;
-        void (*dtor)(mag_compute_device_t*, mag_storage_buffer*) = dvc->free_storage;
+        void (*dtor)(mag_compute_device_t*, mag_storage_buffer_t*) = dvc->free_storage;
         (*dtor)(dvc, &t->storage);
     }
     (*mag_alloc)(t, 0); /* Free tensor struct. */
@@ -1746,7 +1625,7 @@ mag_tensor_t* mag_tensor_create_6d(mag_ctx_t* ctx, mag_dtype_t type, int64_t d1,
 
 static void MAG_HOTPROC mag_op_exec(mag_tensor_t* R, mag_compute_device_t* dvc, mag_graph_eval_order_t ord) {
     mag_perf_mon_t* pmon = &R->pmon;
-    mag_op_perf_info_t (*pmon_ops)[MAG_OP__COUNT] = &R->ctx->op_perf_mons_total;
+    mag_op_perf_info_t (*pmon_ops)[MAG_OP__NUM] = &R->ctx->op_perf_mons_total;
     mag_op_perf_info_t* pmon_op = (*pmon_ops)+R->op;
     uint64_t start = R->ctx->profiler_enabled ? mag_hpc_clock_ns() : 0;    /* Profiling monitoring */
     void (*exec)(mag_compute_device_t*, mag_tensor_t*) = ord == MAG_GRAPH_EVAL_ORDER_FORWARD ? dvc->eager_exec_fwd : dvc->eager_exec_bwd;
@@ -1819,13 +1698,13 @@ void mag_tensor_set_arg(mag_tensor_t* t, size_t slot, mag_tensor_t* arg) {
 
 void mag_tensor_copy_buffer_from(mag_tensor_t* t, const void* data, size_t size) {
     mag_assert(size == (size_t) mag_tensor_data_size(t), "Buffer size mismatch: %zu != %lld", size, mag_tensor_data_size(t));
-    mag_storage_buffer* sto = &t->storage;
+    mag_storage_buffer_t* sto = &t->storage;
     (*sto->cpy_host_device)(sto, 0, data, size);
 }
 
 void mag_tensor_fill(mag_tensor_t* t, float x) {
     if (x == 0.0f) {
-        mag_storage_buffer* sto = &t->storage;
+        mag_storage_buffer_t* sto = &t->storage;
         (*sto->set)(sto, 0, 0); /* Zero out the buffer. */
         return;
     }
@@ -2058,7 +1937,7 @@ float mag_tensor_get_scalar_physical_index(mag_tensor_t* t, int64_t d0, int64_t 
     switch (t->dtype) {
         case MAG_DTYPE_F32: {
             float r;
-            mag_storage_buffer* sto = &t->storage;
+            mag_storage_buffer_t* sto = &t->storage;
             (*sto->cpy_device_host)(sto, sizeof(r)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &r, sizeof(r));
             return r;
         }
@@ -2071,7 +1950,7 @@ void mag_tensor_set_scalar_physical_index(mag_tensor_t* t, int64_t d0, int64_t d
     mag_load_local_storage_group(t, s, strides);
     switch (t->dtype) {
         case MAG_DTYPE_F32: {
-            mag_storage_buffer* sto = &t->storage;
+            mag_storage_buffer_t* sto = &t->storage;
             (*sto->cpy_host_device)(sto, sizeof(x)*(d0*s0 + d1*s1 + d2*s2 + d3*s3 + d4*s4 + d5*s5), &x, sizeof(x));
         } break;
         default: mag_panic("Unsupported data type: %s", mag_dtype_info_of(t->dtype)->name);
@@ -2087,7 +1966,7 @@ float mag_tensor_get_scalar_virtual_index(mag_tensor_t* t, int64_t v_idx) {
     switch (t->dtype) {
         case MAG_DTYPE_F32: {
             float r;
-            mag_storage_buffer* sto = &t->storage;
+            mag_storage_buffer_t* sto = &t->storage;
             (*sto->cpy_device_host)(sto, sizeof(r)*v_idx, &r, sizeof(r));
             return r;
         }
@@ -2105,7 +1984,7 @@ void mag_tensor_set_scalar_virtual_index(mag_tensor_t* t, int64_t v_idx, float x
     }
     switch (t->dtype) {
         case MAG_DTYPE_F32: {
-            mag_storage_buffer* sto = &t->storage;
+            mag_storage_buffer_t* sto = &t->storage;
             (*sto->cpy_host_device)(sto, sizeof(x)*v_idx, &x, sizeof(x));
         } break;
         default:
@@ -2718,7 +2597,7 @@ mag_static_assert(sizeof(MAG_STO_MAGIC)-1 == sizeof(uint64_t));
 #define MAG_STO_FILE_HEADER_SIZE ((sizeof(MAG_STO_MAGIC)-1) + sizeof(uint32_t)*3)
 #define MAG_STO_TENSOR_HEADER_SIZE (MAG_MAX_TENSOR_NAME_LEN + sizeof(uint32_t) + sizeof(int64_t)*MAG_MAX_DIMS)
 mag_static_assert(MAG_MAX_TENSOR_NAME_LEN % 8 == 0);
-mag_static_assert(MAG_DTYPE_COUNT_ <= 0xff);
+mag_static_assert(MAG_DTYPE__NUM <= 0xff);
 mag_static_assert(MAG_MAX_DIMS <= 0xff);
 #define mag_sto_sanitize(exp, ret) do { if (mag_unlikely(!(exp))) { mag_log_error("magnetron storage sanitize error: " #exp); return (ret); } } while (0)
 
@@ -2814,7 +2693,7 @@ static bool mag_sto_read_tensor_header(
             *dtype = (mag_dtype_t)((aux >> 8) & 0xff);
             *rank = (int64_t)(aux & 0xff);
             mag_sto_sanitize((*flags & ~((1u<<MAG_TFLAG_LEN)-1)) == 0, false); /* Check fields */
-            mag_sto_sanitize(*dtype >= 0 && *dtype < MAG_DTYPE_COUNT_, false);
+            mag_sto_sanitize(*dtype >= 0 && *dtype < MAG_DTYPE__NUM, false);
             mag_sto_sanitize(*rank >= 1 && *rank <= MAG_MAX_DIMS, false);
             for (size_t i=0; i < MAG_MAX_DIMS; ++i) {  /* Read shape */
                 uint64_t u64 = mag_sto_read_u64_le(p);

@@ -2,11 +2,23 @@
 
 #include "prelude.hpp"
 
-TEST(ctx, create_destroy) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+TEST(ctx, create_destroy_cpu) {
+    mag_set_set_log_mode(true);
+    mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_CPU);
     ASSERT_NE(ctx, nullptr);
     mag_ctx_destroy(ctx);
+    mag_set_set_log_mode(false);
 }
+
+#ifdef MAG_ENABLE_CUDA
+TEST(ctx, create_destroy_cuda) {
+    mag_set_set_log_mode(true);
+    mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_GPU_CUDA);
+    ASSERT_NE(ctx, nullptr);
+    mag_ctx_destroy(ctx);
+    mag_set_set_log_mode(false);
+}
+#endif
 
 #ifndef _MSC_VER // MSVC fucks around with linking a __declspex(dllexport) ed function ptr. TODO: fix
 TEST(ctx, alloc) {
