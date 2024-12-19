@@ -1149,14 +1149,11 @@ static bool mag_validate_shape_broadcastable(mag_op_t op, const mag_tensor_t* a,
     char shape_2[MAG_FMT_DIM_BUF_SIZE];
     mag_fmt_dims(&shape_1, &a->shape, a->rank);
     mag_fmt_dims(&shape_2, &b->shape, b->rank);
-    bool broadcast_able[MAG_MAX_DIMS] = {0};
-    for (uint32_t i=0; i < MAG_MAX_DIMS; ++i)
-        broadcast_able[i] = a->shape[i] % b->shape[i] == 0;
     char broadcast_able_str[MAG_MAX_DIMS*2+4+1] = {0};
     char* p = broadcast_able_str;
     *p++ = '[';
     for (uint32_t i=0; i < MAG_MAX_DIMS; ++i) {
-        *p++ = broadcast_able[i] ? 'Y' : 'N';
+        *p++ = a->shape[i] % b->shape[i] == 0 ? 'Y' : 'N';
         *p++ = i < MAG_MAX_DIMS-1 ? ',' : ']';
     }
     *p = '\0';
