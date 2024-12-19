@@ -52,10 +52,12 @@ else() # POSIX specific config
         -Wno-gnu-zero-variadic-macro-arguments
         -Wno-error=overflow
         -Wno-error=unused-function
-        -Wno-error=format-truncation
         -fvisibility=hidden
         -std=gnu99
     )
+    if (CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(magnetron PRIVATE -Wno-error=format-truncation)
+    endif()
     if (APPLE) # Apple specific configuration
         if (${MAGNETRON_ENABLE_ACCELERATE})
             find_library(ACCELERATE_FRAMEWORK Accelerate)
