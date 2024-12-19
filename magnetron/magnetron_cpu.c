@@ -2365,10 +2365,14 @@ static mag_compute_device_t* mag_cpu_init_interface(mag_ctx_t* ctx) {
         .alloc_storage = &mag_cpu_alloc_storage,
         .free_storage = &mag_cpu_free_storage
     };
+#ifdef __GNUC__
     #pragma GCC diagnostic push
     #pragma GCC diagnostic ignored "-Wformat-truncation"
+#endif
     snprintf(dvc->name, sizeof(dvc->name), "%s - %s", mag_device_type_get_name(dvc->type), ctx->sys.cpu_name);
+#ifdef __GNUC__
     #pragma GCC diagnostic pop
+#endif
     return dvc;
 }
 

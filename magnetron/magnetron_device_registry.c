@@ -24,7 +24,7 @@ static const mag_device_factory_t* const mag_device_factories[MAG_COMPUTE_DEVICE
         .destroy = &mag_destroy_device_cuda,
     },
 #else
-    [MAG_COMPUTE_DEVICE_TYPE_CUDA] = NULL, /* CUDA not enabled. */
+    [MAG_COMPUTE_DEVICE_TYPE_GPU_CUDA] = NULL, /* CUDA not enabled. */
 #endif
 };
 
