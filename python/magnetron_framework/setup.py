@@ -69,6 +69,7 @@ setup(
     package_data={
         'magnetron': ['*.dylib', '*.so', '*.dll'],
     },
+    include_package_data=True,
     ext_modules=[CMakeBuildExtension('magnetron', root_dir=CMAKE_ROOT)],
     cmdclass={
         'build_ext': CMakeBuildExecutor,
