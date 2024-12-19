@@ -6,18 +6,9 @@ project(magnetron LANGUAGES C)
 
 message("Configuring magnetron project for ${CMAKE_SYSTEM_PROCESSOR}...")
 
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
-    set(IS_AMD64 TRUE)
-else()
-    set(IS_AMD64 FALSE)
-endif()
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64)|(arm64)")
-    set(IS_ARM64 TRUE)
-else()
-    set(IS_ARM64 FALSE)
-endif()
-
 set(CMAKE_C_STANDARD 99)
+set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
+set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
 
 option(MAGNETRON_BUILD_TESTS "Build tests" ON)
 option(MAGNETRON_BUILD_BENCHMARKS "Build benchmarks" ON)
@@ -30,10 +21,21 @@ if (APPLE)
     option(MAGNETRON_ENABLE_ACCELERATE "Use Apple's Accelerate framework" ON)
 endif()
 
-set(MAGNETRON_CUDA_COMPILER "/usr/local/cuda-12.6/bin/nvcc" CACHE STRING "Path to the CUDA compiler") # Set to your CUDA compiler path
+if (${MAGNETRON_BUILD_TESTS})
+    enable_testing()
+endif()
 
-set(LIBRARY_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
-set(EXECUTABLE_OUTPUT_PATH "${CMAKE_BINARY_DIR}")
+set(MAGNETRON_CUDA_COMPILER "/usr/local/cuda-12.6/bin/nvcc" CACHE STRING "Path to the CUDA compiler") # Set to your CUDA compiler path
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "(x86)|(X86)|(amd64)|(AMD64)")
+    set(IS_AMD64 TRUE)
+else()
+    set(IS_AMD64 FALSE)
+endif()
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64)|(arm64)")
+    set(IS_ARM64 TRUE)
+else()
+    set(IS_ARM64 FALSE)
+endif()
 
 file(GLOB_RECURSE MAGNETRON_SOURCES magnetron/*.h magnetron/*.c magnetron/*.m)
 add_library(magnetron SHARED ${MAGNETRON_SOURCES})
@@ -111,7 +113,6 @@ if (${MAGNETRON_ENABLE_CUDA})
 endif()
 
 if (${MAGNETRON_BUILD_TESTS})
-    enable_testing()
     add_subdirectory(test)
 endif()
 

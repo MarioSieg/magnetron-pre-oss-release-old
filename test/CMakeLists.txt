@@ -14,6 +14,7 @@ target_link_libraries(
     magnetron_test
     GTest::gtest_main
 )
+add_test(NAME magnetron_test COMMAND magnetron_test)
 
 if (${MAGNETRON_ENABLE_CUDA})
     target_compile_definitions(magnetron_test PRIVATE MAG_ENABLE_CUDA)
