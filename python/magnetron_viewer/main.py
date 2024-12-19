@@ -20,7 +20,7 @@ def process_events_idle():
 class MAGNETRONViewer(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.window_icon = QIcon('icons/icon.png')
+        self.window_icon = QIcon('logo.png')
         self.tensor_icon = QIcon('icons/tensor.png')
         self.folder_icon = QIcon('icons/folder.png')
         self.metadata_icon = QIcon('icons/metadata.png')
