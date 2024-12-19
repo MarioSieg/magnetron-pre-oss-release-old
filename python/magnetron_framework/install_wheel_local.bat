@@ -1,3 +1,5 @@
 @echo off
 call build_wheel.bat
-pip3 install dist\*.whl --force-reinstall
+for %%f in (dist\*.whl) do (
+    pip3 install "%%f" --force-reinstall
+)
