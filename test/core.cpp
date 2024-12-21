@@ -5,18 +5,6 @@
 #include <numbers>
 #include <filesystem>
 
-TEST(core, op_param_int) {
-    mag_op_param_t p = mag_op_param_int(1234);
-    ASSERT_TRUE(mag_op_param_is_int(p));
-    ASSERT_EQ(mag_op_param_unpack_int(p), 1234);
-}
-
-TEST(core, op_param_float) {
-    mag_op_param_t p = mag_op_param_float(std::numbers::pi_v<float>);
-    ASSERT_TRUE(mag_op_param_is_float(p));
-    ASSERT_FLOAT_EQ(mag_op_param_unpack_float(p), std::numbers::pi_v<float>);
-}
-
 TEST(core, profiler_small_dims) {
     mag_ctx_t* ctx = mag_ctx_create(nullptr);
     mag_ctx_profile_start_recording(ctx);

@@ -30,8 +30,7 @@ auto main() -> int {
         mag_tensor_t* B = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, N, N);
         mag_tensor_fill(A, 1.0f);
 
-        mag_tensor_t* inputs[2] = {A, B};
-        mag_tensor_t* C = mag_tensor_operator(ctx, MAG_OP_ADD, false, inputs, 2, nullptr);
+        mag_tensor_t* C = mag_add(A, B);
 
         mag_tensor_decref(A);
         mag_tensor_decref(B);

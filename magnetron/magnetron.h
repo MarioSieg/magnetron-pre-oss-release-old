@@ -151,20 +151,6 @@ typedef struct mag_dtype_meta_t {
 } mag_dtype_meta_t;
 extern MAG_EXPORT const mag_dtype_meta_t* mag_dtype_meta_of(mag_dtype_t type);
 
-/*
-** Operation parameter. Each operation CAN have up to MAG_MAX_OP_PARAMS of those parameters.
-** 2-bit discriminator/tag and 62-bit value. (Tag and value are packed into a single 64-bit integer and both truncated to their bit width.)
-** Not to be confused with operation inputs which are tensors (e.g. A + B <- here are A and B input tensors). Instead, this is for operation-specific parameters.
-*/
-typedef uint64_t mag_op_param_t;
-mag_static_assert(sizeof(mag_op_param_t) == 8);
-extern MAG_EXPORT mag_op_param_t mag_op_param_int(uint32_t x); /* Create an integer parameter */
-extern MAG_EXPORT bool mag_op_param_is_int(mag_op_param_t param); /* Check if parameter is integer */
-extern MAG_EXPORT uint32_t mag_op_param_unpack_int(mag_op_param_t param); /* Get integer value from parameter */
-extern MAG_EXPORT mag_op_param_t mag_op_param_float(float x); /* Create an integer parameter */
-extern MAG_EXPORT bool mag_op_param_is_float(mag_op_param_t param); /* Check if parameter is integer */
-extern MAG_EXPORT float mag_op_param_unpack_float(mag_op_param_t param); /* Get integer value from parameter */
-
 #define MAG_SEP ,
 
 typedef enum mag_op_t {
@@ -213,20 +199,34 @@ mag_static_assert(MAG_OP_NOP == 0);
 mag_static_assert(MAG_OP_MATMUL+1 == MAG_OP__NUM);
 mag_static_assert(MAG_OP__NUM <= 0xff);
 
+typedef enum mag_op_param_type_t {
+    MAG_OP_TPARAM_NONE  = 0,
+    MAG_OP_TPARAM_F32   = 1,
+    MAG_OP_TPARAM_I32   = 2,
+    MAG_OP_TPARAM_U32   = 3,
+
+    MAG_OP_TPARAM__NUM
+} mag_op_param_type_t;
+
+typedef struct mag_op_param_t {
+    mag_op_param_type_t type : 8; /* Parameter type */
+    union {
+        float f32;
+        int32_t i32;
+        uint32_t u32;
+    } x;
+} mag_op_param_t;
+
 typedef struct mag_op_meta_t {
-    const char* mnemonic;   /* Operation mnemonic */
-    uint8_t argcount;       /* Number of arguments */
-    uint8_t paramcount;     /* Number of parameters */
-    bool inplace;           /* Supports inplace execution */
-    mag_tensor_t* (*r_alloc)(mag_tensor_t**, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]);
-    bool (*validator)(mag_op_t, mag_tensor_t*, mag_tensor_t**, uint32_t, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]);
+    const char* mnemonic;                                   /* Operation mnemonic */
+    uint8_t argcount;                                       /* Number of arguments */
+    uint8_t paramcount;                                     /* Number of parameters */
+    mag_op_param_type_t param_types[MAG_MAX_OP_PARAMS];     /* Parameter types */
+    bool inplace;                                           /* Supports inplace execution */
+    mag_tensor_t* (*r_alloc)(mag_tensor_t**, const mag_op_param_t*);
+    bool (*validator)(mag_op_t, mag_tensor_t*, mag_tensor_t**, const mag_op_param_t*);
 } mag_op_meta_t;
 extern MAG_EXPORT const mag_op_meta_t* mag_op_meta_of(mag_op_t type);
-
-typedef enum mag_op_param_type_t {     /* 2-bit Parameter type tag for operation parameter. */
-    MAG_OP_PARAM_FLOAT = 0,            /* 32-bit floating-point value */
-    MAG_OP_PARAM_INT = 1,              /* 32-bit signed/unsigned integer */
-} mag_op_param_type_t;
 
 extern MAG_EXPORT uint32_t mag_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
 extern MAG_EXPORT uint32_t mag_pack_color_f32(float r, float g, float b);

@@ -606,8 +606,8 @@ class Tensor:
         self.tensor = self._DISPATCH[len(shape)](ctx.ctx, dtype.value, *shape)
         self.name = f'Tensor {self.shape}' if name is None else name
 
-    @staticmethod
-    def empty(shape: tuple[int, ...], *, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
+    @classmethod
+    def empty(cls, shape: tuple[int, ...], *, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """
         Creates an empty tensor with uninitialized data.
 
@@ -625,12 +625,12 @@ class Tensor:
         Tensor
             The newly created empty tensor.
         """
-        tensor = Tensor(None)
+        tensor = cls(None)
         tensor._new(Context.active(), shape=shape, dtype=dtype, name=name)
         return tensor
 
-    @staticmethod
-    def full(shape: tuple[int, ...], *, fill_value: float, dtype: DType = DType.F32,
+    @classmethod
+    def full(cls, shape: tuple[int, ...], *, fill_value: float, dtype: DType = DType.F32,
              name: str | None = None) -> 'Tensor':
         """
         Creates a tensor filled with a given constant value.
@@ -651,13 +651,13 @@ class Tensor:
         Tensor
             The filled tensor.
         """
-        tensor = Tensor(None)
+        tensor = cls(None)
         tensor._new(Context.active(), shape=shape, dtype=dtype, name=name)
         C.mag_tensor_fill(tensor.tensor, fill_value)
         return tensor
 
-    @staticmethod
-    def const(data, *, dtype: DType = DType.F32,
+    @classmethod
+    def const(cls, data, *, dtype: DType = DType.F32,
               name: str | None = None) -> 'Tensor':
         """
         Creates a tensor from a nested Python list or a single scalar.
@@ -694,14 +694,14 @@ class Tensor:
                 return (len(nested),) + first_shape, flattened
 
         shape, flattened_data = flatten_nested_lists(data)
-        tensor = Tensor(None)
+        tensor = cls(None)
         tensor._new(Context.active(), shape=tuple(shape), dtype=dtype, name=name)
         size: int = len(flattened_data) * ffi.sizeof('float')
         C.mag_tensor_copy_buffer_from(tensor.tensor, ffi.new(f'float[{len(flattened_data)}]', flattened_data), size)
         return tensor
 
-    @staticmethod
-    def zeros(shape: tuple[int, ...], *, dtype: DType = DType.F32,
+    @classmethod
+    def zeros(cls, shape: tuple[int, ...], *, dtype: DType = DType.F32,
               name: str | None = None) -> 'Tensor':
         """
         Creates a tensor filled with zeros.
@@ -720,10 +720,10 @@ class Tensor:
         Tensor
             The zero-filled tensor.
         """
-        return Tensor.full(shape, fill_value=0.0, dtype=dtype, name=name)
+        return cls.full(shape, fill_value=0.0, dtype=dtype, name=name)
 
-    @staticmethod
-    def rand(shape: tuple[int, ...], *, interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
+    @classmethod
+    def rand(cls, shape: tuple[int, ...], *, interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
              name: str | None = None) -> 'Tensor':
         """
         Creates a tensor filled with random uniform values within a given interval.
@@ -744,15 +744,15 @@ class Tensor:
         Tensor
             The tensor filled with random values.
         """
-        tensor = Tensor(None)
+        tensor = cls(None)
         tensor._new(Context.active(), shape=shape, dtype=dtype, name=name)
         if interval[1] < interval[0]:
             interval = (interval[1], interval[0])
         C.mag_tensor_fill_random_uniform(tensor.tensor, interval[0], interval[1])
         return tensor
 
-    @staticmethod
-    def normal(shape: tuple[int, ...], *, mean: float, stddev: float) -> 'Tensor':
+    @classmethod
+    def normal(cls, shape: tuple[int, ...], *, mean: float, stddev: float) -> 'Tensor':
         """
         Creates a tensor filled with random values from a normal distribution.
 
@@ -770,13 +770,13 @@ class Tensor:
         Tensor
             The tensor filled with normally distributed values.
         """
-        tensor = Tensor(None)
+        tensor = cls(None)
         tensor._new(Context.active(), shape=shape, dtype=DType.F32)
         C.mag_tensor_fill_random_normal(tensor.tensor, mean, stddev)
         return tensor
 
-    @staticmethod
-    def load(file_path: str) -> 'Tensor':
+    @classmethod
+    def load(cls, file_path: str) -> 'Tensor':
         """
         Loads a tensor from a binary magnetron file.
 
@@ -792,10 +792,10 @@ class Tensor:
         """
         assert file_path.endswith('.magnetron'), 'File must be a magnetron file'
         instance = C.mag_tensor_load(Context.active().ctx, bytes(file_path, 'utf-8'))
-        return Tensor(internal_instance=instance)
+        return cls(internal_instance=instance)
 
-    @staticmethod
-    def load_image(file_path: str, *,
+    @classmethod
+    def load_image(cls, file_path: str, *,
                    name: str | None = None,
                    channels=ColorChannels.AUTO,
                    resize_to: (int, int) = (0, 0)) -> 'Tensor':
@@ -821,7 +821,7 @@ class Tensor:
         assert isfile(file_path), f'File not found: {file_path}'
         instance = C.mag_tensor_load_image(Context.active().ctx, bytes(file_path, 'utf-8'), channels.value,
                                           resize_to[0], resize_to[1])
-        tensor = Tensor(internal_instance=instance)
+        tensor = cls(instance)
         if name is not None:
             tensor.name = name
         return tensor

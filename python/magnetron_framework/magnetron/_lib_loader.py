@@ -21,7 +21,6 @@ def load_native_module():
     # Load the library using cffi
     from cffi import FFI
     ffi = FFI()
-    ffi.dlopen("m")  # Math library
     ffi.cdef(__MAG_CDECLS)  # Define the C declarations
     lib = ffi.dlopen(str(lib_path))  # Load the shared library
     return ffi, lib

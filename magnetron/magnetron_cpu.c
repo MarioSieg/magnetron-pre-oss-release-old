@@ -2020,7 +2020,7 @@ static void MAG_HOTPROC mag_blas_adds_f32(
 ) {
     (void)bci;
     const mag_tensor_t* const x = inputs[0];
-    const float xi = mag_op_param_unpack_float(r->op_params[0]);
+    const float xi = r->op_params->x.f32;
     float* const b_r = mag_f32p_mut(r);
     const float* const b_x = mag_f32p(x);
     mag_load_local_storage_group(r, r_s, strides);
@@ -2043,7 +2043,7 @@ static void MAG_HOTPROC mag_blas_subs_f32(
 ) {
     (void)bci;
     const mag_tensor_t* const x = inputs[0];
-    const float xi = mag_op_param_unpack_float(r->op_params[0]);
+    const float xi = r->op_params->x.f32;
     float* const b_r = mag_f32p_mut(r);
     const float* const b_x = mag_f32p(x);
     mag_load_local_storage_group(r, r_s, strides);
@@ -2066,7 +2066,7 @@ static void MAG_HOTPROC mag_blas_muls_f32(
 ) {
     (void)bci;
     const mag_tensor_t* const x = inputs[0];
-    const float xi = mag_op_param_unpack_float(r->op_params[0]);
+    const float xi = r->op_params->x.f32;
     float* const b_r = mag_f32p_mut(r);
     const float* const b_x = mag_f32p(x);
     mag_load_local_storage_group(r, r_s, strides);
@@ -2089,7 +2089,7 @@ static void MAG_HOTPROC mag_blas_divs_f32(
 ) {
     (void)bci;
     const mag_tensor_t* const x = inputs[0];
-    const float xi = mag_op_param_unpack_float(r->op_params[0]);
+    const float xi = r->op_params->x.f32;
     float* const b_r = mag_f32p_mut(r);
     const float* const b_x = mag_f32p(x);
     mag_load_local_storage_group(r, r_s, strides);
