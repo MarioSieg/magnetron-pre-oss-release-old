@@ -83,19 +83,9 @@ def test_tensor_unary_ops():
     assert sqrt_t.to_list() == [1.0, 2.0, 3.0]
 
 def test_save_and_load(tmp_path):
-    # Test saving and loading a tensor
     t = Tensor.const([[1, 2], [3, 4]])
     file_path = tmp_path / 'test_tensor.magnetron'
     t.save(str(file_path))
     loaded = Tensor.load(str(file_path))
     assert loaded.shape == t.shape
     assert loaded.to_list() == t.to_list()
-
-def test_operator_metadata():
-    # Test operator metadata
-    op = Operator.ADD
-    assert op.is_binary is True
-    assert op.name == 'ADD'
-    assert op.mnemonic == '+'
-    assert op.argument_count == 2
-    assert op.supports_inplace is True

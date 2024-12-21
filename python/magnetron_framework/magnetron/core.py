@@ -87,51 +87,6 @@ class ColorChannels(Enum):
     RGB = auto()    # R32G32B32
     RGBA = auto()   # R32G32B32A32
 
-class Operator(Enum):
-    """
-    All supported tensor operators used in computations.
-    """
-    NOP = 0
-    CLONE = auto()
-    VIEW = auto()
-    TRANSPOSE = auto()
-    PERMUTE = auto()
-    MEAN = auto()
-    MIN = auto()
-    MAX = auto()
-    SUM = auto()
-    ABS = auto()
-    NEG = auto()
-    LOG = auto()
-    SQR = auto()
-    SQRT = auto()
-    SIN = auto()
-    COS = auto()
-    STEP = auto()
-    SOFTMAX = auto()
-    SOFTMAX_DV = auto()
-    SIGMOID = auto()
-    SIGMOID_DV = auto()
-    HARD_SIGMOID = auto()
-    SILU = auto()
-    SILU_DV = auto()
-    TANH = auto()
-    TANH_DV = auto()
-    RELU = auto()
-    RELU_DV = auto()
-    GELU = auto()
-    GELU_DV = auto()
-    ADD = auto()
-    SUB = auto()
-    MUL = auto()
-    DIV = auto()
-    ADDS = auto()
-    SUBS = auto()
-    MULS = auto()
-    DIVS = auto()
-    MATMUL = auto()
-    _COUNT = auto()
-
     @property
     def name(self) -> str:
         """Returns the operator name as a string."""
@@ -1319,7 +1274,7 @@ class Tensor:
 
     def max(self) -> 'Tensor':
         """Computes the maximum value in the tensor."""
-        return C.mag_max(self.tensor)
+        return Tensor(C.mag_max(self.tensor))
 
     def sum(self) -> 'Tensor':
         """Computes the sum of all elements in the tensor."""
