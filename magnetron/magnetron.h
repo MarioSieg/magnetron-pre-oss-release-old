@@ -128,81 +128,28 @@ extern MAG_EXPORT void mag_ctx_profile_start_recording(mag_ctx_t* ctx); /* Start
 extern MAG_EXPORT void mag_ctx_profile_stop_recording(mag_ctx_t* ctx, const char* export_csv_file); /* Reset profiling data */
 extern MAG_EXPORT void mag_ctx_destroy(mag_ctx_t* ctx); /* Destroy context and free memory */
 
+/**
+ * @brief Multidimensional tensor of arbitrary rank and data type.
+ *      The tensor is reference counted and can be shared between multiple tensors.
+ *      Rule of Thumb for Reference Counting:
+ *          - If you only use the reference temporarily and do not store it, no need to adjust the reference count.
+ *          - If you store the reference (e.g., in a data structure), increase the reference count when storing and decrease it when removing.
+ *      The rank is > 0 and <= MAG_MAX_DIMS. The shape of the tensor is an array of dimensions of size MAG_MAX_DIMS.
+ *      Is a node in a static or dynamic computation graph, depending on the context execution mode.
+ */
+typedef struct mag_tensor_t mag_tensor_t;
+
 typedef enum mag_dtype_t {
     MAG_DTYPE_F32,   /* 32-bit floating-point data type */
     MAG_DTYPE__NUM /* Total number of data types */
 } mag_dtype_t;
 mag_static_assert(MAG_DTYPE__NUM <= 0xff);
 
-typedef struct mag_dtype_info_t {
+typedef struct mag_dtype_meta_t {
     int64_t size;         /* Size of the data type in bytes */
     const char* name;    /* Name of the data type */
-} mag_dtype_info_t;
-extern MAG_EXPORT const mag_dtype_info_t* mag_dtype_info_of(mag_dtype_t type);
-
-#define MAG_SEP ,
-#define mag_op_def(_, __) /* Enumerator | Mnemonic | Argcount | Paramcount, Inplace Support */\
-    _(NOP,              "nop",              0, 0, false)/* No Operation */__\
-    _(CLONE,            "clone",            1, 0, false)/* R = clone(X) */__\
-    _(VIEW,             "view",             1, 0, false)/* R = X[:] */__\
-    _(TRANSPOSE,        "transpose",        1, 0, false)/* R = Xᵀ */__\
-    _(PERMUTE,          "permute",          1, 6, false)/* R = permute(X, axes) */__\
-    _(MEAN,             "mean",             1, 0, false)/* R = ΣX/n */__\
-    _(MIN,              "min",              1, 0, false)/* R = min x */__\
-    _(MAX,              "max",              1, 0, false)/* R = max x */__\
-    _(SUM,              "sum",              1, 0, false)/* R = ΣX */__\
-    _(ABS,              "abs",              1, 0, true)/* R = |X| */__\
-    _(NEG,              "neg",              1, 0, true)/* R = -X */__\
-    _(LOG,              "log",              1, 0, true)/* R = log X */__\
-    _(SQR,              "sqr",              1, 0, true)/* R = X² */__\
-    _(SQRT,             "sqrt",             1, 0, true)/* R = √X */__\
-    _(SIN,              "sin",              1, 0, true)/* R = sin X */__\
-    _(COS,              "cos",              1, 0, true)/* R = cos X */__\
-    _(STEP,             "step",             1, 0, true)/* R = step(X) */__\
-    _(SOFTMAX,          "softmax'",         1, 0, true)/* R = softmax(X) */__\
-    _(SOFTMAX_DV,       "softmax'",         1, 0, true)/* R = softmax'(X) */__\
-    _(SIGMOID,          "sigmoid",          1, 0, true)/* R = sigmoid(X) */__\
-    _(SIGMOID_DV,       "sigmoid'",         1, 0, true)/* R = sigmoid'(X) */__\
-    _(HARD_SIGMOID,     "hard_sigmoid",     1, 0, true)/* R = hard_sigmoid(X) */__\
-    _(SILU,             "SiLU",             1, 0, true)/* R = silu(X) */__\
-    _(SILU_DV,          "SiLU'",            1, 0, true)/* R = silu'(X) */__\
-    _(TANH,             "tanh",             1, 0, true)/* R = tanh(X) */__\
-    _(TANH_DV,          "tanh'",            1, 0, true)/* R = tanh'(X) */__\
-    _(RELU,             "ReLU",             1, 0, true)/* R = relu(X) */__\
-    _(RELU_DV,          "ReLU'",            1, 0, true)/* R = relu'(X) */__\
-    _(GELU,             "GeLU",             1, 0, true)/* R = gelu(X) */__\
-    _(GELU_DV,          "GeLU'",            1, 0, true)/* R = gelu'(X) */__\
-    _(ADD,              "+",                2, 0, true) /* R = X+Y */__\
-    _(SUB,              "-",                2, 0, true) /* R = X-Y */__\
-    _(MUL,              "*",                2, 0, true) /* R = X*Y (Hadamard product) */__\
-    _(DIV,              "/",                2, 0, true) /* R = X/Y */__\
-    _(ADDS,             "+ξ",               1, 1, true) /* R = X+ξ */__\
-    _(SUBS,             "-ξ",               1, 1, true) /* R = X-ξ */__\
-    _(MULS,             "*ξ",               1, 1, true) /* R = X*ξ (Hadamard product) */__\
-    _(DIVS,             "/ξ",               1, 1, true) /* R = X/ξ */__\
-    _(MATMUL,           "@",                2, 0, true)/* R = A@B */__
-
-#define _(enumerator, mnemonic, argcount, paramcount, inplace) MAG_OP_##enumerator
-typedef enum mag_op_t {
-    mag_op_def(_, MAG_SEP)
-    MAG_OP__NUM
-} mag_op_t;
-#undef _
-mag_static_assert(MAG_OP_NOP == 0);
-mag_static_assert(MAG_OP_MATMUL+1 == MAG_OP__NUM);
-mag_static_assert(MAG_OP__NUM <= 0xff);
-extern MAG_EXPORT const char* mag_op_get_name(mag_op_t op);
-extern MAG_EXPORT const char* mag_op_get_mnemonic(mag_op_t op);
-extern MAG_EXPORT uint8_t mag_op_get_argcount(mag_op_t op);
-extern MAG_EXPORT uint8_t mag_op_get_paramcount(mag_op_t op);
-extern MAG_EXPORT bool mag_op_supports_inplace(mag_op_t op);
-#define mag_op_is_unary(op) (mag_op_get_argcount(op) == 1)
-#define mag_op_is_binary(op) (mag_op_get_argcount(op) == 2)
-
-typedef enum mag_op_param_type_t {     /* 2-bit Parameter type tag for operation parameter. */
-    MAG_OP_PARAM_FLOAT = 0,            /* 32-bit floating-point value */
-    MAG_OP_PARAM_INT = 1,              /* 32-bit signed/unsigned integer */
-} mag_op_param_type_t;
+} mag_dtype_meta_t;
+extern MAG_EXPORT const mag_dtype_meta_t* mag_dtype_meta_of(mag_dtype_t type);
 
 /*
 ** Operation parameter. Each operation CAN have up to MAG_MAX_OP_PARAMS of those parameters.
@@ -218,6 +165,69 @@ extern MAG_EXPORT mag_op_param_t mag_op_param_float(float x); /* Create an integ
 extern MAG_EXPORT bool mag_op_param_is_float(mag_op_param_t param); /* Check if parameter is integer */
 extern MAG_EXPORT float mag_op_param_unpack_float(mag_op_param_t param); /* Get integer value from parameter */
 
+#define MAG_SEP ,
+
+typedef enum mag_op_t {
+    MAG_OP_NOP,
+    MAG_OP_CLONE,
+    MAG_OP_VIEW,
+    MAG_OP_TRANSPOSE,
+    MAG_OP_PERMUTE,
+    MAG_OP_MEAN,
+    MAG_OP_MIN,
+    MAG_OP_MAX,
+    MAG_OP_SUM,
+    MAG_OP_ABS,
+    MAG_OP_NEG,
+    MAG_OP_LOG,
+    MAG_OP_SQR,
+    MAG_OP_SQRT,
+    MAG_OP_SIN,
+    MAG_OP_COS,
+    MAG_OP_STEP,
+    MAG_OP_SOFTMAX,
+    MAG_OP_SOFTMAX_DV,
+    MAG_OP_SIGMOID,
+    MAG_OP_SIGMOID_DV,
+    MAG_OP_HARD_SIGMOID,
+    MAG_OP_SILU,
+    MAG_OP_SILU_DV,
+    MAG_OP_TANH,
+    MAG_OP_TANH_DV,
+    MAG_OP_RELU,
+    MAG_OP_RELU_DV,
+    MAG_OP_GELU,
+    MAG_OP_GELU_DV,
+    MAG_OP_ADD,
+    MAG_OP_SUB,
+    MAG_OP_MUL,
+    MAG_OP_DIV,
+    MAG_OP_ADDS,
+    MAG_OP_SUBS,
+    MAG_OP_MULS,
+    MAG_OP_DIVS,
+    MAG_OP_MATMUL,
+    MAG_OP__NUM
+} mag_op_t;
+mag_static_assert(MAG_OP_NOP == 0);
+mag_static_assert(MAG_OP_MATMUL+1 == MAG_OP__NUM);
+mag_static_assert(MAG_OP__NUM <= 0xff);
+
+typedef struct mag_op_meta_t {
+    const char* mnemonic;   /* Operation mnemonic */
+    uint8_t argcount;       /* Number of arguments */
+    uint8_t paramcount;     /* Number of parameters */
+    bool inplace;           /* Supports inplace execution */
+    mag_tensor_t* (*r_alloc)(mag_tensor_t**, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]);
+    bool (*validator)(mag_op_t, mag_tensor_t*, mag_tensor_t**, uint32_t, const mag_op_param_t(*)[MAG_MAX_OP_PARAMS]);
+} mag_op_meta_t;
+extern MAG_EXPORT const mag_op_meta_t* mag_op_meta_of(mag_op_t type);
+
+typedef enum mag_op_param_type_t {     /* 2-bit Parameter type tag for operation parameter. */
+    MAG_OP_PARAM_FLOAT = 0,            /* 32-bit floating-point value */
+    MAG_OP_PARAM_INT = 1,              /* 32-bit signed/unsigned integer */
+} mag_op_param_type_t;
+
 extern MAG_EXPORT uint32_t mag_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
 extern MAG_EXPORT uint32_t mag_pack_color_f32(float r, float g, float b);
 
@@ -225,17 +235,6 @@ typedef enum mag_graph_eval_order_t {
     MAG_GRAPH_EVAL_ORDER_FORWARD = 0, /* Evaluate graph from left to right */
     MAG_GRAPH_EVAL_ORDER_REVERSE = 1 /* Evaluate graph from right to left */
 } mag_graph_eval_order_t;
-
-/**
- * @brief Multidimensional tensor of arbitrary rank and data type.
- *      The tensor is reference counted and can be shared between multiple tensors.
- *      Rule of Thumb for Reference Counting:
- *          - If you only use the reference temporarily and do not store it, no need to adjust the reference count.
- *          - If you store the reference (e.g., in a data structure), increase the reference count when storing and decrease it when removing.
- *      The rank is > 0 and <= MAG_MAX_DIMS. The shape of the tensor is an array of dimensions of size MAG_MAX_DIMS.
- *      Is a node in a static or dynamic computation graph, depending on the context execution mode.
- */
-typedef struct mag_tensor_t mag_tensor_t;
 
 /**
  * @brief Create a new 1-dimensional tensor.
@@ -312,25 +311,77 @@ extern MAG_EXPORT mag_tensor_t* mag_tensor_create_5d(mag_ctx_t* ctx, mag_dtype_t
  */
 extern MAG_EXPORT mag_tensor_t* mag_tensor_create_6d(mag_ctx_t* ctx, mag_dtype_t type, int64_t d1, int64_t d2, int64_t d3, int64_t d4, int64_t d5, int64_t d6);
 
+/* Tensor operation functions.  */
 
-/**
- * @brief Emit operation with variable arguments.
- * Constructs and returns a result tensor R by applying an operation to input tensors. R = op(X, Y, ...).
- * If the execution mode is MAG_EXEC_MODE_EAGER, the operation is executed immediately, and R contains the computed result.
- * If the execution mode is MAG_EXEC_MODE_DEFERRED, the operation is added to the computation graph, and R is a placeholder tensor.
- * @param ctx Context to create the tensor in. Must not be NULL.
- * @param op Operation code (MAG_OP_*)
- * @param inplace If true, the operation is applied in-place, and the result is stored in the first input tensor. Otherwise, a new tensor is created.
- *          With inplace=true, R = op(X, Y) is equivalent to X = op(X, Y).
- *          Reduces memory usage and improves performance, because no new tensor is created.
- *          If the operation does not support in-place execution, the function creates a new tensor like with inplace=false.
- *          Example: R = X + Y turns into X += Y with inplace=true.
- * @param inputs Pointer to array of input tensors of size n_inputs. Must not be NULL.
- * @param n_inputs Number of input tensors, must be equal to the operation's argument count, if not, the function panics.
- * @param params Array of operation parameters. Can be NULL if the operation does not require any parameters.
- * @returns Result tensor R. Is never NULL.
- */
-extern MAG_EXPORT mag_tensor_t* mag_tensor_operator(mag_ctx_t* ctx, mag_op_t op, bool inplace, mag_tensor_t** inputs, uint32_t n_inputs, const mag_op_param_t(*params)[MAG_MAX_OP_PARAMS]);
+extern MAG_EXPORT mag_tensor_t* mag_clone(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_view(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_transpose(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_permute(mag_tensor_t* x, uint32_t d0, uint32_t d1, uint32_t d2, uint32_t d3, uint32_t d4, uint32_t d5);
+extern MAG_EXPORT mag_tensor_t* mag_mean(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_min(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_max(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sum(mag_tensor_t* x);
+
+extern MAG_EXPORT mag_tensor_t* mag_abs(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_abs_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_neg(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_neg_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_log(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_log_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sqr(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sqr_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sqrt(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sqrt_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sin(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sin_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_cos(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_cos_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_step(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_step_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_softmax(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_softmax_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_softmax_dv(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_softmax_dv_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sigmoid(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sigmoid_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sigmoid_dv(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_sigmoid_dv_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_hard_sigmoid(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_hard_sigmoid_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_silu(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_silu_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_silu_dv(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_silu_dv_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_tanh(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_tanh_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_tanh_dv(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_tanh_dv_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_relu(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_relu_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_relu_dv(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_relu_dv_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_gelu(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_gelu_(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_gelu_dv(mag_tensor_t* x);
+extern MAG_EXPORT mag_tensor_t* mag_gelu_dv_(mag_tensor_t* x);
+
+extern MAG_EXPORT mag_tensor_t* mag_add(mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_add_(mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_sub( mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_sub_(mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_mul( mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_mul_(mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_div(mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_div_(mag_tensor_t* x, mag_tensor_t* y);
+extern MAG_EXPORT mag_tensor_t* mag_adds(mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_adds_(mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_subs( mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_subs_(mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_muls(mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_muls_(mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_divs(mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_divs_(mag_tensor_t* x, float xi);
+extern MAG_EXPORT mag_tensor_t* mag_matmul(mag_tensor_t* a, mag_tensor_t* b);
 
 /**
  * @brief Increment reference count of tensor.

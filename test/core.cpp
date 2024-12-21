@@ -22,10 +22,10 @@ TEST(core, profiler_small_dims) {
     mag_ctx_profile_start_recording(ctx);
     for (int i=0; i < 1000000; ++i) {
         mag_tensor_t* A = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 3, 3);
-        mag_tensor_t* B =  mag_tensor_emit_op_va(ctx, MAG_OP_SIN, A);
-        mag_tensor_t* C =  mag_tensor_emit_op_va(ctx, MAG_OP_COS, B);
+        mag_tensor_t* B =  mag_sin(A);
+        mag_tensor_t* C =  mag_cos(B);
         [[maybe_unused]]
-        mag_tensor_t* D =  mag_tensor_emit_op_va(ctx, MAG_OP_TANH, C);
+        mag_tensor_t* D = mag_tanh(C);
         mag_tensor_decref(A);
         mag_tensor_decref(B);
         mag_tensor_decref(C);
@@ -41,11 +41,11 @@ TEST(core, profiler_big_dims) {
     mag_ctx_t* ctx = mag_ctx_create(nullptr);
     mag_ctx_profile_start_recording(ctx);
     mag_tensor_t* A = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, 32, 32, 4, 4, 4, 4);
-    mag_tensor_t* B =  mag_tensor_emit_op_va(ctx, MAG_OP_SIN, A);
-    mag_tensor_t* C =  mag_tensor_emit_op_va(ctx, MAG_OP_COS, B);
+    mag_tensor_t* B = mag_sin(A);
+    mag_tensor_t* C = mag_cos(B);
     [[maybe_unused]]
-    mag_tensor_t* D =  mag_tensor_emit_op_va(ctx, MAG_OP_TANH, C);
-    mag_ctx_profile_stop_recording(ctx, NULL);
+    mag_tensor_t* D = mag_tanh(C);
+    mag_ctx_profile_stop_recording(ctx, nullptr);
     mag_tensor_decref(A);
     mag_tensor_decref(B);
     mag_tensor_decref(C);

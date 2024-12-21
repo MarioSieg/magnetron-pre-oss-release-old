@@ -224,7 +224,7 @@ TEST(mag_tensor_t, deep_clone) {
 
     mag_tensor_t* origin = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 10, 4, 2, 5);
     mag_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
-    mag_tensor_t* clone = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, origin);
+    mag_tensor_t* clone = mag_clone(origin);
     ASSERT_NE(origin, clone);
     ASSERT_EQ(mag_tensor_rank(origin), mag_tensor_rank(clone));
     ASSERT_EQ(mag_tensor_shape(origin)[0], mag_tensor_shape(clone)[0]);
@@ -257,8 +257,8 @@ TEST(mag_tensor_t, equals) {
 
     mag_tensor_t* origin = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 10, 4, 2, 5);
     mag_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
-    mag_tensor_t* clone = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, origin);
-    mag_tensor_t* clone2 = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, origin);
+    mag_tensor_t* clone = mag_clone(origin);
+    mag_tensor_t* clone2 = mag_clone(origin);
     mag_tensor_fill_random_uniform(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(mag_tensor_eq(origin, clone));
     ASSERT_FALSE(mag_tensor_eq(origin, clone2));
@@ -295,7 +295,7 @@ TEST(mag_tensor_t, view) {
     mag_tensor_t* origin = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 10, 4, 2, 5);
     mag_tensor_fill(origin, 2.0f);
     int64_t slice_dims[] = {10, 4, 2, 5};
-    mag_tensor_t* slice1 = mag_tensor_emit_op_va(ctx, MAG_OP_VIEW, origin);
+    mag_tensor_t* slice1 = mag_view(origin);
     ASSERT_EQ(mag_tensor_data_ptr(slice1), mag_tensor_data_ptr(origin));
     ASSERT_EQ(mag_tensor_data_size(slice1), mag_tensor_data_size(origin));
     ASSERT_EQ(mag_tensor_numel(slice1), mag_tensor_numel(origin));
@@ -303,7 +303,7 @@ TEST(mag_tensor_t, view) {
     for (int64_t i=0; i < mag_tensor_numel(slice1); ++i) {
         ASSERT_FLOAT_EQ(buf[i], 2.0f);
     }
-    mag_tensor_t* slice2 = mag_tensor_emit_op_va(ctx, MAG_OP_VIEW, origin);
+    mag_tensor_t* slice2 = mag_view(origin);
     ASSERT_EQ(mag_tensor_data_ptr(slice2), mag_tensor_data_ptr(origin));
     ASSERT_EQ(mag_tensor_data_size(slice2), 10 * 4 * 2 * 5 * sizeof(float));
     ASSERT_EQ(mag_tensor_numel(slice2), 10 * 4 * 2 * 5);
@@ -324,7 +324,7 @@ TEST(mag_tensor_t, transpose) {
 
     mag_tensor_t* origin = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 4, 1);
     mag_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
-    mag_tensor_t* transposed = mag_tensor_emit_op_va(ctx, MAG_OP_TRANSPOSE, origin);
+    mag_tensor_t* transposed = mag_transpose(origin);
     ASSERT_FALSE(mag_tensor_is_transposed(origin));
     ASSERT_TRUE(mag_tensor_is_transposed(transposed));
     ASSERT_EQ(mag_tensor_shape(origin)[0], mag_tensor_shape(transposed)[1]);
@@ -346,15 +346,7 @@ TEST(mag_tensor_t, permute) {
     mag_ctx_t* ctx = mag_ctx_create(nullptr);
     mag_tensor_t* origin = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 4, 1);
     mag_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
-    mag_op_param_t params[MAG_MAX_OP_PARAMS] {
-        mag_op_param_int(5),
-        mag_op_param_int(4),
-        mag_op_param_int(3),
-        mag_op_param_int(2),
-        mag_op_param_int(1),
-        mag_op_param_int(0)
-    };
-    mag_tensor_t* permuted = mag_tensor_operator(ctx, MAG_OP_PERMUTE, false, &origin, 1, &params);
+    mag_tensor_t* permuted = mag_permute(origin, 5, 4, 3, 2, 1, 0);
     ASSERT_FALSE(mag_tensor_is_transposed(origin));
     ASSERT_FALSE(mag_tensor_is_transposed(permuted));
     ASSERT_FALSE(mag_tensor_is_permuted(origin));
@@ -383,8 +375,8 @@ TEST(mag_tensor_t, isclose) {
 
     mag_tensor_t* origin = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 10, 4, 2, 5);
     mag_tensor_fill_random_uniform(origin, -1.0f, 1.0f);
-    mag_tensor_t* clone = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, origin);
-    mag_tensor_t* clone2 = mag_tensor_emit_op_va(ctx, MAG_OP_CLONE, origin);
+    mag_tensor_t* clone = mag_clone(origin);
+    mag_tensor_t* clone2 = mag_clone(origin);
     mag_tensor_fill_random_uniform(clone2, 0.0f, 1.0f);
     ASSERT_TRUE(mag_tensor_is_close(origin, clone, FLT_EPSILON, nullptr));
     ASSERT_FALSE(mag_tensor_is_close(origin, clone2, FLT_EPSILON, nullptr));
@@ -581,7 +573,7 @@ TEST(mag_tensor_t, rc_ref_view_chain) {
     ASSERT_EQ(a->rcb.rc_strong, 1);
     ASSERT_EQ(a->rcb.rc_weak, 0);
 
-    mag_tensor_t* b = mag_tensor_emit_op_va(ctx, MAG_OP_VIEW, a); // okay so view references original tensor
+    mag_tensor_t* b = mag_view(a); // okay so view references original tensor
     ASSERT_EQ(b->rcb.rc_strong, 1);
     ASSERT_EQ(b->rcb.rc_weak, 0);
     ASSERT_EQ(a->rcb.rc_strong, 2);
@@ -621,7 +613,7 @@ TEST(mag_tensor_t, rc_ref_inplace_op) {
     mag_tensor_t* x = mag_tensor_create_1d(ctx, MAG_DTYPE_F32, 5);
     mag_tensor_fill_random_uniform(x, 0.0f, 1.0f);
     ASSERT_EQ(x->rcb.rc_strong, 1);
-    mag_tensor_t* r = mag_tensor_emit_op_va<true>(ctx, MAG_OP_ABS, x);
+    mag_tensor_t* r = mag_abs_(x);
     ASSERT_EQ(x->rcb.rc_strong, 2);
     ASSERT_EQ(r->rcb.rc_strong, 1);
     mag_tensor_set_name(r, "result");

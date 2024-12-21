@@ -275,8 +275,8 @@ extern MAG_EXPORT void mag_free_aligned(void* blk);
 extern MAG_EXPORT void mag_humanize_memory_size(size_t n, double* out, const char** unit);
 
 #define mag_swap(T, a, b) do { T tmp = (a); (a) = (b); (b) = tmp; } while (0)
-#define mag_max(x, y) (((x) > (y)) ? (x) : (y))
-#define mag_min(x, y) (((x) < (y)) ? (x) : (y))
+#define mag_xmax(x, y) (((x) > (y)) ? (x) : (y))
+#define mag_xmin(x, y) (((x) < (y)) ? (x) : (y))
 #define MAG_CC_RED "\x1b[31m"
 #define MAG_CC_GREEN "\x1b[32m"
 #define MAG_CC_YELLOW "\x1b[33m"
@@ -416,12 +416,12 @@ struct mag_ctx_t {
             uint32_t state[624];
         } mersenne;
     } prng_state;
-    mag_prng_algorithm_t prng_algorithm;             /* PRNG algorithm. */
-    uintptr_t host_thread_id;                       /* Host thread ID. */
-    size_t sh_len;                                  /* Number of shutdown hooks. */
-    size_t sh_cap;                                  /* Maximum number of shutdown hooks. */
-    mag_compute_device_type_t device_type;           /* Active compute device. */
-    mag_compute_device_t* device;                  /* Active compute device. */
+    mag_prng_algorithm_t prng_algorithm;                /* PRNG algorithm. */
+    uintptr_t tr_id;                                    /* Host thread ID. */
+    size_t sh_len;                                      /* Number of shutdown hooks. */
+    size_t sh_cap;                                      /* Maximum number of shutdown hooks. */
+    mag_compute_device_type_t device_type;              /* Active compute device. */
+    mag_compute_device_t* device;                       /* Active compute device. */
     uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], mag_color_channels_t);    /* Image loader. stb_image by default, you can plug-in your own. */
     void (*image_load_free_fn)(uint8_t*);                                           /* Image loader free function.  stb_image by default, you can plug-in your own. */
     bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);       /* Image saver. stb_image by default, you can plug-in your own. */

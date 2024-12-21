@@ -607,40 +607,6 @@ class Tensor:
         self.name = f'Tensor {self.shape}' if name is None else name
 
     @staticmethod
-    def operator(op: Operator, inplace: bool = False, params: list[OpParam] | None = None, *args) -> 'Tensor':
-        """
-        Applies an operator to one or more tensors.
-
-        Parameters
-        ----------
-        op : Operator
-            The operator to apply.
-        inplace : bool, optional
-            If True and operator supports it, modifies the tensor in-place, by default False.
-        params : list[OpParam] or None, optional
-            Additional operation parameters, by default None.
-        *args : Tensor
-            Tensors to be used as input arguments.
-
-        Returns
-        -------
-        Tensor
-            The resulting tensor after applying the operation.
-        """
-        c_para_ptr = ffi.NULL
-        if params is not None:
-            assert 0 < len(params) <= MAG_MAX_OP_PARAMS, f'Invalid number of operation parameters: {len(params)}'
-            param_vals = [param.value & ((1 << 64) - 1) for param in params] + [0] * (MAG_MAX_OP_PARAMS - len(params))
-            c_para = ffi.new(f'mag_op_param_t[{MAG_MAX_OP_PARAMS}]', param_vals)
-            c_para_ptr = ffi.new(f'mag_op_param_t(*)[{MAG_MAX_OP_PARAMS}]', c_para)
-        assert len(args) == op.argument_count, f'{len(args)} != {op.argument_count} for {op}'
-        tensors: ffi.CData = ffi.new(f'mag_tensor_t*[{len(args)}]', [arg.tensor for arg in args])
-        ctx: ffi.CData = C.mag_tensor_get_ctx(args[0].tensor)
-        instance: ffi.CData = C.mag_tensor_operator(ctx, op.value, inplace, tensors, len(args), c_para_ptr)
-        assert instance != ffi.NULL, 'Operation invalid'
-        return Tensor(instance)
-
-    @staticmethod
     def empty(shape: tuple[int, ...], *, dtype: DType = DType.F32, name: str | None = None) -> 'Tensor':
         """
         Creates an empty tensor with uninitialized data.
@@ -1298,7 +1264,7 @@ class Tensor:
         Tensor
             A cloned tensor.
         """
-        return self.operator(Operator.CLONE, False, None, self)
+        return Tensor(C.mag_clone(self.tensor))
 
     def view(self) -> 'Tensor':
         """
@@ -1309,7 +1275,7 @@ class Tensor:
         Tensor
             A view tensor.
         """
-        return self.operator(Operator.VIEW, False, None, self)
+        return Tensor(C.mag_view(self.tensor))
 
     def transpose(self) -> 'Tensor':
         """
@@ -1320,7 +1286,7 @@ class Tensor:
         Tensor
             A transposed tensor.
         """
-        return self.operator(Operator.TRANSPOSE, False, None, self)
+        return Tensor(C.mag_transpose(self.tensor))
 
     def permute(self, axes: tuple[int, ...]) -> 'Tensor':
         """
@@ -1341,39 +1307,39 @@ class Tensor:
             assert 0 <= axes[i] < MAX_DIMS
             for j in range(i + 1, MAX_DIMS):
                 assert axes[i] != axes[j], f'Duplicate axis: {axes[i]}'
-        return self.operator(Operator.PERMUTE, False, [OpParam.new_int(axis) for axis in axes], self)
+        return Tensor(C.mag_permute(self.tensor, *axes))
 
     def mean(self) -> 'Tensor':
         """Computes the mean of all elements in the tensor."""
-        return self.operator(Operator.MEAN, False, None, self)
+        return Tensor(C.mag_mean(self.tensor))
 
     def min(self) -> 'Tensor':
         """Computes the minimum value in the tensor."""
-        return self.operator(Operator.MIN, False, None, self)
+        return Tensor(C.mag_min(self.tensor))
 
     def max(self) -> 'Tensor':
         """Computes the maximum value in the tensor."""
-        return self.operator(Operator.MAX, False, None, self)
+        return C.mag_max(self.tensor)
 
     def sum(self) -> 'Tensor':
         """Computes the sum of all elements in the tensor."""
-        return self.operator(Operator.SUM, False, None, self)
+        return Tensor(C.mag_sum(self.tensor))
 
     def abs(self) -> 'Tensor':
         """Computes element-wise absolute value."""
-        return self.operator(Operator.ABS, False, None, self)
+        return Tensor(C.mag_abs(self.tensor))
 
     def abs_(self) -> 'Tensor':
         """In-place element-wise absolute value."""
-        return self.operator(Operator.ABS, True, None, self)
+        return Tensor(C.mag_abs_(self.tensor))
 
     def neg(self) -> 'Tensor':
         """Computes element-wise negation."""
-        return self.operator(Operator.NEG, False, None, self)
+        return Tensor(C.mag_neg(self.tensor))
 
     def neg_(self) -> 'Tensor':
         """In-place element-wise negation."""
-        return self.operator(Operator.NEG, True, None, self)
+        return Tensor(C.mag_neg_(self.tensor))
 
     def __neg__(self) -> 'Tensor':
         """Overloads unary negation: -X."""
@@ -1381,51 +1347,51 @@ class Tensor:
 
     def log(self) -> 'Tensor':
         """Computes element-wise natural logarithm."""
-        return self.operator(Operator.LOG, False, None, self)
+        return Tensor(C.mag_log(self.tensor))
 
     def log_(self) -> 'Tensor':
         """In-place element-wise natural logarithm."""
-        return self.operator(Operator.LOG, True, None, self)
+        return Tensor(C.mag_log_(self.tensor))
 
     def sqr(self) -> 'Tensor':
         """Computes element-wise square of values."""
-        return self.operator(Operator.SQR, False, None, self)
+        return Tensor(C.mag_sqr(self.tensor))
 
     def sqr_(self) -> 'Tensor':
         """In-place element-wise square of values."""
-        return self.operator(Operator.SQR, True, None, self)
+        return Tensor(C.mag_sqr_(self.tensor))
 
     def sqrt(self) -> 'Tensor':
         """Computes element-wise square root."""
-        return self.operator(Operator.SQRT, False, None, self)
+        return Tensor(C.mag_sqrt(self.tensor))
 
     def sqrt_(self) -> 'Tensor':
         """In-place element-wise square root."""
-        return self.operator(Operator.SQRT, True, None, self)
+        return Tensor(C.mag_sqrt_(self.tensor))
 
     def sin(self) -> 'Tensor':
         """Computes element-wise sine."""
-        return self.operator(Operator.SIN, False, None, self)
+        return Tensor(C.mag_sin(self.tensor))
 
     def sin_(self) -> 'Tensor':
         """In-place element-wise sine."""
-        return self.operator(Operator.SIN, True, None, self)
+        return Tensor(C.mag_sin_(self.tensor))
 
     def cos(self) -> 'Tensor':
         """Computes element-wise cosine."""
-        return self.operator(Operator.COS, False, None, self)
+        return Tensor(C.mag_cos(self.tensor))
 
     def cos_(self) -> 'Tensor':
         """In-place element-wise cosine."""
-        return self.operator(Operator.COS, True, None, self)
+        return Tensor(C.mag_cos_(self.tensor))
 
     def heaviside_step(self) -> 'Tensor':
         """Computes element-wise Heaviside step function."""
-        return self.operator(Operator.STEP, False, None, self)
+        return Tensor(C.mag_heaviside_step(self.tensor))
 
     def heaviside_step_(self) -> 'Tensor':
         """In-place element-wise Heaviside step function."""
-        return self.operator(Operator.STEP, True, None, self)
+        return Tensor(C.mag_heaviside_step_(self.tensor))
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """
@@ -1441,11 +1407,11 @@ class Tensor:
         Tensor
             The transformed tensor.
         """
-        return self.operator(Operator.SOFTMAX_DV if derivative else Operator.SOFTMAX, False, None, self)
+        return Tensor(C.mag_softmax_dv(self.tensor) if derivative else C.mag_softmax(self.tensor))
 
     def softmax_(self, derivative: bool = False) -> 'Tensor':
         """In-place softmax or softmax derivative."""
-        return self.operator(Operator.SOFTMAX_DV if derivative else Operator.SOFTMAX, True, None, self)
+        return Tensor(C.mag_softmax_dv_(self.tensor) if derivative else C.mag_softmax_(self.tensor))
 
     def sigmoid(self, derivative: bool = False) -> 'Tensor':
         """
@@ -1461,19 +1427,19 @@ class Tensor:
         Tensor
             The transformed tensor.
         """
-        return self.operator(Operator.SIGMOID_DV if derivative else Operator.SIGMOID, False, None, self)
+        return Tensor(C.mag_sigmoid_dv(self.tensor) if derivative else C.mag_sigmoid(self.tensor))
 
     def sigmoid_(self, derivative: bool = False) -> 'Tensor':
         """In-place sigmoid or sigmoid derivative."""
-        return self.operator(Operator.SIGMOID_DV if derivative else Operator.SIGMOID, True, None, self)
+        return Tensor(C.mag_sigmoid_dv_(self.tensor) if derivative else C.mag_sigmoid_(self.tensor))
 
     def hard_sigmoid(self) -> 'Tensor':
         """Applies hard sigmoid to the tensor."""
-        return self.operator(Operator.HARD_SIGMOID, False, None, self)
+        return Tensor(C.mag_hard_sigmoid(self.tensor))
 
     def hard_sigmoid_(self) -> 'Tensor':
         """In-place hard sigmoid."""
-        return self.operator(Operator.HARD_SIGMOID, True, None, self)
+        return Tensor(C.mag_hard_sigmoid_(self.tensor))
 
     def silu(self, derivative: bool = False) -> 'Tensor':
         """
@@ -1489,11 +1455,11 @@ class Tensor:
         Tensor
             The transformed tensor.
         """
-        return self.operator(Operator.SILU_DV if derivative else Operator.SILU, False, None, self)
+        return C.mag_silu_dv(self.tensor) if derivative else C.mag_silu(self.tensor)
 
     def silu_(self, derivative: bool = False) -> 'Tensor':
         """In-place SiLU or SiLU derivative."""
-        return self.operator(Operator.SILU_DV if derivative else Operator.SILU, True, None, self)
+        return Tensor(C.mag_silu_dv_(self.tensor) if derivative else C.mag_silu_(self.tensor))
 
     def tanh(self, derivative: bool = False) -> 'Tensor':
         """
@@ -1509,11 +1475,11 @@ class Tensor:
         Tensor
             The transformed tensor.
         """
-        return self.operator(Operator.TANH_DV if derivative else Operator.TANH, False, None, self)
+        return Tensor(C.mag_tanh_dv(self.tensor) if derivative else C.mag_tanh(self.tensor))
 
     def tanh_(self, derivative: bool = False) -> 'Tensor':
         """In-place tanh or tanh derivative."""
-        return self.operator(Operator.TANH_DV if derivative else Operator.TANH, True, None, self)
+        return Tensor(C.mag_tanh_dv_(self.tensor) if derivative else C.mag_tanh_(self.tensor))
 
     def relu(self, derivative: bool = False) -> 'Tensor':
         """
@@ -1529,11 +1495,11 @@ class Tensor:
         Tensor
             The transformed tensor.
         """
-        return self.operator(Operator.RELU_DV if derivative else Operator.RELU, False, None, self)
+        return Tensor(C.mag_relu_dv(self.tensor) if derivative else C.mag_relu(self.tensor))
 
     def relu_(self, derivative: bool = False) -> 'Tensor':
         """In-place ReLU or ReLU derivative."""
-        return self.operator(Operator.RELU_DV if derivative else Operator.RELU, True, None, self)
+        return Tensor(C.mag_relu_dv_(self.tensor) if derivative else C.mag_relu_(self.tensor))
 
     def gelu(self, derivative: bool = False) -> 'Tensor':
         """
@@ -1549,75 +1515,51 @@ class Tensor:
         Tensor
             The transformed tensor.
         """
-        return self.operator(Operator.GELU_DV if derivative else Operator.GELU, False, None, self)
+        return Tensor(C.mag_gelu_dv(self.tensor) if derivative else C.mag_gelu(self.tensor))
 
     def gelu_(self, derivative: bool = False) -> 'Tensor':
         """In-place GELU or GELU derivative."""
-        return self.operator(Operator.GELU_DV if derivative else Operator.GELU, True, None, self)
+        return Tensor(C.mag_gelu_dv_(self.tensor) if derivative else C.mag_gelu_(self.tensor))
 
     def __add__(self, other: object | int | float) -> 'Tensor':
         """Element-wise addition with another tensor or scalar."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.ADD, False, None, self, other)
-        else:
-            return self.operator(Operator.ADDS, False, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_add(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_adds(self.tensor, float(other)))
 
     def __iadd__(self, other: object | int | float) -> 'Tensor':
         """In-place element-wise addition."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.ADD, True, None, self, other)
-        else:
-            return self.operator(Operator.ADDS, True, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_add_(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_adds_(self.tensor, float(other)))
 
     def __sub__(self, other: object | int | float) -> 'Tensor':
         """Element-wise subtraction with another tensor or scalar."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.SUB, False, None, self, other)
-        else:
-            return self.operator(Operator.SUBS, False, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_sub(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_subs(self.tensor, float(other)))
 
     def __isub__(self, other: object | int | float) -> 'Tensor':
         """In-place element-wise subtraction."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.SUB, True, None, self, other)
-        else:
-            return self.operator(Operator.SUBS, True, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_sub_(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_subs_(self.tensor, float(other)))
 
     def __mul__(self, other: object | int | float) -> 'Tensor':
         """Element-wise multiplication with another tensor or scalar."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.MUL, False, None, self, other)
-        else:
-            return self.operator(Operator.MULS, False, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_mul(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_muls(self.tensor, float(other)))
 
     def __imul__(self, other: object | int | float) -> 'Tensor':
         """In-place element-wise multiplication."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.MUL, True, None, self, other)
-        else:
-            return self.operator(Operator.MULS, True, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_mul_(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_muls_(self.tensor, float(other)))
 
     def __truediv__(self, other: object | int | float) -> 'Tensor':
         """Element-wise division with another tensor or scalar."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.DIV, False, None, self, other)
-        else:
-            return self.operator(Operator.DIVS, False, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_div(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_divs(self.tensor, float(other)))
 
     def __itruediv__(self, other: object | int | float) -> 'Tensor':
         """In-place element-wise division."""
-        if isinstance(other, Tensor):
-            return self.operator(Operator.DIV, True, None, self, other)
-        else:
-            return self.operator(Operator.DIVS, True, [OpParam.new_float(float(other))], self)
+        return Tensor(C.mag_div_(self.tensor, other.tensor) if isinstance(other, Tensor) else C.mag_divs_(self.tensor, float(other)))
 
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         """Matrix multiplication with another tensor: A @ B."""
-        return self.operator(Operator.MATMUL, False, None, self, other)
+        return Tensor(C.mag_matmul(self.tensor, other.tensor))
 
     def __imatmul__(self, other: 'Tensor') -> 'Tensor':
         """In-place matrix multiplication: A @= B."""
-        return self.operator(Operator.MATMUL, True, None, self, other)
+        return Tensor(C.mag_matmul_(self.tensor, other.tensor))
 
     def __eq__(self, other: 'Tensor') -> bool:
         """

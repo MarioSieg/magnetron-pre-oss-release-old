@@ -8,7 +8,7 @@ import magnetron as mag
 
 
 class Layer(ABC):
-    def forward(self, inputs: mag.Tensor, activation: mag.Operator | None = None) -> mag.Tensor:
+    def forward(self, inputs: mag.Tensor) -> mag.Tensor:
         pass
 
     def backward(self, is_in: bool, cache: mag.Tensor, delta: mag.Tensor, rate: float) -> mag.Tensor:
@@ -16,7 +16,7 @@ class Layer(ABC):
 
 
 class Model(ABC):
-    def forward(self, inputs: mag.Tensor, activation: mag.Operator | None = None) -> mag.Tensor:
+    def forward(self, inputs: mag.Tensor) -> mag.Tensor:
         pass
 
     def backward(self, outputs: mag.Tensor, targets: mag.Tensor, rate: float):
@@ -48,9 +48,8 @@ class DenseLayer(Layer):
         self.activation = activation
         self.cache = None
 
-    def forward(self, prev: mag.Tensor, activation: mag.Operator | None = None) -> mag.Tensor:
-        prev = (self.weight @ prev + self.bias)
-        return mag.Tensor.operator(activation if activation is not None else self.activation, True, None, prev)
+    def forward(self, prev: mag.Tensor) -> mag.Tensor:
+        return (self.weight @ prev + self.bias).sigmoid()
 
     def backward(self, is_in: bool, cache: mag.Tensor, delta: mag.Tensor, rate: float) -> mag.Tensor:
         self.weight -= (delta @ cache.transpose().clone()) * rate
@@ -69,12 +68,12 @@ class SequentialModel(Model):
         self.cache = []
         self.loss_epoch_step = 1000
 
-    def forward(self, inputs: mag.Tensor, activation: mag.Operator | None = None) -> mag.Tensor:
+    def forward(self, inputs: mag.Tensor) -> mag.Tensor:
         prev = inputs
         self.cache.clear()
         self.cache.append(prev)
         for i in range(0, len(self.layers)):
-            prev = self.layers[i].forward(prev, activation)
+            prev = self.layers[i].forward(prev)
             self.cache.append(prev)
         return prev
 

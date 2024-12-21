@@ -925,7 +925,7 @@ static void MAG_HOTPROC mag_vrelu_f32( /* relu : ℝ -> ℝ^+, x |-> max {x, 0} 
     const float* const x
 ) {
     for (int64_t i=0; i < n; ++i) {
-        o[i] = mag_max(x[i], 0.0f);
+        o[i] = mag_xmax(x[i], 0.0f);
     }
 }
 
@@ -2374,7 +2374,7 @@ static void mag_cpu_release_interface(mag_compute_device_t* ctx) {
 }
 
 mag_compute_device_t* mag_init_device_cpu(mag_ctx_t* ctx, uint32_t num_threads) {
-    num_threads = num_threads ? num_threads : mag_max(1, ctx->sys.cpu_virtual_cores);
+    num_threads = num_threads ? num_threads : mag_xmax(1, ctx->sys.cpu_virtual_cores);
     mag_compute_device_t* dvc = mag_cpu_init_interface(ctx);
     return dvc;
 }
