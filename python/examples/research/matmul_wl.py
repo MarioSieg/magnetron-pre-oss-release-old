@@ -5,8 +5,8 @@ import time
 
 
 N = 1024
-A = mag.Tensor.rand((N, N), name='A')
-B = mag.Tensor.rand((N, N), name='B')
+A = mag.Tensor.uniform((N, N), name='A')
+B = mag.Tensor.uniform((N, N), name='B')
 print(A.shape)
 
 flop = 2*N**3

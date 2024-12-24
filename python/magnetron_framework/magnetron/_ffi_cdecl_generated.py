@@ -1,4 +1,4 @@
-# Autogenered by /home/mario/Documents/projects/wavelet/python/magnetron_framework/bing_gen.py 2024-12-21 07:48:55.600948, do NOT edit!
+# Autogenered by /Users/mariosieg/Documents/projects/magnetron/python/magnetron_framework/bing_gen.py 2024-12-24 17:40:49.742368, do NOT edit!
 
 __MAG_CDECLS: str = '''
 
@@ -6,6 +6,7 @@ typedef struct mag_ctx_info_t mag_ctx_info_t;
 typedef struct mag_ctx_t mag_ctx_t;
 typedef struct mag_tensor_t mag_tensor_t;
 typedef struct mag_dtype_meta_t mag_dtype_meta_t;
+typedef struct mag_op_param_t mag_op_param_t;
 typedef struct mag_op_meta_t mag_op_meta_t;
 
 typedef int mag_compute_device_type_t;
@@ -43,13 +44,6 @@ extern   void mag_ctx_profile_start_recording(mag_ctx_t* ctx);
 extern   void mag_ctx_profile_stop_recording(mag_ctx_t* ctx, const char* export_csv_file);
 extern   void mag_ctx_destroy(mag_ctx_t* ctx);
 extern   const mag_dtype_meta_t* mag_dtype_meta_of(mag_dtype_t type);
-typedef uint64_t mag_op_param_t;
-extern   mag_op_param_t mag_op_param_int(uint32_t x);
-extern   bool mag_op_param_is_int(mag_op_param_t param);
-extern   uint32_t mag_op_param_unpack_int(mag_op_param_t param);
-extern   mag_op_param_t mag_op_param_float(float x);
-extern   bool mag_op_param_is_float(mag_op_param_t param);
-extern   float mag_op_param_unpack_float(mag_op_param_t param);
 extern   const mag_op_meta_t* mag_op_meta_of(mag_op_t type);
 extern   uint32_t mag_pack_color_u8(uint8_t r, uint8_t g, uint8_t b);
 extern   uint32_t mag_pack_color_f32(float r, float g, float b);
