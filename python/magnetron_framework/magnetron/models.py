@@ -42,10 +42,9 @@ class Optim:
 
 
 class DenseLayer(Layer):
-    def __init__(self, in_features: int, out_features: int, activation: mag.Operator = mag.Operator.SIGMOID):
-        self.weight = mag.Tensor.rand(shape=(out_features, in_features))
-        self.bias = mag.Tensor.rand(shape=(out_features, 1))
-        self.activation = activation
+    def __init__(self, in_features: int, out_features: int):
+        self.weight = mag.Tensor.uniform(shape=(out_features, in_features))
+        self.bias = mag.Tensor.uniform(shape=(out_features, 1))
         self.cache = None
 
     def forward(self, prev: mag.Tensor) -> mag.Tensor:
@@ -103,7 +102,7 @@ class SequentialModel(Model):
     def summary(self):
         trainable_params = 0
         for layer in self.layers:
-            trainable_params += layer.weight.num_elements + layer.bias.num_elements
+            trainable_params += layer.weight.numel + layer.bias.numel
         layers: int = len(self.layers)
         print('---- Model Summary ----')
         print(f'Trainable Parameters: {trainable_params}')

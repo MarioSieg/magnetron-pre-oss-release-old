@@ -6,7 +6,6 @@
 # $ cp examples/perceptron.py tmp.py && gdb -ex r --args python3 tmp.py
 # See also https://wiki.python.org/moin/DebuggingWithGdb
 
-import random
 import faulthandler
 import weakref
 from dataclasses import dataclass
@@ -335,7 +334,7 @@ class Context:
         algorithm : PRNGAlgorithm
             The desired PRNG algorithm.
         """
-        C.mag_ctx_set_prng_algorithm(self.ctx, algorithm.value, random.randint(0, 1 << 63))
+        C.mag_ctx_set_prng_algorithm(self.ctx, algorithm.value, 0)
 
     @property
     def os_name(self) -> str:
@@ -678,8 +677,8 @@ class Tensor:
         return cls.full(shape, fill_value=0.0, dtype=dtype, name=name)
 
     @classmethod
-    def rand(cls, shape: tuple[int, ...], *, interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
-             name: str | None = None) -> 'Tensor':
+    def uniform(cls, shape: tuple[int, ...], *, interval: (float, float) = (-1.0, 1.0), dtype: DType = DType.F32,
+                name: str | None = None) -> 'Tensor':
         """
         Creates a tensor filled with random uniform values within a given interval.
 
