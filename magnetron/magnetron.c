@@ -922,12 +922,18 @@ void mag_fixed_pool_cache_init(mag_fixed_pool_cache* cache, size_t block_size, s
         .blocks_per_chunk = blocks_per_chunk,
         .chunks = chunk,
         .chunk_last = chunk,
-        .free_list = NULL
+        .free_list = NULL,
+        .num_freelist_hits = 0,
+        .num_pool_hits = 0,
+        .num_chunks = 1,
+        .num_allocs = 0
     };
 }
 
 void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
+    ++cache->num_allocs;
     if (cache->free_list) { /* 1. Try to pop from free_list (fastest path) */
+        ++cache->num_freelist_hits;
         void* blk = cache->free_list;
         cache->free_list = *(void**)blk; /* Next free block is stored at block[0..sizeof(void*)-1] */
         return blk;
@@ -935,6 +941,7 @@ void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
     mag_fixed_pool_chunk* chunk = cache->chunk_last;
     mag_assert2(chunk);
     if (chunk->offs+cache->block_size <= chunk->cap) {  /* 2. Allocate from the last pool if possible (fast path) */
+        ++cache->num_pool_hits;
         uint8_t* blk = (uint8_t*)chunk->mem+chunk->offs;
         chunk->offs += cache->block_size;
         return blk;
@@ -944,6 +951,7 @@ void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
     cache->chunk_last = new_chunk;
     uint8_t* blk = new_chunk->mem;
     new_chunk->offs = cache->block_size;
+    ++cache->num_chunks;
     return blk;
 }
 

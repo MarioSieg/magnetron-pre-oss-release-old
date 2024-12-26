@@ -39,6 +39,10 @@ TEST(ctx, alloc_aligned) {
     mag_free_aligned(i);
 }
 
+TEST(caching_allocator, alloc) {
+
+}
+
 TEST(atomics_ops, StoreLoadTest) {
     mag_atomic_t val = 0;
     mag_atomic_store(&val, 42, MAG_MO_RELAXED);
@@ -130,6 +134,6 @@ TEST(atomics_ops, CompareExchangeStrongFailTest) {
     mag_atomic_t desired = 40;
     bool success = mag_atomic_compare_exchange_strong(&val, &expected, &desired, MAG_MO_RELAXED, MAG_MO_RELAXED);
     EXPECT_FALSE(success);
-    EXPECT_EQ(expected, 30); // updated to current value of val on failure
+    EXPECT_EQ(expected, 30);
     EXPECT_EQ(mag_atomic_load(&val, MAG_MO_RELAXED), 30);
 }

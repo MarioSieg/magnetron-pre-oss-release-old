@@ -338,7 +338,11 @@ typedef struct mag_fixed_pool_cache {
     size_t blocks_per_chunk;            /* How many blocks fit in each chunk */
     mag_fixed_pool_chunk* chunks;       /* Linked list of all chunks */
     mag_fixed_pool_chunk* chunk_last;   /* Last chunk */
-    void* free_list;                    /* Single linked list of free chunks. */
+    void* free_list;                    /* Single linked list of free chunks */
+    uint64_t num_freelist_hits;         /* Number of cache (free-list) hits */
+    uint64_t num_pool_hits;             /* Number of cache (pool) hits */
+    uint64_t num_chunks;          /* Number of used chunks */
+    uint64_t num_allocs;                /* Number of total allocations */
 } mag_fixed_pool_cache;
 
 extern MAG_EXPORT void mag_fixed_pool_cache_init(mag_fixed_pool_cache* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk);
