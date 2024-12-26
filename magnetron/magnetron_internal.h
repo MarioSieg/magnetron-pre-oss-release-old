@@ -323,6 +323,29 @@ static MAG_AINLINE void* mag_pincr(void** p, size_t sz, size_t align) {
     return pp;
 }
 
+typedef struct mag_fixed_pool_chunk mag_fixed_pool_chunk;
+struct mag_fixed_pool_chunk {
+    void* mem;
+    size_t cap;
+    size_t offs;
+    mag_fixed_pool_chunk* next;
+};
+
+/* Fast memory allocator for memory blocks of same size. Obtains a memory pool and freelist for fast de/allocation. */
+typedef struct mag_fixed_pool_cache {
+    size_t block_size;                  /* Size of each allocated block */
+    size_t block_align;                 /* Alignment requirements of each block. */
+    size_t blocks_per_chunk;            /* How many blocks fit in each chunk */
+    mag_fixed_pool_chunk* chunks;       /* Linked list of all chunks */
+    mag_fixed_pool_chunk* chunk_last;   /* Last chunk */
+    void* free_list;                    /* Single linked list of free chunks. */
+} mag_fixed_pool_cache;
+
+extern MAG_EXPORT void mag_fixed_pool_cache_init(mag_fixed_pool_cache* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk);
+extern MAG_EXPORT void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache);
+extern MAG_EXPORT void mag_fixed_pool_cache_free(mag_fixed_pool_cache* cache, void* blk);
+extern MAG_EXPORT void mag_fixed_pool_cache_destroy(mag_fixed_pool_cache* cache);
+
 /* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
 typedef struct mag_compute_device_t mag_compute_device_t;
 

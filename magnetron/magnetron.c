@@ -896,6 +896,72 @@ uint64_t mag_ctx_get_physical_memory_free(const mag_ctx_t* ctx) { return ctx->sy
 bool mag_ctx_is_numa_system(const mag_ctx_t* ctx) { return false; /* TODO */ }
 size_t mag_ctx_get_total_tensors_created(const mag_ctx_t* ctx) { return 0; /* TODO */ }
 
+static mag_fixed_pool_chunk* mag_fixed_pool_chunk_new(size_t block_size, size_t block_align, size_t blocks_per_chunk) {
+    size_t cap = blocks_per_chunk*block_size;
+    uintptr_t size = 0;
+    mag_pincr((void**)&size, sizeof(mag_fixed_pool_chunk), __alignof(mag_fixed_pool_chunk));
+    mag_pincr((void**)&size, cap, block_align);
+    void* mem = (*mag_alloc)(NULL, size);
+    void* pos = mem;
+    mag_fixed_pool_chunk* chunk = mag_pincr(&pos, sizeof(mag_fixed_pool_chunk), __alignof(mag_fixed_pool_chunk));
+    *chunk = (mag_fixed_pool_chunk) {
+        .mem = mag_pincr(&pos, cap, block_align),
+        .cap = cap,
+        .offs = 0,
+        .next = NULL
+    };
+    return chunk;
+}
+
+void mag_fixed_pool_cache_init(mag_fixed_pool_cache* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk) {
+    mag_assert2(block_size && blocks_per_chunk);
+    mag_fixed_pool_chunk* chunk = mag_fixed_pool_chunk_new(block_size, block_align, blocks_per_chunk);
+    *cache = (mag_fixed_pool_cache) {
+        .block_size = block_size,
+        .block_align = block_align,
+        .blocks_per_chunk = blocks_per_chunk,
+        .chunks = chunk,
+        .chunk_last = chunk,
+        .free_list = NULL
+    };
+}
+
+void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
+    if (cache->free_list) { /* 1. Try to pop from free_list (fastest path) */
+        void* blk = cache->free_list;
+        cache->free_list = *(void**)blk; /* Next free block is stored at block[0..sizeof(void*)-1] */
+        return blk;
+    }
+    mag_fixed_pool_chunk* chunk = cache->chunk_last;
+    mag_assert2(chunk);
+    if (chunk->offs+cache->block_size <= chunk->cap) {  /* 2. Allocate from the last pool if possible (fast path) */
+        uint8_t* blk = (uint8_t*)chunk->mem+chunk->offs;
+        chunk->offs += cache->block_size;
+        return blk;
+    }
+    mag_fixed_pool_chunk* new_chunk = mag_fixed_pool_chunk_new(cache->block_size, cache->block_align, cache->blocks_per_chunk);     /* 3. Current chunk is exhausted, allocate new (slow path) */
+    chunk->next = new_chunk;
+    cache->chunk_last = new_chunk;
+    uint8_t* blk = new_chunk->mem;
+    new_chunk->offs = cache->block_size;
+    return blk;
+}
+
+void mag_fixed_pool_cache_free(mag_fixed_pool_cache* cache, void* blk) { /* Push chunk into free list */
+    *(void**)blk = cache->free_list;
+    cache->free_list = blk;
+}
+
+void mag_fixed_pool_cache_destroy(mag_fixed_pool_cache* cache) {
+    mag_fixed_pool_chunk* chunk = cache->chunks;
+    while (chunk) {
+        mag_fixed_pool_chunk* next = chunk->next;
+        (*mag_alloc)(chunk, 0);
+        chunk = next;
+    }
+    memset(cache, 0, sizeof(*cache));
+}
+
 void mag_ctx_profile_start_recording(mag_ctx_t* ctx) {
     if (ctx->profiler_enabled) return;
     memset(ctx->op_perf_mons_total, 0, sizeof(ctx->op_perf_mons_total));
