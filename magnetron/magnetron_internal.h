@@ -323,32 +323,32 @@ static MAG_AINLINE void* mag_pincr(void** p, size_t sz, size_t align) {
     return pp;
 }
 
-typedef struct mag_fixed_pool_chunk mag_fixed_pool_chunk;
-struct mag_fixed_pool_chunk {
-    void* mem;
-    size_t cap;
-    size_t offs;
-    mag_fixed_pool_chunk* next;
+typedef struct mag_intrusive_chunk mag_intrusive_chunk;
+struct mag_intrusive_chunk {
+    void* mem;                      /* Contiguous block, must be first field. */
+    size_t cap;                     /* Size of block */
+    size_t offs;                    /* Offset into block */
+    mag_intrusive_chunk* next;      /* Next block or NULL */
 };
 
 /* Fast memory allocator for memory blocks of same size. Obtains a memory pool and freelist for fast de/allocation. */
-typedef struct mag_fixed_pool_cache {
+typedef struct mag_fixed_intrusive_pool {
     size_t block_size;                  /* Size of each allocated block */
     size_t block_align;                 /* Alignment requirements of each block. */
     size_t blocks_per_chunk;            /* How many blocks fit in each chunk */
-    mag_fixed_pool_chunk* chunks;       /* Linked list of all chunks */
-    mag_fixed_pool_chunk* chunk_last;   /* Last chunk */
-    void* free_list;                    /* Single linked list of free chunks */
+    mag_intrusive_chunk* chunks;        /* Linked list of all chunks */
+    mag_intrusive_chunk* chunk_head;    /* Last chunk */
+    void* free_list;                    /* Intrusive single linked list of free chunks */
     uint64_t num_freelist_hits;         /* Number of cache (free-list) hits */
     uint64_t num_pool_hits;             /* Number of cache (pool) hits */
-    uint64_t num_chunks;          /* Number of used chunks */
+    uint64_t num_chunks;                /* Number of used chunks */
     uint64_t num_allocs;                /* Number of total allocations */
-} mag_fixed_pool_cache;
+} mag_fixed_intrusive_pool;
 
-extern MAG_EXPORT void mag_fixed_pool_cache_init(mag_fixed_pool_cache* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk);
-extern MAG_EXPORT void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache);
-extern MAG_EXPORT void mag_fixed_pool_cache_free(mag_fixed_pool_cache* cache, void* blk);
-extern MAG_EXPORT void mag_fixed_pool_cache_destroy(mag_fixed_pool_cache* cache);
+extern MAG_EXPORT void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk);
+extern MAG_EXPORT void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* cache);
+extern MAG_EXPORT void mag_fixed_intrusive_pool_free(mag_fixed_intrusive_pool* cache, void* blk);
+extern MAG_EXPORT void mag_fixed_intrusive_pool_destroy(mag_fixed_intrusive_pool* cache);
 
 /* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
 typedef struct mag_compute_device_t mag_compute_device_t;
