@@ -1732,7 +1732,8 @@ int64_t mag_tensor_num_cols(const mag_tensor_t* t) { return *t->shape; }
 #endif
 
 static mag_tensor_t* mag_tensor_create(mag_ctx_t* ctx, mag_dtype_t type, const int64_t* dims, int64_t rank, mag_tensor_t* view, size_t view_offs) {
-    mag_assert(mag_thread_id() == ctx->tr_id, "Tensor must be created on the same thread as the context.");
+    uintptr_t tr_id = mag_thread_id();
+    mag_assert(tr_id == ctx->tr_id, "%" PRIx64 " != %" PRIx64 " Tensor must be created on the same thread as the context.", tr_id, ctx->tr_id);
     mag_assert(dims != NULL && rank >= 0 && rank <= MAG_MAX_DIMS, "Rank must be within (0, %d]", MAG_MAX_DIMS);
     mag_assert2(view_offs == 0); /* NYI. TODO */
     if (view) {
