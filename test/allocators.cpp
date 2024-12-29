@@ -2,7 +2,7 @@
 
 #include "prelude.hpp"
 
-TEST(allocator, fixed_intrusive_pool_alloc_free) {
+TEST(allocators, fixed_intrusive_pool_alloc_free) {
     mag_fixed_intrusive_pool pool {};
     mag_fixed_intrusive_pool_init(&pool, sizeof(int), alignof(int), 8);
     ASSERT_EQ(pool.num_allocs, 0);
@@ -24,7 +24,7 @@ TEST(allocator, fixed_intrusive_pool_alloc_free) {
     mag_fixed_intrusive_pool_destroy(&pool);
 }
 
-TEST(allocator, fixed_intrusive_pool_exhaust_pool) {
+TEST(allocators, fixed_intrusive_pool_exhaust_pool) {
     mag_fixed_intrusive_pool pool {};
     mag_fixed_intrusive_pool_init(&pool, sizeof(int), alignof(int), 8);
     ASSERT_EQ(pool.num_allocs, 0);
