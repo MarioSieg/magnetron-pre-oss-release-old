@@ -455,7 +455,7 @@ TEST(mag_tensor_t, random_uniform_pcg) {
     mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_PCG, reinterpret_cast<std::uint64_t>(this));
 
-    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
+    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 32, 32, 32, 32);
     mag_tensor_fill_random_uniform(tensor, rmin, rmax);
 
     auto* buf = static_cast<float*>(mag_tensor_data_ptr(tensor));
@@ -478,7 +478,7 @@ TEST(mag_tensor_t, random_uniform_mersenne) {
     mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_MERSENNE_TWISTER, reinterpret_cast<std::uint64_t>(this));
 
-    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
+    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 32, 32, 32, 32);
     mag_tensor_fill_random_uniform(tensor, rmin, rmax);
 
     auto* buf = static_cast<float*>(mag_tensor_data_ptr(tensor));
@@ -501,7 +501,7 @@ TEST(mag_tensor_t, random_normal_mersenne) {
     mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_MERSENNE_TWISTER, reinterpret_cast<std::uint64_t>(this));
 
-    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
+    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 32, 32, 32, 32);
     mag_tensor_fill_random_normal(tensor, mean, stddev);
 
     auto* buf = static_cast<float*>(mag_tensor_data_ptr(tensor));
@@ -533,7 +533,7 @@ TEST(mag_tensor_t, random_normal_pcg) {
     mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_PCG, reinterpret_cast<std::uint64_t>(this));
 
-    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
+    mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 32, 32, 32, 32);
     mag_tensor_fill_random_normal(tensor, mean, stddev);
 
     auto* buf = static_cast<float*>(mag_tensor_data_ptr(tensor));

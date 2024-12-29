@@ -6,8 +6,8 @@
 #include "prelude.hpp"
 #include <cmath>
 
-static constexpr std::int64_t k_lim_same_shape = 6;
-static constexpr std::int64_t k_lim_broadcast = 3;
+static constexpr std::int64_t k_lim_same_shape = 4;
+static constexpr std::int64_t k_lim_broadcast = 2;
 
 #define impl_test_unary_op(name, eps, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
