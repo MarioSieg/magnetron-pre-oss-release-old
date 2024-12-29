@@ -10,7 +10,7 @@
 
 #include "magnetron_internal.h"
 
-template <typename F, typename... Args> requires std::is_invocable_r_v<void, F, mag_ctx_t*, Args...>
+template <typename F, typename... Args>
 static auto run_bench(
     std::string_view name,
     std::string_view unit,
@@ -32,14 +32,14 @@ auto main() -> int {
         std::free(p);
     });
 
-    mag_fixed_pool_cache cache {};
-    mag_fixed_pool_cache_init(&cache, alloc_n, 8, 8192);
+    mag_fixed_intrusive_pool cache {};
+    mag_fixed_intrusive_pool_init(&cache, alloc_n, 8, 8192);
     run_bench("Fixed Cached Pool Alloc Free", "malloc", [&cache](mag_ctx_t* ctx) -> void {
-        void* p = mag_fixed_pool_cache_alloc(&cache);
+        void* p = mag_fixed_intrusive_pool_malloc(&cache);
         ankerl::nanobench::doNotOptimizeAway(p);
-        mag_fixed_pool_cache_free(&cache, p);
+        mag_fixed_intrusive_pool_free(&cache, p);
     });
-    mag_fixed_pool_cache_destroy(&cache);
+    mag_fixed_intrusive_pool_destroy(&cache);
 
     run_bench("Tensor CPU Allocation", "alloc", [](mag_ctx_t* ctx) -> void {
         mag_tensor_t* A = mag_tensor_create_1d(ctx, MAG_DTYPE_F32, 8);
@@ -73,13 +73,14 @@ auto main() -> int {
     });
 }
 
-template <typename F, typename... Args> requires std::is_invocable_r_v<void, F, mag_ctx_t*, Args...>
+template <typename F, typename... Args>
 static auto run_bench(
     std::string_view name,
     std::string_view unit,
     F&& callback,
     Args&&... args
 ) -> void {
+    static_assert(std::is_invocable_r_v<void, F, mag_ctx_t*, Args...>);
     ankerl::nanobench::Bench bench {};
     bench.title(name.data())
         .unit(unit.data())

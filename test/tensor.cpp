@@ -453,7 +453,7 @@ TEST(mag_tensor_t, random_uniform_pcg) {
     constexpr float rmax = 1.0;
 
     mag_ctx_t* ctx = mag_ctx_create(nullptr);
-    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_PCG, std::bit_cast<std::uint64_t>(this));
+    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_PCG, reinterpret_cast<std::uint64_t>(this));
 
     mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
     mag_tensor_fill_random_uniform(tensor, rmin, rmax);
@@ -476,7 +476,7 @@ TEST(mag_tensor_t, random_uniform_mersenne) {
     constexpr float rmax = 1.0;
 
     mag_ctx_t* ctx = mag_ctx_create(nullptr);
-    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_MERSENNE_TWISTER, std::bit_cast<std::uint64_t>(this));
+    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_MERSENNE_TWISTER, reinterpret_cast<std::uint64_t>(this));
 
     mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
     mag_tensor_fill_random_uniform(tensor, rmin, rmax);
@@ -499,7 +499,7 @@ TEST(mag_tensor_t, random_normal_mersenne) {
     constexpr float stddev = 1.0;
 
     mag_ctx_t* ctx = mag_ctx_create(nullptr);
-    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_MERSENNE_TWISTER, std::bit_cast<std::uint64_t>(this));
+    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_MERSENNE_TWISTER, reinterpret_cast<std::uint64_t>(this));
 
     mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
     mag_tensor_fill_random_normal(tensor, mean, stddev);
@@ -531,7 +531,7 @@ TEST(mag_tensor_t, random_normal_pcg) {
     constexpr float stddev = 1.0;
 
     mag_ctx_t* ctx = mag_ctx_create(nullptr);
-    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_PCG, std::bit_cast<std::uint64_t>(this));
+    mag_ctx_set_prng_algorithm(ctx, MAG_PRNG_PCG, reinterpret_cast<std::uint64_t>(this));
 
     mag_tensor_t* tensor = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 128, 128, 128, 128);
     mag_tensor_fill_random_normal(tensor, mean, stddev);

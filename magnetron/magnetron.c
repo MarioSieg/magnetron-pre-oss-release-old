@@ -79,7 +79,7 @@ MAG_NORET MAG_COLDPROC MAG_EXPORT void mag_panic(const char* msg, ...) {
     abort();
 }
 
-static void* mag_default_allocator_impl(void* blk, size_t size) {
+static void* mag_os_alloc_stub(void* blk, size_t size) {
     if (!size) {
         free(blk);
         return NULL;
@@ -94,7 +94,7 @@ static void* mag_default_allocator_impl(void* blk, size_t size) {
     }
 }
 
-void* (*mag_alloc)(void* blk, size_t size) = &mag_default_allocator_impl;
+void* (*mag_alloc)(void* blk, size_t size) = &mag_os_alloc_stub;
 
 void* mag_alloc_aligned(size_t size, size_t align) {
     mag_assert(align && !(align&(align-1)), "Alignment must be power of 2: %zu", align); /* Alignment must be a power of 2 */
@@ -896,10 +896,10 @@ uint64_t mag_ctx_get_physical_memory_free(const mag_ctx_t* ctx) { return ctx->sy
 bool mag_ctx_is_numa_system(const mag_ctx_t* ctx) { return false; /* TODO */ }
 size_t mag_ctx_get_total_tensors_created(const mag_ctx_t* ctx) { return 0; /* TODO */ }
 
-static mag_fixed_pool_chunk* mag_fixed_pool_chunk_new(size_t block_size, size_t block_align, size_t blocks_per_chunk) {
+static mag_intrusive_chunk* mag_fixed_pool_chunk_new(size_t block_size, size_t block_align, size_t blocks_per_chunk) {
     size_t cap = blocks_per_chunk*block_size;
     uintptr_t size = 0;
-    mag_pincr((void**)&size, sizeof(mag_fixed_pool_chunk), __alignof(mag_fixed_pool_chunk));
+    mag_pincr((void**)&size, sizeof(mag_intrusive_chunk), __alignof(mag_intrusive_chunk));
     mag_pincr((void**)&size, cap, block_align);
     void* base = (*mag_alloc)(NULL, size), *pos = base;
     mag_fixed_pool_chunk* chunk = mag_pincr(&pos, sizeof(mag_fixed_pool_chunk), __alignof(mag_fixed_pool_chunk));
@@ -912,15 +912,15 @@ static mag_fixed_pool_chunk* mag_fixed_pool_chunk_new(size_t block_size, size_t 
     return chunk;
 }
 
-void mag_fixed_pool_cache_init(mag_fixed_pool_cache* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk) {
+void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk) {
     mag_assert2(block_size && blocks_per_chunk);
-    mag_fixed_pool_chunk* chunk = mag_fixed_pool_chunk_new(block_size, block_align, blocks_per_chunk);
-    *cache = (mag_fixed_pool_cache) {
+    mag_intrusive_chunk* chunk = mag_fixed_pool_chunk_new(block_size, block_align, blocks_per_chunk);
+    *cache = (mag_fixed_intrusive_pool) {
         .block_size = block_size,
         .block_align = block_align,
         .blocks_per_chunk = blocks_per_chunk,
         .chunks = chunk,
-        .chunk_last = chunk,
+        .chunk_head = chunk,
         .free_list = NULL,
         .num_freelist_hits = 0,
         .num_pool_hits = 0,
@@ -929,7 +929,7 @@ void mag_fixed_pool_cache_init(mag_fixed_pool_cache* cache, size_t block_size, s
     };
 }
 
-void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
+void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* cache) {
     ++cache->num_allocs;
     if (cache->free_list) { /* 1. Try to pop from free_list (fastest path) */
         ++cache->num_freelist_hits;
@@ -937,7 +937,7 @@ void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
         cache->free_list = *(void**)blk; /* Next free block is stored at block [0..sizeof(void*)-1] */
         return blk;
     }
-    mag_fixed_pool_chunk* chunk = cache->chunk_last;
+    mag_intrusive_chunk* chunk = cache->chunk_head;
     mag_assert2(chunk);
     uint8_t* top = chunk->top-cache->block_size;
     if (top >= chunk->bot) {  /* 2. Allocate from the last pool if possible (fast path) */
@@ -953,15 +953,15 @@ void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
     return new_chunk->top;
 }
 
-void mag_fixed_pool_cache_free(mag_fixed_pool_cache* cache, void* blk) { /* Push chunk into free list */
+void mag_fixed_intrusive_pool_free(mag_fixed_intrusive_pool* cache, void* blk) { /* Push chunk into free list */
     *(void**)blk = cache->free_list;
     cache->free_list = blk;
 }
 
-void mag_fixed_pool_cache_destroy(mag_fixed_pool_cache* cache) {
-    mag_fixed_pool_chunk* chunk = cache->chunks;
+void mag_fixed_intrusive_pool_destroy(mag_fixed_intrusive_pool* cache) {
+    mag_intrusive_chunk* chunk = cache->chunks;
     while (chunk) {
-        mag_fixed_pool_chunk* next = chunk->next;
+        mag_intrusive_chunk* next = chunk->next;
         (*mag_alloc)(chunk, 0);
         chunk = next;
     }
