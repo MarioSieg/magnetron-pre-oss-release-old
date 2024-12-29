@@ -828,7 +828,7 @@ mag_ctx_t* mag_ctx_create(mag_compute_device_type_t device) {
     /* Create selected compute device. */
     ctx->exec_mode = MAG_EXEC_MODE_EAGER;
     ctx->device_type = device;
-    ctx->device = mag_init_dynamic_device(ctx, device);
+    ctx->device = mag_init_dynamic_device(ctx, &ctx->device_type);
     mag_log_info("Compute device: %s", ctx->device->name);
 
 

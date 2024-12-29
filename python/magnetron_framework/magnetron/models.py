@@ -102,7 +102,7 @@ class SequentialModel(Model):
     def summary(self):
         trainable_params = 0
         for layer in self.layers:
-            trainable_params += layer.weight.num_elements + layer.bias.num_elements
+            trainable_params += layer.weight.numel + layer.bias.numel
         layers: int = len(self.layers)
         print('---- Model Summary ----')
         print(f'Trainable Parameters: {trainable_params}')

@@ -28,23 +28,23 @@ static const mag_device_factory_t* const mag_device_factories[MAG_COMPUTE_DEVICE
 #endif
 };
 
-mag_compute_device_t* mag_init_dynamic_device(mag_ctx_t* ctx, mag_compute_device_type_t type) {
-    mag_assert2(ctx && type < MAG_COMPUTE_DEVICE_TYPE__NUM);
+mag_compute_device_t* mag_init_dynamic_device(mag_ctx_t* ctx, mag_compute_device_type_t* type) {
+    mag_assert2(ctx && *type < MAG_COMPUTE_DEVICE_TYPE__NUM);
     mag_assert2(mag_device_factories[MAG_DEVICE_FALLBACK]);     /* Fallback factory must be present. */
-    const mag_device_factory_t* factory = mag_device_factories[type];
+    const mag_device_factory_t* factory = mag_device_factories[*type];
     if (mag_unlikely(!factory)) {
-        mag_log_error("No device factory for type '%s', falling back to CPU.", mag_device_type_get_name(type));
+        mag_log_error("No device factory for type '%s', falling back to CPU.", mag_device_type_get_name(*type));
         goto fallback;
     }
     mag_compute_device_t* dvc = (*factory->init)(ctx);
     if (mag_unlikely(!dvc)) {
-        mag_log_error("Failed to initialize device of type '%s', falling back to CPU.", mag_device_type_get_name(type));
+        mag_log_error("Failed to initialize device of type '%s', falling back to CPU.", mag_device_type_get_name(*type));
         goto fallback;
     }
     return dvc;
     fallback:
-        type = MAG_DEVICE_FALLBACK;
-        factory = mag_device_factories[type];
+        *type = MAG_DEVICE_FALLBACK;
+        factory = mag_device_factories[*type];
         mag_assert2(factory);
         dvc = (*factory->init)(ctx);
         mag_assert2(dvc);  /* Ensure fallback device is created. */

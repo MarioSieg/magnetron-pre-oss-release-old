@@ -1341,11 +1341,11 @@ class Tensor:
 
     def heaviside_step(self) -> 'Tensor':
         """Computes element-wise Heaviside step function."""
-        return Tensor(C.mag_heaviside_step(self.tensor))
+        return Tensor(C.mag_step(self.tensor))
 
     def heaviside_step_(self) -> 'Tensor':
         """In-place element-wise Heaviside step function."""
-        return Tensor(C.mag_heaviside_step_(self.tensor))
+        return Tensor(C.mag_step_(self.tensor))
 
     def softmax(self, derivative: bool = False) -> 'Tensor':
         """

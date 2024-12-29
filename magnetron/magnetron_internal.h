@@ -384,7 +384,7 @@ typedef struct mag_device_factory_t {
 } mag_device_factory_t;
 
 /* Global device factories. Implemented in magnetron_device_registry.c */
-extern mag_compute_device_t* mag_init_dynamic_device(mag_ctx_t* ctx, mag_compute_device_type_t type);
+extern mag_compute_device_t* mag_init_dynamic_device(mag_ctx_t* ctx, mag_compute_device_type_t* type);
 extern void mag_destroy_dynamic_device(mag_compute_device_t* dvc);
 
 /* Profiling performance monitor per op. */
