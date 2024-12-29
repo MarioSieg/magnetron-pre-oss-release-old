@@ -25,16 +25,16 @@ MAX_ARG_TENSORS: int = 2
 MAG_MAX_OP_PARAMS: int = 6
 DIM_MAX: int = ((1 << 64) - 1) >> 1
 
-def set_log_mode(enable_log: bool) -> None:
+def enable_log(enable: bool) -> None:
     """
     Set logging mode for the magnetron backend.
 
     Parameters
     ----------
-    enable_log : bool
+    enable : bool
         If True, enables logging of operations and internal states.
     """
-    C.mag_set_set_log_mode(enable_log)
+    C.mag_set_log_mode(enable)
 
 def pack_color(r: int, g: int, b: int) -> int:
     """
@@ -246,7 +246,7 @@ class Context:
             The currently active context.
         """
         if Context._active is None:
-            set_log_mode(GlobalConfig.verbose)
+            enable_log(GlobalConfig.verbose)
             Context._active = Context(GlobalConfig.compute_device)
         return Context._active
 
@@ -261,7 +261,7 @@ class Context:
         execution_mode : ExecutionMode, optional
             The execution mode (eager or deferred), by default EAGER.
         """
-        self.ctx = C.mag_ctx_create2(device.value)
+        self.ctx = C.mag_ctx_create(device.value)
         self.execution_mode = execution_mode
 
     @property

@@ -63,7 +63,7 @@
 bool mag_log_enabled = MAG_LOG_DEFAULT_ENABLE; /* Read from multiple threads, allowed to be written from main thread once at start. */
 #undef MAG_LOG_DEFAULT_ENABLE
 
-void mag_set_set_log_mode(bool enabled) {
+void mag_set_log_mode(bool enabled) {
     mag_log_enabled = enabled;
 }
 
@@ -666,9 +666,9 @@ static void mag_prng_generate_n(mag_ctx_t* ctx, float* out_gen, int64_t out_n, f
     float rescale_uniform = max - min;
     switch (ctx->prng_algorithm) {
         case MAG_PRNG_MERSENNE_TWISTER: {
-            uint32_t* rem = &ctx->prng_state.mersenne.remaining;
-            uint32_t* next = &ctx->prng_state.mersenne.next;
-            uint32_t* state = ctx->prng_state.mersenne.state;
+            uint32_t* rem = &ctx->prng.mersenne.remaining;
+            uint32_t* next = &ctx->prng.mersenne.next;
+            uint32_t* state = ctx->prng.mersenne.state;
             for (int64_t ii=0; ii < out_n; ++ii) {
                 if (--*rem <= 0) {
                     *rem = 624;
@@ -694,8 +694,8 @@ static void mag_prng_generate_n(mag_ctx_t* ctx, float* out_gen, int64_t out_n, f
             }
         } break;
         case MAG_PRNG_PCG: {
-            uint64_t* state = &ctx->prng_state.pcg.state;
-            uint64_t* inc = &ctx->prng_state.pcg.inc;
+            uint64_t* state = &ctx->prng.pcg.state;
+            uint64_t* inc = &ctx->prng.pcg.inc;
             for (int64_t ii=0; ii < out_n; ++ii) {
                 uint64_t prev = *state;
                 *state = prev*6364136223846793005ull + *inc;
@@ -714,16 +714,16 @@ static void mag_prng_init(mag_ctx_t* ctx, uint64_t seed) {
     seed = seed ? seed : 0x853c49e6748fea9bull ^ (uintptr_t)ctx ^ (uintptr_t)&ctx; /* Default seed. */
     switch (ctx->prng_algorithm) {
         case MAG_PRNG_MERSENNE_TWISTER: {
-            uint32_t* state = ctx->prng_state.mersenne.state;
+            uint32_t* state = ctx->prng.mersenne.state;
             *state = (uint32_t)seed;
             for (size_t i=1; i < 624; ++i)
                 state[i] = ((state[i-1] ^ (state[i-1] >> 30))*1812433253 + i) & ~0u;
-            ctx->prng_state.mersenne.next = 0;
-            ctx->prng_state.mersenne.remaining = 1;
+            ctx->prng.mersenne.next = 0;
+            ctx->prng.mersenne.remaining = 1;
         } break;
         case MAG_PRNG_PCG: {
-            ctx->prng_state.pcg.state = seed ^ 0x853c49e6748fea9bull;
-            ctx->prng_state.pcg.inc = 0xda3e39cb94b95bdbull;
+            ctx->prng.pcg.state = seed ^ 0x853c49e6748fea9bull;
+            ctx->prng.pcg.inc = 0xda3e39cb94b95bdbull;
         } break;
         default:
             mag_panic("Unknown PRNG algorithm: %d", ctx->prng_algorithm);
@@ -797,17 +797,18 @@ static MAG_COLDPROC void mag_ctx_dump_compiler_info(void) {
     mag_log_info("magnetron v.%d.%d - " __DATE__ " " __TIME__ " - %s %d.%d", mag_version_major(MAG_VERSION), mag_version_minor(MAG_VERSION), compiler_name, compiler_version_major, compiler_version_minor);
 }
 
-mag_ctx_t* mag_ctx_create(const mag_ctx_info_t* info) {
+mag_ctx_t* mag_ctx_create(mag_compute_device_type_t device) {
     mag_log_info("Creating magnetron context...");
+
     uint64_t time_stamp_start = mag_hpc_clock_ns();
     mag_ctx_dump_compiler_info(); /* Dump compiler info. */
 
     /* Initialize context with default values or from context info. */
-    mag_ctx_info_t ctx_info = {0};
-    if (info) ctx_info = *info;
     mag_ctx_t* ctx = (mag_ctx_t*)(*mag_alloc)(NULL, sizeof(*ctx)); /* Allocate context. */
     memset(ctx, 0, sizeof(*ctx));
-    ctx->ud = ctx_info.user_data;
+
+    /* Init allocators */
+    mag_fixed_intrusive_pool_init(&ctx->tensor_pool, sizeof(mag_tensor_t), __alignof(mag_tensor_t), 4096);
 
     ctx->tr_id = mag_thread_id(); /* Get thread ID. */
 
@@ -816,29 +817,24 @@ mag_ctx_t* mag_ctx_create(const mag_ctx_info_t* info) {
     mag_system_host_info_dump(ctx);
 
     /* Configure configureable media processors */
-    ctx->image_load_fn = ctx_info.image_load_fn ? ctx_info.image_load_fn : &mag_default_image_load_impl;
-    ctx->image_load_free_fn = ctx_info.image_load_free_fn ? ctx_info.image_load_free_fn : &mag_default_image_load_free_fn_impl;
-    ctx->image_save_fn = ctx_info.image_save_fn ? ctx_info.image_save_fn : &mag_default_image_save_impl;
+    ctx->image_load_fn = &mag_default_image_load_impl;
+    ctx->image_load_free_fn = &mag_default_image_load_free_fn_impl;
+    ctx->image_save_fn = &mag_default_image_save_impl;
 
     /* Initialize PRNG state. */
-    ctx->prng_algorithm = ctx_info.prng_algorithm;
-    mag_prng_init(ctx, ctx_info.prng_seed^ctx->tr_id^(uintptr_t)ctx^(uintptr_t)&ctx_info); /* Initialize PRNG state. */
+    ctx->prng_algorithm = MAG_PRNG_MERSENNE_TWISTER;
+    mag_prng_init(ctx, ctx->tr_id^(uintptr_t)ctx^(uintptr_t)&ctx); /* Initialize PRNG state. */
 
     /* Create selected compute device. */
-    ctx->exec_mode = ctx_info.exec_mode;
-    ctx->device_type = ctx_info.device;
-    ctx->device = mag_init_dynamic_device(ctx, ctx_info.device);
+    ctx->exec_mode = MAG_EXEC_MODE_EAGER;
+    ctx->device_type = device;
+    ctx->device = mag_init_dynamic_device(ctx, device);
     mag_log_info("Compute device: %s", ctx->device->name);
+
 
     /* Print context initialization time. */
     mag_log_info("magnetron context initialized in %.05f ms", mag_hpc_clock_elapsed_ms(time_stamp_start));
     return ctx;
-}
-
-mag_ctx_t* mag_ctx_create2(mag_compute_device_type_t device) {
-    mag_ctx_info_t info = {0};
-    info.device = device;
-    return mag_ctx_create(&info);
 }
 
 static void mag_tensor_destroy(mag_tensor_t* t);
@@ -863,6 +859,8 @@ void mag_ctx_destroy(mag_ctx_t* ctx) {
     }
     *head = NULL;
 #endif
+    mag_fixed_intrusive_pool_print_info(&ctx->tensor_pool, "Tensor Hull Pool");
+    mag_fixed_intrusive_pool_destroy(&ctx->tensor_pool);
     mag_destroy_dynamic_device(ctx->device); ctx->device = NULL;
     memset(ctx, 0, sizeof(*ctx));
     (*mag_alloc)(ctx, 0);
@@ -912,10 +910,10 @@ static mag_intrusive_chunk* mag_fixed_pool_chunk_new(size_t block_size, size_t b
     return chunk;
 }
 
-void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk) {
+void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* pool, size_t block_size, size_t block_align, size_t blocks_per_chunk) {
     mag_assert2(block_size && blocks_per_chunk);
     mag_intrusive_chunk* chunk = mag_fixed_pool_chunk_new(block_size, block_align, blocks_per_chunk);
-    *cache = (mag_fixed_intrusive_pool) {
+    *pool = (mag_fixed_intrusive_pool) {
         .block_size = block_size,
         .block_align = block_align,
         .blocks_per_chunk = blocks_per_chunk,
@@ -929,43 +927,60 @@ void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* cache, size_t block
     };
 }
 
-void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* cache) {
-    ++cache->num_allocs;
-    if (mag_likely(cache->free_list)) { /* 1. Try to pop from free_list (fastest path) */
-        ++cache->num_freelist_hits;
-        void* blk = cache->free_list;
-        cache->free_list = *(void**)blk; /* Next free block is stored at block [0..sizeof(void*)-1] */
+void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* pool) {
+    ++pool->num_allocs;
+    if (mag_likely(pool->free_list)) { /* 1. Try to pop from free_list (fastest path) */
+        ++pool->num_freelist_hits;
+        void* blk = pool->free_list;
+        pool->free_list = *(void**)blk; /* Next free block is stored at block [0..sizeof(void*)-1] */
         return blk;
     }
-    mag_intrusive_chunk* chunk = cache->chunk_head;
+    mag_intrusive_chunk* chunk = pool->chunk_head;
     mag_assert2(chunk);
-    uint8_t* top = chunk->top-cache->block_size;
+    uint8_t* top = chunk->top-pool->block_size;
     if (mag_likely(top >= chunk->bot)) {  /* 2. Allocate from the last pool if possible (fast path) */
-        ++cache->num_pool_hits;
+        ++pool->num_pool_hits;
         chunk->top = top;
         return top;
     }
-    mag_intrusive_chunk* new_chunk = mag_fixed_pool_chunk_new(cache->block_size, cache->block_align, cache->blocks_per_chunk);     /* 3. Current chunk is exhausted, allocate new (slow path) */
+    mag_intrusive_chunk* new_chunk = mag_fixed_pool_chunk_new(pool->block_size, pool->block_align, pool->blocks_per_chunk);     /* 3. Current chunk is exhausted, allocate new (slow path) */
     chunk->next = new_chunk;
-    cache->chunk_head = new_chunk;
-    new_chunk->top -= cache->block_size;
-    ++cache->num_chunks;
+    pool->chunk_head = new_chunk;
+    new_chunk->top -= pool->block_size;
+    ++pool->num_chunks;
     return new_chunk->top;
 }
 
-void mag_fixed_intrusive_pool_free(mag_fixed_intrusive_pool* cache, void* blk) { /* Push chunk into free list */
-    *(void**)blk = cache->free_list;
-    cache->free_list = blk;
+void mag_fixed_intrusive_pool_free(mag_fixed_intrusive_pool* pool, void* blk) { /* Push chunk into free list */
+    *(void**)blk = pool->free_list;
+    pool->free_list = blk;
 }
 
-void mag_fixed_intrusive_pool_destroy(mag_fixed_intrusive_pool* cache) {
-    mag_intrusive_chunk* chunk = cache->chunks;
+void mag_fixed_intrusive_pool_destroy(mag_fixed_intrusive_pool* pool) {
+    mag_intrusive_chunk* chunk = pool->chunks;
     while (chunk) {
         mag_intrusive_chunk* next = chunk->next;
         (*mag_alloc)(chunk, 0);
         chunk = next;
     }
-    memset(cache, 0, sizeof(*cache));
+    memset(pool, 0, sizeof(*pool));
+}
+
+MAG_COLDPROC void mag_fixed_intrusive_pool_print_info(mag_fixed_intrusive_pool* pool, const char* name) {
+    mag_log_info("Fixed Intrusive Pool: %s", name);
+    mag_log_info(
+        "\tBlock Size: %zu, Block Align: %zu, Blocks Per Chunk: %zu",
+        pool->block_size,
+        pool->block_align,
+        pool->blocks_per_chunk
+    );
+    mag_log_info(
+        "\tNum Chunks: %zu, Num Allocs: %zu, Num Freelist Hits: %zu, Num Pool Hits: %zu",
+        (size_t)pool->num_chunks,
+        (size_t)pool->num_allocs,
+        (size_t)pool->num_freelist_hits,
+        (size_t)pool->num_pool_hits
+    );
 }
 
 void mag_ctx_profile_start_recording(mag_ctx_t* ctx) {
@@ -1728,7 +1743,7 @@ static mag_tensor_t* mag_tensor_create(mag_ctx_t* ctx, mag_dtype_t type, const i
         mag_assert2(dims[i] > 0 && !mag_imull64_ov(dims[i], numel, &numel)); /* Overflow in buffer size. Max: INT64_MAX. Reduce dimensions. */
     int64_t numbytes = numel*dts;
     mag_assert2(!view || !numbytes || numbytes + view_offs <= mag_tensor_data_size(view)); /* Slice must be within viewed tensor data range. *//* Allocate memory for tensor struct on CPU RAM. */
-    mag_tensor_t* t = (*mag_alloc)(NULL, sizeof(*t));
+    mag_tensor_t* t = mag_fixed_intrusive_pool_malloc(&ctx->tensor_pool);
     memset(t, 0, sizeof(*t));
     *t = (mag_tensor_t) {
         .rcb = {
@@ -1782,8 +1797,8 @@ static mag_tensor_t* mag_tensor_create(mag_ctx_t* ctx, mag_dtype_t type, const i
 }
 
 static void mag_tensor_destroy(mag_tensor_t* t) {
-#if MAG_SANITIZE_RC  /* If tensor RC sanitize is enabled, invoke destructor and erase from tracking list */
     mag_ctx_t* ctx = t->ctx;
+#if MAG_SANITIZE_RC  /* If tensor RC sanitize is enabled, invoke destructor and erase from tracking list */
     void (*dtor)(mag_tensor_t*) = t->rcb.dtor;  /* Invoke Debug destructor. */
     if (dtor) (*dtor)(t);
     mag_tensor_node_t** head = &ctx->rc_tracked;
@@ -1809,7 +1824,7 @@ static void mag_tensor_destroy(mag_tensor_t* t) {
         void (*dtor)(mag_compute_device_t*, mag_storage_buffer_t*) = dvc->free_storage;
         (*dtor)(dvc, &t->storage);
     }
-    (*mag_alloc)(t, 0); /* Free tensor struct. */
+    mag_fixed_intrusive_pool_free(&ctx->tensor_pool, t);
 }
 
 void mag_tensor_incref(mag_tensor_t* t) {

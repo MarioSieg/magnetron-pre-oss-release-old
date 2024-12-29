@@ -1,8 +1,7 @@
-# Autogenered by /Users/mariosieg/Documents/projects/magnetron/python/magnetron_framework/bing_gen.py 2024-12-24 17:40:49.742368, do NOT edit!
+# Autogenered by /Users/mariosieg/Documents/projects/magnetron/python/magnetron_framework/bing_gen.py 2024-12-29 15:56:14.554105, do NOT edit!
 
 __MAG_CDECLS: str = '''
 
-typedef struct mag_ctx_info_t mag_ctx_info_t;
 typedef struct mag_ctx_t mag_ctx_t;
 typedef struct mag_tensor_t mag_tensor_t;
 typedef struct mag_dtype_meta_t mag_dtype_meta_t;
@@ -21,10 +20,9 @@ typedef int mag_graph_eval_order_t;
 extern   const char* mag_device_type_get_name(mag_compute_device_type_t op);
 extern   void* (*mag_get_alloc_fn(void))(void* blk, size_t size);
 extern   void mag_set_alloc_fn(void* (*alloc)(void* blk, size_t size));
-extern   void mag_set_set_log_mode(bool enabled);
+extern   void mag_set_log_mode(bool enabled);
 typedef uint32_t mag_char32_t;
-extern   mag_ctx_t* mag_ctx_create(const mag_ctx_info_t* info);
-extern   mag_ctx_t* mag_ctx_create2(mag_compute_device_type_t device);
+extern   mag_ctx_t* mag_ctx_create(mag_compute_device_type_t device);
 extern   mag_exec_mode_t mag_ctx_get_exec_mode(const mag_ctx_t* ctx);
 extern   void mag_ctx_set_exec_mode(mag_ctx_t* ctx, mag_exec_mode_t mode);
 extern   mag_prng_algorithm_t mag_ctx_get_prng_algorithm(const mag_ctx_t* ctx);

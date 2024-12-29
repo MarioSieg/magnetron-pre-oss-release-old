@@ -5,7 +5,7 @@
 #include <filesystem>
 
 TEST(storage, load_store) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     mag_tensor_t* A = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, 10, 4, 2, 5, 2, 2);
     mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
@@ -33,7 +33,7 @@ TEST(storage, load_store) {
 }
 
 TEST(storage, load_store_image) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     mag_tensor_t* img = mag_tensor_load_image(ctx, "test_data/car.jpg", MAG_COLOR_CHANNELS_RGB, 0, 0);
     if (std::filesystem::exists("test_data/car.magnetron"))

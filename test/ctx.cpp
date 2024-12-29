@@ -3,11 +3,11 @@
 #include "prelude.hpp"
 
 TEST(ctx, create_destroy_cpu) {
-    mag_set_set_log_mode(true);
-    mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_CPU);
+    mag_set_log_mode(true);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     ASSERT_NE(ctx, nullptr);
     mag_ctx_destroy(ctx);
-    mag_set_set_log_mode(false);
+    mag_set_log_mode(false);
 }
 
 #ifdef MAG_ENABLE_CUDA

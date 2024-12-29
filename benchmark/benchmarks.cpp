@@ -19,10 +19,10 @@ static auto run_bench(
 ) -> void;
 
 auto main() -> int {
-    mag_set_set_log_mode(true);
-    mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_CPU); // Create context to print CPU and system info
+    mag_set_log_mode(true);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); // Create context to print CPU and system info
     mag_ctx_destroy(ctx);
-    mag_set_set_log_mode(false);
+    mag_set_log_mode(false);
 
     volatile std::size_t alloc_n = 400;
 
@@ -87,7 +87,7 @@ static auto run_bench(
         .minEpochIterations(10)
         .relative(true);
     bench.performanceCounters(true);
-    mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_CPU);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     bench.run(name.data(), [&] {
         std::invoke(callback, ctx, std::forward<Args>(args)...);
     });

@@ -344,10 +344,11 @@ typedef struct mag_fixed_intrusive_pool {
     uint64_t num_allocs;                /* Number of total allocations */
 } mag_fixed_intrusive_pool;
 
-extern MAG_EXPORT void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* cache, size_t block_size, size_t block_align, size_t blocks_per_chunk);
-extern MAG_EXPORT void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* cache);
-extern MAG_EXPORT void mag_fixed_intrusive_pool_free(mag_fixed_intrusive_pool* cache, void* blk);
-extern MAG_EXPORT void mag_fixed_intrusive_pool_destroy(mag_fixed_intrusive_pool* cache);
+extern MAG_EXPORT void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* pool, size_t block_size, size_t block_align, size_t blocks_per_chunk);
+extern MAG_EXPORT void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* pool);
+extern MAG_EXPORT void mag_fixed_intrusive_pool_free(mag_fixed_intrusive_pool* pool, void* blk);
+extern MAG_EXPORT void mag_fixed_intrusive_pool_destroy(mag_fixed_intrusive_pool* pool);
+extern MAG_EXPORT void mag_fixed_intrusive_pool_print_info(mag_fixed_intrusive_pool* pool, const char* name);
 
 /* Device interface to any compute backend device (CPU, GPU, TPU etc..) */
 typedef struct mag_compute_device_t mag_compute_device_t;
@@ -428,6 +429,7 @@ struct mag_ctx_t {
 #if MAG_SANITIZE_RC
     mag_tensor_node_t* rc_tracked;                  /* Linked list of RC tensors for sanitize. */
 #endif
+    mag_fixed_intrusive_pool tensor_pool;           /* Fixed-size memory pool for tensors. */
     mag_exec_mode_t exec_mode;
     bool profiler_enabled;
     mag_op_perf_info_t op_perf_mons_total[MAG_OP__NUM];
@@ -441,7 +443,7 @@ struct mag_ctx_t {
             uint32_t next;
             uint32_t state[624];
         } mersenne;
-    } prng_state;
+    } prng;
     mag_prng_algorithm_t prng_algorithm;                /* PRNG algorithm. */
     uintptr_t tr_id;                                    /* Host thread ID. */
     size_t sh_len;                                      /* Number of shutdown hooks. */

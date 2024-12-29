@@ -11,7 +11,7 @@ static constexpr std::int64_t k_lim_broadcast = 3;
 
 #define impl_test_unary_op(name, eps, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
-        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); \
         \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
@@ -38,7 +38,7 @@ static constexpr std::int64_t k_lim_broadcast = 3;
         mag_ctx_destroy(ctx); \
     } \
     TEST(compute_cpu, name##_same_shape_inplace) { \
-            mag_ctx_t* ctx = mag_ctx_create(nullptr); \
+            mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); \
             \
             for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
             for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
@@ -74,7 +74,7 @@ impl_test_unary_op(abs, 1e-6, abs, [](float x) -> float {
 })
 
 TEST(compute_cpu, neg_same_shape) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0)
     for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1)
     for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2)
@@ -175,7 +175,7 @@ impl_test_unary_op(gelu, 1e-3, gelu, [](float x) -> float {
 
 #define impl_test_binary_op(name, op, scalar_op) \
     TEST(compute_cpu, name##_same_shape) { \
-        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
         for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
@@ -208,7 +208,7 @@ impl_test_unary_op(gelu, 1e-3, gelu, [](float x) -> float {
     } \
      \
     TEST(compute_cpu, name##_scalar_broadcast) { \
-        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); \
         for (std::int64_t factor=2; factor <= 4; ++factor) \
         for (std::int64_t i0=1; i0 <= k_lim_broadcast; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_broadcast; ++i1) \
@@ -239,7 +239,7 @@ impl_test_unary_op(gelu, 1e-3, gelu, [](float x) -> float {
         mag_ctx_destroy(ctx); \
     } \
     TEST(compute_cpu, name##_same_shape_inplace) { \
-        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
         for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
@@ -276,7 +276,7 @@ impl_test_unary_op(gelu, 1e-3, gelu, [](float x) -> float {
     } \
      \
     TEST(compute_cpu, name##_scalar_broadcast_inplace) { \
-        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); \
         for (std::int64_t factor=2; factor <= 4; ++factor) \
         for (std::int64_t i0=1; i0 <= k_lim_broadcast; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_broadcast; ++i1) \
@@ -312,7 +312,7 @@ impl_test_unary_op(gelu, 1e-3, gelu, [](float x) -> float {
         mag_ctx_destroy(ctx); \
     } \
     TEST(compute_cpu, name##_scalar) { \
-        mag_ctx_t* ctx = mag_ctx_create(nullptr); \
+        mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU); \
         for (std::int64_t i0=1; i0 <= k_lim_same_shape; ++i0) \
         for (std::int64_t i1=1; i1 <= k_lim_same_shape; ++i1) \
         for (std::int64_t i2=1; i2 <= k_lim_same_shape; ++i2) \
@@ -379,7 +379,7 @@ TEST(compute_cpu, matmul_inner_naive) {
 }
 
 TEST(compute_cpu, matmul_f32_same_shape_2x2) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     static constexpr float A_values[2][2] = {
         {1.6354027, -1.3607267},
@@ -419,7 +419,7 @@ TEST(compute_cpu, matmul_f32_same_shape_2x2) {
 }
 
 TEST(compute_cpu, matmul_f32_different_shape_2x2) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     static constexpr  float AV[3*2] = {
         1.0f, 2.0f,
@@ -453,7 +453,7 @@ TEST(compute_cpu, matmul_f32_different_shape_2x2) {
 }
 
 TEST(compute_cpu, arithmetic_mean) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
     mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     mag_tensor_t* R = mag_mean(A);
@@ -469,7 +469,7 @@ TEST(compute_cpu, arithmetic_mean) {
 }
 
 TEST(compute_cpu, min) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
     mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     mag_tensor_t* R = mag_min(A);
@@ -482,7 +482,7 @@ TEST(compute_cpu, min) {
 }
 
 TEST(compute_cpu, max) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
     mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     mag_tensor_t* R = mag_max(A);
@@ -495,7 +495,7 @@ TEST(compute_cpu, max) {
 }
 
 TEST(compute_cpu, hsum) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_tensor_t* A = mag_tensor_create_4d(ctx, MAG_DTYPE_F32, 4, 1, 3, 2);
     mag_tensor_fill_random_uniform(A, -1.0f, 1.0f);
     mag_tensor_t* R = mag_sum(A);
@@ -510,7 +510,7 @@ TEST(compute_cpu, hsum) {
 }
 
 TEST(compute_cpu, heavy_compute_single_op) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_tensor_t* A = mag_tensor_create_3d(ctx, MAG_DTYPE_F32, 8192, 8192, 3);
     mag_tensor_t* B = mag_clone(A);
     mag_tensor_fill(B, 3.0);
@@ -523,7 +523,7 @@ TEST(compute_cpu, heavy_compute_single_op) {
 }
 
 TEST(compute_cpu, heavy_compute_single_op_scalar) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_tensor_t* A = mag_tensor_create_1d(ctx, MAG_DTYPE_F32, 1);
     mag_tensor_t* B =  mag_clone(A);
     mag_tensor_fill(B, 3.0);

@@ -6,7 +6,7 @@
 #include <filesystem>
 
 TEST(core, profiler_small_dims) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_ctx_profile_start_recording(ctx);
     for (int i=0; i < 1000000; ++i) {
         mag_tensor_t* A = mag_tensor_create_2d(ctx, MAG_DTYPE_F32, 3, 3);
@@ -26,7 +26,7 @@ TEST(core, profiler_small_dims) {
 }
 
 TEST(core, profiler_big_dims) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_ctx_profile_start_recording(ctx);
     mag_tensor_t* A = mag_tensor_create_6d(ctx, MAG_DTYPE_F32, 32, 32, 4, 4, 4, 4);
     mag_tensor_t* B = mag_sin(A);

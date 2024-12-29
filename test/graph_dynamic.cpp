@@ -3,7 +3,7 @@
 #include "prelude.hpp"
 
 TEST(graph_dynamic, simple) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
     mag_ctx_set_exec_mode(ctx, MAG_EXEC_MODE_EAGER);
 
     // ((W * X) + B).relu()

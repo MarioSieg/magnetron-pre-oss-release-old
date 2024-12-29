@@ -3,7 +3,7 @@
 #include "prelude.hpp"
 
 TEST(image, load) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     mag_tensor_t* img = mag_tensor_load_image(ctx, "test_data/test_img.png", MAG_COLOR_CHANNELS_RGB, 0, 0);
     mag_tensor_print(img, true, true);
@@ -27,7 +27,7 @@ TEST(image, load) {
 }
 
 TEST(image, load_resize) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     mag_tensor_t* img = mag_tensor_load_image(ctx, "test_data/car.jpg", MAG_COLOR_CHANNELS_RGB, 256, 211);
     ASSERT_EQ(mag_tensor_shape(img)[2], 256);
@@ -51,7 +51,7 @@ TEST(image, load_resize) {
 }
 
 TEST(image, draw_box) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     mag_tensor_t* img = mag_tensor_load_image(ctx, "test_data/car.jpg", MAG_COLOR_CHANNELS_RGB, 256, 256);
     mag_tensor_img_draw_box(img, 40, 40, 80, 80, 1, mag_pack_color_f32(1.0f, 0.0f, 0.0f));
@@ -64,7 +64,7 @@ TEST(image, draw_box) {
 }
 
 TEST(image, draw_text) {
-    mag_ctx_t* ctx = mag_ctx_create(nullptr);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_CPU);
 
     mag_tensor_t* img = mag_tensor_load_image(ctx, "test_data/car.jpg", MAG_COLOR_CHANNELS_RGB, 256, 256);
     mag_tensor_img_draw_text(img, 100, 100, 10, 0xffffff, "Hallö!");

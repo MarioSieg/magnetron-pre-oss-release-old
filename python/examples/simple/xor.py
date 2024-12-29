@@ -4,6 +4,8 @@ import magnetron as mag
 from magnetron.models import SequentialModel, DenseLayer
 import matplotlib.pyplot as plt
 
+mag.enable_log(True)
+
 EPOCHS: int = 10000
 LEARNING_RATE: float = 0.8
 

@@ -14,8 +14,8 @@ FLOP = 2 * DIM ** 3
 EXPORT_CSV: str | None = None  # Set to a file path to export the profiler data as CSV
 
 # Create two random matrices
-A = mag.Tensor.rand((DIM, DIM), name='A')
-B = mag.Tensor.rand((DIM, DIM), name='B')
+A = mag.Tensor.uniform((DIM, DIM), name='A')
+B = mag.Tensor.uniform((DIM, DIM), name='B')
 
 # Start the profiler
 mag.Context.active().start_profiler()

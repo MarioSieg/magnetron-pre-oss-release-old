@@ -87,28 +87,13 @@ typedef enum mag_color_channels_t {
 
 extern MAG_EXPORT void* (*mag_get_alloc_fn(void))(void* blk, size_t size); /* Get global allocator. */
 extern MAG_EXPORT void mag_set_alloc_fn(void* (*alloc)(void* blk, size_t size)); /* Set global allocator. */
-extern MAG_EXPORT void mag_set_set_log_mode(bool enabled); /* Enable/disable logging. */
+extern MAG_EXPORT void mag_set_log_mode(bool enabled); /* Enable/disable logging. */
 
 typedef uint32_t mag_char32_t;
 
-typedef struct mag_ctx_info_t {
-    mag_compute_device_type_t device;        /* Compute device */
-    size_t pool_chunk_size;                 /* Size of each memory pool chunk */
-    size_t pool_chunks_cap;                 /* Maximum chunks in the pool */
-    uint64_t prng_seed;                     /* Seed for PRNG if prng_init_seed == true */
-    bool warmup_chunks;                     /* If true, fresh pool chunks are filled to allocate kernel pages, can improve performance depending on scenario. */
-    mag_prng_algorithm_t prng_algorithm;     /* PRNG algorithm */
-    mag_exec_mode_t exec_mode;               /* Default context execution mode */
-    uint8_t* (*image_load_fn)(const char*, uint32_t(*)[3], mag_color_channels_t);    /* Image raw data loader. stb_image by default, you can plug-in your own. */
-    void (*image_load_free_fn)(uint8_t*);                                           /* Image raw data loader free function. stb_image by default, you can plug-in your own. */
-    bool (*image_save_fn)(const char*, const uint8_t*, const uint32_t(*)[3]);       /* Image raw data saver. stb_image by default, you can plug-in your own. */
-    void* user_data; /* User-defined data */
-} mag_ctx_info_t;
-
 typedef struct mag_ctx_t mag_ctx_t; /* Opaque context type for managing memory pools */
 
-extern MAG_EXPORT mag_ctx_t* mag_ctx_create(const mag_ctx_info_t* info); /* Create context with configuration data. */
-extern MAG_EXPORT mag_ctx_t* mag_ctx_create2(mag_compute_device_type_t device); /* Create context with default config, and only specificy device. */
+extern MAG_EXPORT mag_ctx_t* mag_ctx_create(mag_compute_device_type_t device); /* Create context with default config, and only specificy device. */
 extern MAG_EXPORT mag_exec_mode_t mag_ctx_get_exec_mode(const mag_ctx_t* ctx); /* Get execution mode */
 extern MAG_EXPORT void mag_ctx_set_exec_mode(mag_ctx_t* ctx, mag_exec_mode_t mode); /* Set execution mode */
 extern MAG_EXPORT mag_prng_algorithm_t mag_ctx_get_prng_algorithm(const mag_ctx_t* ctx); /* Get PRNG algorithm */
