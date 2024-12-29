@@ -323,11 +323,11 @@ static MAG_AINLINE void* mag_pincr(void** p, size_t sz, size_t align) {
     return pp;
 }
 
-typedef struct mag_fixed_pool_chunk mag_fixed_pool_chunk;
-struct mag_fixed_pool_chunk {
+typedef struct mag_intrusive_chunk mag_intrusive_chunk;
+struct mag_intrusive_chunk {
     uint8_t* bot;                       /* Bottom (base) of chunk */
     uint8_t* top;                       /* Top of chunk, grows downwards towards bottom */
-    mag_fixed_pool_chunk* next;         /* Link to next chunk */
+    mag_intrusive_chunk* next;          /* Link to next chunk */
 };
 
 /* Fast memory allocator for memory blocks of same size. Obtains a memory pool and freelist for fast de/allocation. */

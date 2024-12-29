@@ -902,9 +902,9 @@ static mag_intrusive_chunk* mag_fixed_pool_chunk_new(size_t block_size, size_t b
     mag_pincr((void**)&size, sizeof(mag_intrusive_chunk), __alignof(mag_intrusive_chunk));
     mag_pincr((void**)&size, cap, block_align);
     void* base = (*mag_alloc)(NULL, size), *pos = base;
-    mag_fixed_pool_chunk* chunk = mag_pincr(&pos, sizeof(mag_fixed_pool_chunk), __alignof(mag_fixed_pool_chunk));
+    mag_intrusive_chunk* chunk = mag_pincr(&pos, sizeof(mag_intrusive_chunk), __alignof(mag_intrusive_chunk));
     uint8_t* bot = mag_pincr(&pos, cap, block_align);
-    *chunk = (mag_fixed_pool_chunk) {
+    *chunk = (mag_intrusive_chunk) {
         .bot = bot,
         .top = bot+cap,
         .next = NULL
@@ -931,7 +931,7 @@ void mag_fixed_intrusive_pool_init(mag_fixed_intrusive_pool* cache, size_t block
 
 void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* cache) {
     ++cache->num_allocs;
-    if (cache->free_list) { /* 1. Try to pop from free_list (fastest path) */
+    if (mag_likely(cache->free_list)) { /* 1. Try to pop from free_list (fastest path) */
         ++cache->num_freelist_hits;
         void* blk = cache->free_list;
         cache->free_list = *(void**)blk; /* Next free block is stored at block [0..sizeof(void*)-1] */
@@ -940,14 +940,14 @@ void* mag_fixed_intrusive_pool_malloc(mag_fixed_intrusive_pool* cache) {
     mag_intrusive_chunk* chunk = cache->chunk_head;
     mag_assert2(chunk);
     uint8_t* top = chunk->top-cache->block_size;
-    if (top >= chunk->bot) {  /* 2. Allocate from the last pool if possible (fast path) */
+    if (mag_likely(top >= chunk->bot)) {  /* 2. Allocate from the last pool if possible (fast path) */
         ++cache->num_pool_hits;
         chunk->top = top;
         return top;
     }
-    mag_fixed_pool_chunk* new_chunk = mag_fixed_pool_chunk_new(cache->block_size, cache->block_align, cache->blocks_per_chunk);     /* 3. Current chunk is exhausted, allocate new (slow path) */
+    mag_intrusive_chunk* new_chunk = mag_fixed_pool_chunk_new(cache->block_size, cache->block_align, cache->blocks_per_chunk);     /* 3. Current chunk is exhausted, allocate new (slow path) */
     chunk->next = new_chunk;
-    cache->chunk_last = new_chunk;
+    cache->chunk_head = new_chunk;
     new_chunk->top -= cache->block_size;
     ++cache->num_chunks;
     return new_chunk->top;
