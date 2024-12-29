@@ -969,18 +969,23 @@ void mag_fixed_intrusive_pool_destroy(mag_fixed_intrusive_pool* pool) {
 MAG_COLDPROC void mag_fixed_intrusive_pool_print_info(mag_fixed_intrusive_pool* pool, const char* name) {
     mag_log_info("Fixed Intrusive Pool: %s", name);
     mag_log_info(
-        "\tBlock Size: %zu, Block Align: %zu, Blocks Per Chunk: %zu",
+        "\tBlock Size: %zu B, Block Align: %zu B, Blocks Per Chunk: %zu B",
         pool->block_size,
         pool->block_align,
         pool->blocks_per_chunk
     );
     mag_log_info(
-        "\tNum Chunks: %zu, Num Allocs: %zu, Num Freelist Hits: %zu, Num Pool Hits: %zu",
+        "\tChunks: %zu, Allocs: %zu, Freelist Hits: %zu, Num Pool Hits: %zu",
         (size_t)pool->num_chunks,
         (size_t)pool->num_allocs,
         (size_t)pool->num_freelist_hits,
         (size_t)pool->num_pool_hits
     );
+    double mem_alloced, pool_mem;
+    const char* mem_unit_alloced, *mem_unit_pool;
+    mag_humanize_memory_size(pool->num_chunks*pool->blocks_per_chunk*pool->block_size, &mem_alloced, &mem_unit_alloced);
+    mag_humanize_memory_size(pool->num_allocs*pool->block_size, &pool_mem, &mem_unit_pool);
+    mag_log_info("\t Real Mem Allocated: %.03f %s, Total Pool Mem %.03f %s", mem_alloced, mem_unit_alloced, pool_mem, mem_unit_pool);
 }
 
 void mag_ctx_profile_start_recording(mag_ctx_t* ctx) {
