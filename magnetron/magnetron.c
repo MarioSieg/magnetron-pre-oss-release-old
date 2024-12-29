@@ -901,13 +901,12 @@ static mag_fixed_pool_chunk* mag_fixed_pool_chunk_new(size_t block_size, size_t 
     uintptr_t size = 0;
     mag_pincr((void**)&size, sizeof(mag_fixed_pool_chunk), __alignof(mag_fixed_pool_chunk));
     mag_pincr((void**)&size, cap, block_align);
-    void* mem = (*mag_alloc)(NULL, size);
-    void* pos = mem;
+    void* base = (*mag_alloc)(NULL, size), *pos = base;
     mag_fixed_pool_chunk* chunk = mag_pincr(&pos, sizeof(mag_fixed_pool_chunk), __alignof(mag_fixed_pool_chunk));
+    uint8_t* bot = mag_pincr(&pos, cap, block_align);
     *chunk = (mag_fixed_pool_chunk) {
-        .mem = mag_pincr(&pos, cap, block_align),
-        .cap = cap,
-        .offs = 0,
+        .bot = bot,
+        .top = bot+cap,
         .next = NULL
     };
     return chunk;
@@ -935,24 +934,23 @@ void* mag_fixed_pool_cache_alloc(mag_fixed_pool_cache* cache) {
     if (cache->free_list) { /* 1. Try to pop from free_list (fastest path) */
         ++cache->num_freelist_hits;
         void* blk = cache->free_list;
-        cache->free_list = *(void**)blk; /* Next free block is stored at block[0..sizeof(void*)-1] */
+        cache->free_list = *(void**)blk; /* Next free block is stored at block [0..sizeof(void*)-1] */
         return blk;
     }
     mag_fixed_pool_chunk* chunk = cache->chunk_last;
     mag_assert2(chunk);
-    if (chunk->offs+cache->block_size <= chunk->cap) {  /* 2. Allocate from the last pool if possible (fast path) */
+    uint8_t* top = chunk->top-cache->block_size;
+    if (top >= chunk->bot) {  /* 2. Allocate from the last pool if possible (fast path) */
         ++cache->num_pool_hits;
-        uint8_t* blk = (uint8_t*)chunk->mem+chunk->offs;
-        chunk->offs += cache->block_size;
-        return blk;
+        chunk->top = top;
+        return top;
     }
     mag_fixed_pool_chunk* new_chunk = mag_fixed_pool_chunk_new(cache->block_size, cache->block_align, cache->blocks_per_chunk);     /* 3. Current chunk is exhausted, allocate new (slow path) */
     chunk->next = new_chunk;
     cache->chunk_last = new_chunk;
-    uint8_t* blk = new_chunk->mem;
-    new_chunk->offs = cache->block_size;
+    new_chunk->top -= cache->block_size;
     ++cache->num_chunks;
-    return blk;
+    return new_chunk->top;
 }
 
 void mag_fixed_pool_cache_free(mag_fixed_pool_cache* cache, void* blk) { /* Push chunk into free list */

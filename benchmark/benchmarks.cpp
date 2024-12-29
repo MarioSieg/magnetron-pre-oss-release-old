@@ -87,7 +87,7 @@ static auto run_bench(
         .relative(true);
     bench.performanceCounters(true);
     mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_CPU);
-    bench.run(name.data(), [&]() -> void {
+    bench.run(name.data(), [&] {
         std::invoke(callback, ctx, std::forward<Args>(args)...);
     });
     ankerl::nanobench::doNotOptimizeAway(ctx);

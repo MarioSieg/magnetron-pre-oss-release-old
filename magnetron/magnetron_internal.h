@@ -325,10 +325,9 @@ static MAG_AINLINE void* mag_pincr(void** p, size_t sz, size_t align) {
 
 typedef struct mag_fixed_pool_chunk mag_fixed_pool_chunk;
 struct mag_fixed_pool_chunk {
-    void* mem;
-    size_t cap;
-    size_t offs;
-    mag_fixed_pool_chunk* next;
+    uint8_t* bot;                       /* Bottom (base) of chunk */
+    uint8_t* top;                       /* Top of chunk, grows downwards towards bottom */
+    mag_fixed_pool_chunk* next;         /* Link to next chunk */
 };
 
 /* Fast memory allocator for memory blocks of same size. Obtains a memory pool and freelist for fast de/allocation. */
@@ -341,7 +340,7 @@ typedef struct mag_fixed_pool_cache {
     void* free_list;                    /* Single linked list of free chunks */
     uint64_t num_freelist_hits;         /* Number of cache (free-list) hits */
     uint64_t num_pool_hits;             /* Number of cache (pool) hits */
-    uint64_t num_chunks;          /* Number of used chunks */
+    uint64_t num_chunks;                /* Number of used chunks */
     uint64_t num_allocs;                /* Number of total allocations */
 } mag_fixed_pool_cache;
 
