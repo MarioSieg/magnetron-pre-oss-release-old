@@ -12,10 +12,10 @@ TEST(ctx, create_destroy_cpu) {
 
 #ifdef MAG_ENABLE_CUDA
 TEST(ctx, create_destroy_cuda) {
-    mag_set_set_log_mode(true);
-    mag_ctx_t* ctx = mag_ctx_create2(MAG_COMPUTE_DEVICE_TYPE_GPU_CUDA);
+    mag_set_log_mode(true);
+    mag_ctx_t* ctx = mag_ctx_create(MAG_COMPUTE_DEVICE_TYPE_GPU_CUDA);
     ASSERT_NE(ctx, nullptr);
     mag_ctx_destroy(ctx);
-    mag_set_set_log_mode(false);
+    mag_set_log_mode(false);
 }
 #endif

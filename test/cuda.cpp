@@ -30,7 +30,7 @@ TEST(cuda, vm_pool) {
     std::size_t actual_sz = 0;
     auto* ptr = pool.alloc(1024, 32, actual_sz);
     ASSERT_NE(ptr, nullptr);
-    ASSERT_EQ(std::bit_cast<std::uintptr_t>(ptr) % 32, 0);
+    ASSERT_EQ(reinterpret_cast<std::uintptr_t>(ptr) % 32, 0);
     std::cout << "Allocated: " << actual_sz << " bytes" << std::endl;
     pool.free(ptr, actual_sz);
 }

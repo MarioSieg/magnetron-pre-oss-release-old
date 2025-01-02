@@ -1,23 +1,3 @@
-<!-- Improved compatibility of back to top link: See: https://github.com/othneildrew/Best-README-Template/pull/73 -->
-<a id="readme-top"></a>
-<!--
-*** Thanks for checking out the Best-README-Template. If you have a suggestion
-*** that would make this better, please fork the repo and create a pull request
-*** or simply open an issue with the tag "enhancement".
-*** Don't forget to give the project a star!
-*** Thanks again! Now go create something AMAZING! :D
--->
-
-
-
-<!-- PROJECT SHIELDS -->
-<!--
-*** I'm using markdown "reference style" links for readability.
-*** Reference links are enclosed in brackets [ ] instead of parentheses ( ).
-*** See the bottom of this document for the declaration of the reference variables
-*** for contributors-url, forks-url, etc. This is an optional, concise syntax you may use.
-*** https://www.markdownguide.org/basic-syntax/#reference-style-links
--->
 [![Contributors][contributors-shield]][contributors-url]
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
@@ -25,9 +5,6 @@
 [![MIT License][license-shield]][license-url]
 [![LinkedIn][linkedin-shield]][linkedin-url]
 
-
-
-<!-- PROJECT LOGO -->
 <br />
 <div align="center">
   <a href="https://github.com/MarioSieg/magnetron">
@@ -35,9 +12,8 @@
   </a>
 
 <h3 align="center">magnetron</h3>
-
   <p align="center">
-    project_description
+    Minimalistic homemade PyTorch alternative, written in C99 and Python.
     <br />
     <a href="https://github.com/MarioSieg/magnetron"><strong>Explore the docs »</strong></a>
     <br />
@@ -50,9 +26,6 @@
   </p>
 </div>
 
-
-
-<!-- TABLE OF CONTENTS -->
 <details>
   <summary>Table of Contents</summary>
   <ol>
@@ -75,51 +48,32 @@
   </ol>
 </details>
 
-
-
-<!-- ABOUT THE PROJECT -->
 ## About The Project
 
-[![Product Name Screen Shot][product-screenshot]](https://example.com)
-
-Here's a blank template to get started: To avoid retyping too much info. Do a search and replace with your text editor for the following: `MarioSieg`, `magnetron`, `_mario_neo_`, `mario-sieg`, `gmail`, `email`, `magnetron`, `project_description`
+[![ScreenShot][product-screenshot]](media/xor.png)
+This project started as a learning experience and a way to understand the inner workings of PyTorch and other deep learning frameworks.
+The goal is to create a minimalistic but still powerful deep learning framework that can be used for research and production.
+The project is written in C99 and Python, with the Python API being the main interface for the user.
+The project is still in its early stages and many features are missing, but the core functionality is already implemented.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 <!-- GETTING STARTED -->
 ## Getting Started
 
-This is an example of how you may give instructions on setting up your project locally.
-To get a local copy up and running follow these simple example steps.
+To get a local copy up and running follow these simple steps.
 
 ### Prerequisites
-
-This is an example of how to list things you need to use the software and how to install them.
-* npm
-  ```sh
-  npm install npm@latest -g
-  ```
+* Linux, MacOS or Windows
+* A C99 compiler (gcc, clang, msvc)
+* Python 3.6 or higher
 
 ### Installation
 
-1. Get a free API Key at [https://example.com](https://example.com)
-2. Clone the repo
-   ```sh
-   git clone https://github.com/MarioSieg/magnetron.git
-   ```
-3. Install NPM packages
-   ```sh
-   npm install
-   ```
-4. Enter your API in `config.js`
-   ```js
-   const API_KEY = 'ENTER YOUR API';
-   ```
-5. Change git remote url to avoid accidental pushes to base project
-   ```sh
-   git remote set-url origin MarioSieg/magnetron
-   git remote -v # confirm the changes
-   ```
+1. Clone the repo
+2. If you want to use the C library, use CMake to build the library and link it to your project.
+3. If you want to use the Python API, enter the `python/magnetron_framework` directory within a VENV and run `install_wheel_local.sh` to build the wheel and install it locally.
+4. Run the XOR example in the `python/examples/simple/xor.py` directory to test the installation.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -127,17 +81,15 @@ This is an example of how to list things you need to use the software and how to
 
 <!-- USAGE EXAMPLES -->
 ## Usage
-
-Use this space to show useful examples of how a project can be used. Additional screenshots, code examples and demos work well in this space. You may also link to more resources.
-
-_For more examples, please refer to the [Documentation](https://example.com)_
+See the `python/examples` directory for examples on how to use the framework.
+For usage in C99 see the `test` directory in the root of the project.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
-
-
 <!-- ROADMAP -->
 ## Roadmap
+
+The goal is to implement training and inference for LLMs and other state of the art models, while providing a simple and small codebase that is easy to understand and modify.
 
 - [X] 6 Dimensional, Linearized Tensors
 - [X] Dynamic Computation Graph
@@ -146,7 +98,8 @@ _For more examples, please refer to the [Documentation](https://example.com)_
 - [X] CPU Compute and optimization
 - [X] Compressed tensor file format
 - [X] Validation and friendly error messages
-- [ ] Automatic differentiation
+- [X] Fast, custom memory allocators for CPU and GPU
+- [X] Automatic differentiation
 - [ ] Compute on GPU (Cuda)
 - [ ] Other Datatypes (f16, bf16, int8)
 - [ ] Multithreaded CPU Compute
@@ -154,11 +107,7 @@ _For more examples, please refer to the [Documentation](https://example.com)_
 - [ ] CPU and GPU kernel JIT compilation
 - [ ] Better examples with real world models (LLMs and state of the art models)
 
-See the [open issues](https://github.com/MarioSieg/magnetron/issues) for a full list of proposed features (and known issues).
-
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-
 
 <!-- CONTRIBUTING -->
 ## Contributing
@@ -183,7 +132,6 @@ Don't forget to give the project a star! Thanks again!
 </a>
 
 
-
 <!-- LICENSE -->
 ## License
 
@@ -203,14 +151,12 @@ Developed 2024 in Berlin, Germany.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- SIMILAR PROJECTS -->
+## Similar Projects
 
-
-<!-- ACKNOWLEDGMENTS -->
-## Acknowledgments
-
-* [Readme Template](https://github.com/othneildrew/Best-README-Template)
-* []()
-* []()
+* [GGML](https://github.com/ggerganov/ggml)
+* [TINYGRAD](https://github.com/tinygrad/tinygrad)
+* [MICROGRAD](https://github.com/karpathy/micrograd)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
