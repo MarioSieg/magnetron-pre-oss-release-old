@@ -50,11 +50,11 @@
 
 ## About The Project
 
-[![ScreenShot][product-screenshot]](media/xor.png)
-This project started as a learning experience and a way to understand the inner workings of PyTorch and other deep learning frameworks.
-The goal is to create a minimalistic but still powerful deep learning framework that can be used for research and production.
-The project is written in C99 and Python, with the Python API being the main interface for the user.
-The project is still in its early stages and many features are missing, but the core functionality is already implemented.
+![ScreenShot](media/xor.png)
+This project started as a learning experience and a way to understand the inner workings of PyTorch and other deep learning frameworks.<br>
+The goal is to create a minimalistic but still powerful deep learning framework that can be used for research and production.<br>
+The project is written in C99 and Python, with the Python API being the main interface for the user.<br>
+The project is still in its early stages and many features are missing, but the core functionality is already implemented.<br>
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -69,7 +69,7 @@ To get a local copy up and running follow these simple steps.
 * Python 3.6 or higher
 
 ### Installation
-
+*A pip installable package will be provided, as soon as all core features are implemented.*
 1. Clone the repo
 2. If you want to use the C library, use CMake to build the library and link it to your project.
 3. If you want to use the Python API, enter the `python/magnetron_framework` directory within a VENV and run `install_wheel_local.sh` to build the wheel and install it locally.
@@ -124,13 +124,6 @@ Don't forget to give the project a star! Thanks again!
 5. Open a Pull Request
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
-
-### Top contributors:
-
-<a href="https://github.com/MarioSieg/magnetron/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=MarioSieg/magnetron" alt="contrib.rocks image" />
-</a>
-
 
 <!-- LICENSE -->
 ## License
